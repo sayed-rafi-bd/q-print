@@ -186,7 +186,7 @@ export default function PrintPage() {
 
         <Field label="Print resolution" htmlFor="dpi"
                hint={dpiNote || 'Options are what the printer driver reports. The previous setting is restored after printing.'}>
-          <select id="dpi" className={inputCls + ' cursor-pointer disabled:cursor-not-allowed'} value={dpi}
+          <select id="dpi" className={inputCls + ' cursor-pointer'} value={dpi}
                   disabled={busy} onChange={e => setDpi(e.target.value)}>
             <option value="">Printer default</option>
             {resolutions.map(r => <option key={r} value={r}>{dpiLabel(r)}</option>)}
@@ -199,7 +199,7 @@ export default function PrintPage() {
         </Field>
 
         <button onClick={onPrint} disabled={!printer || busy}
-                className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-300">
+                className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500">
           {busy && (
             <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
               <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25" />
