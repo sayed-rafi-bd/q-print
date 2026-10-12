@@ -1,0 +1,1 @@
+Place NotoSansJP-Regular.ttf here (Noto Sans JP, Regular weight, static TTF).
