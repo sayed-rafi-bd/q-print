@@ -79,15 +79,62 @@ Things to know:
 - Direct IPP (silent, Wi-Fi printers) and vendor SDKs (Bluetooth/USB label printers) are not implemented.
   See `ANDROID_PLAN.md`, Phase 3B and 3C. Silent printing on Android needs one of them.
 
+## Build
+Builds bundle the frontend into the app, so they don't need the Vite dev server (or the network setup `android dev` needs).
+Windows needs the SumatraPDF exe in `src-tauri/binaries` and the font in `public/fonts`.
+
+### Windows
+```powershell
+pnpm install
+pnpm tauri build
+```
+Output:
+- `src-tauri\target\release\bundle\nsis\*.exe`: setup installer
+- `src-tauri\target\release\bundle\msi\*.msi`
+- `src-tauri\target\release\print-test.exe`: the bare app, with `SumatraPDF.exe` next to it
+
+### Android
+Debug APK (signed with the debug key, installs straight away). `--target aarch64` builds only 64-bit phones, which is
+faster; leave it out to build all four architectures:
+```powershell
+pnpm tauri android build --debug --apk --target aarch64
+& "$env:ANDROID_HOME\platform-tools\adb.exe" install -r src-tauri\gen\android\app\build\outputs\apk\universal\debug\app-universal-debug.apk
+```
+
+Release builds:
+```powershell
+pnpm tauri android build --apk     # APK
+pnpm tauri android build --aab     # Play Store bundle
+```
+A release APK is **unsigned** and Android refuses to install it. Create a keystore once and set up signing following the
+Tauri v2 docs section "Android Code Signing" (a `keystore.properties` file plus a `signingConfigs` block in
+`src-tauri/gen/android/app/build.gradle.kts`):
+```powershell
+keytool -genkey -v -keystore $HOME\upload-keystore.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload
+```
+Keep the keystore and its passwords out of git and back them up; a lost Play Store signing key can't be replaced.
+
+### Both at once on GitHub
+Pushing a version tag runs `.github/workflows/release.yml`, which builds the Windows installers and an Android APK and
+attaches them to a draft release (the APK is unsigned until you add signing secrets):
+```powershell
+git tag v0.1.0
+git push origin v0.1.0
+```
+`.github/workflows/ci.yml` runs on every push to `main` and on pull requests: frontend build, Rust checks for Windows,
+Linux and Android, and a debug APK build.
+
 ## Troubleshooting (Android on Windows)
-| Symptom                                                               | Cause and fix                                                                                                                                                          |
-|-----------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `Creation symbolic link is not allowed for this system`               | Developer Mode is off. Turn it on (Setup, Android, step 5) and reopen the terminal. Running the terminal as Administrator also works.                                  |
-| `No available Android Emulator detected`                              | Only a notice. Connect a physical device with USB debugging, or start an emulator from Android Studio.                                                                 |
-| App opens but shows a blank page or "can't connect"                   | The phone can't reach the Vite dev server at `http://<PC-IP>:1420`. Use the same Wi-Fi for both, and allow Node.js through Windows Firewall on private networks.       |
-| `adb devices` shows `unauthorized` or nothing                         | Unlock the phone and accept the "Allow USB debugging" prompt; try another cable or USB mode (File transfer).                                                           |
-| Gradle sync or Kotlin compile errors in the plugin                    | Check `src-tauri/plugins/android-print/android` (`build.gradle.kts`, `settings.gradle`) and `register_android_plugin` against the current Tauri v2 mobile-plugin docs. |
-| `resource path binaries\SumatraPDF-... doesn't exist` (Windows build) | The SumatraPDF exe is missing from `src-tauri/binaries`.                                                                                                               |
+| Symptom                                                                      | Cause and fix                                                                                                                                                                                                                                                                                                                            |
+|------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `Creation symbolic link is not allowed for this system`                      | Developer Mode is off. Turn it on (Setup, Android, step 5) and reopen the terminal. Running the terminal as Administrator also works.                                                                                                                                                                                                    |
+| `No available Android Emulator detected`                                     | Only a notice. Connect a physical device with USB debugging, or start an emulator from Android Studio.                                                                                                                                                                                                                                   |
+| App opens but shows a blank page or "can't connect"                          | The phone can't reach the Vite dev server at `http://<PC-IP>:1420`. Use the same Wi-Fi for both, and allow Node.js through Windows Firewall on private networks.                                                                                                                                                                         |
+| `adb devices` shows `unauthorized` or nothing                                | Unlock the phone and accept the "Allow USB debugging" prompt; try another cable or USB mode (File transfer).                                                                                                                                                                                                                             |
+| First `tauri android dev` sits on `CONFIGURING` / `IDLE` for several minutes | Gradle is downloading a missing Android SDK platform or build-tools in the background. Check that `Sdk\.temp` or `Sdk\platforms` is growing, or install it yourself: `sdkmanager "platforms;android-37.0"`.                                                                                                                              |
+| `ERR_CONNECTION_REFUSED` or a 500 in the app's console (`chrome://inspect`)  | The phone can't reach the dev server, or Vite failed on a request (its error is printed in the PC terminal). Compare the IP in the log with `ipconfig`, open `http://<IP>:1420` in the phone's browser, and allow ports 1420-1421 in Windows Firewall (Private and Public profiles). A build (see Build) avoids the dev server entirely. |
+| Gradle sync or Kotlin compile errors in the plugin                           | Check `src-tauri/plugins/android-print/android` (`build.gradle.kts`, `settings.gradle`) and `register_android_plugin` against the current Tauri v2 mobile-plugin docs.                                                                                                                                                                   |
+| `resource path binaries\SumatraPDF-... doesn't exist` (Windows build)        | The SumatraPDF exe is missing from `src-tauri/binaries`.                                                                                                                                                                                                                                                                                 |
 
 ## Project layout
 - `src-tauri/src/lib.rs`: commands shared by all platforms (random data, template storage, `capabilities`, print entry points).
