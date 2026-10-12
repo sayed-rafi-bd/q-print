@@ -2,6 +2,11 @@ use rand::{seq::SliceRandom, Rng};
 use serde::{Deserialize, Serialize};
 use tauri::Manager;
 
+// Direct network printing (IPP / raw socket) and the saved-printer store. Used by the Android backend.
+mod direct;
+// Bitmap -> ZPL / TSPL / ESC-POS / CPCL / PWG raster encoders, for printers that cannot take a PDF.
+mod raster;
+
 // Platform print backends. Each exposes the same functions; only one is compiled in.
 #[cfg(target_os = "windows")]
 #[path = "print_windows.rs"]
@@ -131,6 +136,7 @@ struct Capabilities {
     orientation_select: bool,
     dpi_select: bool,
     printer_list: bool,       // false => show an "Add printer" UI
+    direct_printers: bool,    // user can add network printers that print without a dialog
 }
 
 #[tauri::command]
@@ -139,18 +145,88 @@ fn capabilities() -> Capabilities {
         Capabilities {
             platform: "windows", transport: "sumatra", silent: true,
             paper_select: true, orientation_select: true, dpi_select: true, printer_list: true,
+            direct_printers: false,
         }
     } else if cfg!(target_os = "android") {
         Capabilities {
             platform: "android", transport: "android-dialog", silent: false,
             paper_select: false, orientation_select: false, dpi_select: false, printer_list: true,
+            direct_printers: true,
         }
     } else {
         Capabilities {
             platform: "other", transport: "none", silent: false,
             paper_select: false, orientation_select: false, dpi_select: false, printer_list: false,
+            direct_printers: false,
         }
     }
+}
+
+fn printers_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir.join("printers.json"))
+}
+
+/// Network printers the user added (IPP / raw socket). These print without any dialog.
+#[tauri::command]
+fn list_saved_printers(app: tauri::AppHandle) -> Result<Vec<direct::SavedPrinter>, String> {
+    direct::load_all(&printers_path(&app)?)
+}
+
+/// Adds a network printer, or replaces the one with the same name.
+#[tauri::command]
+fn save_printer(app: tauri::AppHandle, printer: direct::SavedPrinter) -> Result<(), String> {
+    direct::upsert(&printers_path(&app)?, &printer)
+}
+
+#[tauri::command]
+fn delete_printer(app: tauri::AppHandle, name: String) -> Result<(), String> {
+    direct::remove(&printers_path(&app)?, &name)
+}
+
+/// Connects to the printer (IPP: asks for its model, state and supported formats) without printing.
+#[tauri::command]
+async fn test_printer(printer: direct::SavedPrinter) -> Result<direct::TestResult, String> {
+    tauri::async_runtime::spawn_blocking(move || direct::test(&printer))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Looks for printers on the local network (mDNS) for a few seconds. Android only.
+#[tauri::command]
+async fn discover_printers(app: tauri::AppHandle) -> Result<Vec<direct::Discovered>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        #[cfg(target_os = "android")]
+        {
+            platform::discover(&app)
+        }
+        #[cfg(not(target_os = "android"))]
+        {
+            let _ = &app;
+            Err("Finding printers on the network is only available on Android.".to_string())
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Paired Bluetooth devices (`kind` = "bluetooth") or connected USB printers (`kind` = "usb"). Android only.
+#[tauri::command]
+async fn list_devices(app: tauri::AppHandle, kind: String) -> Result<Vec<direct::Device>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        #[cfg(target_os = "android")]
+        {
+            platform::list_devices(&app, &kind)
+        }
+        #[cfg(not(target_os = "android"))]
+        {
+            let _ = (&app, &kind);
+            Err("Bluetooth and USB printers are only available on Android.".to_string())
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -285,6 +361,12 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             capabilities,
             list_printers,
+            list_saved_printers,
+            save_printer,
+            delete_printer,
+            test_printer,
+            discover_printers,
+            list_devices,
             generate_random_data,
             printer_resolutions,
             print_pdf,

@@ -4,16 +4,19 @@ Lists printers, generates random label data in Rust, builds a multi-page pdfme P
 frontend, and prints it.
 
 - **Windows:** silent printing with SumatraPDF (`-print-to ... -silent`, scale-to-fit).
-- **Android:** opens the system print dialog (`PrintManager`). Android does not allow silent printing
-  through the system print service, so you pick the printer and tap Print there.
+- **Android:** two ways to print.
+  - **Printers you add in the app (Wi-Fi/LAN, Bluetooth, USB): no dialog.** The app sends the label to the
+    printer itself, as PDF or as a ZPL/TSPL/ESC-POS/CPCL bitmap. See "Direct printing on Android" below.
+  - **"System print dialog"** (`PrintManager`): Android never allows silent printing through the system
+    print service, so you pick the printer and tap Print there.
 
 The UI asks the Rust side what the platform can do (`capabilities` command) and hides the options that
 don't apply, instead of showing controls that would silently do nothing.
 
 |                                                | Windows            | Android                                                              |
 |------------------------------------------------|--------------------|----------------------------------------------------------------------|
-| Print path                                     | SumatraPDF, silent | System print dialog (not silent)                                     |
-| Printer list                                   | installed printers | one virtual entry, "System print dialog"                             |
+| Print path                                     | SumatraPDF, silent | Added printer (LAN / Bluetooth / USB): silent. Otherwise the system dialog |
+| Printer list                                   | installed printers | printers you added, plus "System print dialog"                       |
 | Paper size, orientation, resolution            | set by the app     | chosen in the system dialog (controls hidden)                        |
 | Rotate label content, margins, number of pages | yes                | yes (done inside the PDF)                                            |
 | Designer tab                                   | yes                | tablets only (width >= 768 px); use template export/import on phones |
@@ -61,7 +64,46 @@ don't apply, instead of showing controls that would silently do nothing.
 
 `src-tauri/gen/android` is a normal Gradle project. Commit it, but not its build output (see `.gitignore`).
 
-### How printing works on Android
+### Direct printing on Android (no printer selection page)
+In the Print tab open **Add a printer (no dialog)**, pick or enter the printer, press **Test**, then **Save printer**
+and select it in the Printer list. Printing to it never shows the Android print screen.
+
+| Connection | How it is found | What is sent |
+|---|---|---|
+| Wi-Fi / LAN, **IPP** (port 631) | **Find Wi-Fi printers** (mDNS) or type the IP | PDF as-is. If the printer lists no PDF support, a PWG raster bitmap (300 dpi) |
+| Wi-Fi / LAN, **raw socket** (port 9100) | mDNS or type the IP | PDF as-is, or a bitmap in **ZPL / TSPL / ESC-POS / CPCL** |
+| **Bluetooth** (classic SPP) | paired devices list | bitmap in ZPL / TSPL / ESC-POS / CPCL |
+| **USB** (OTG cable) | connected USB printers list | bitmap in ZPL / TSPL / ESC-POS / CPCL |
+
+- **Test** (IPP) asks the printer for its model, state and supported formats, and says whether it takes PDF or PWG raster.
+- The label keeps the PDF's own page size. Bitmap languages render at the printer's resolution (default 203 dpi, set per
+  printer; IPP raster always uses 300 dpi). Paper, orientation and resolution app options do not apply to direct printing.
+- Which language? Zebra and compatibles: ZPL (or CPCL on mobile models). TSC, Xprinter and many Chinese label printers:
+  TSPL. Receipt printers and most small Bluetooth printers: ESC/POS. If unsure, check the printer's manual for its
+  "command set" / "emulation".
+- Printers are stored in `printers.json` in the app data folder.
+
+Code: `src-tauri/src/direct.rs` (printer store, IPP, raw socket), `src-tauri/src/raster.rs` (bitmap encoders),
+`src-tauri/src/print_android.rs` (chooses the format), the Kotlin plugin (`PdfRenderer` page rendering, mDNS, Bluetooth,
+USB) and `src/PrintersPanel.tsx`. `direct.rs` and `raster.rs` have no Tauri dependency, so their unit tests run in any
+crate that includes both (`mod raster;` next to `direct.rs`): IPP and raw sockets are tested against a local mock
+printer, the encoders against known byte layouts and a PWG round trip.
+
+**Not tested on real hardware yet.** The Kotlin code (rendering, discovery, Bluetooth, USB) has not been compiled or
+run on a device, and no real printer was available. Verify first with a printer you can print a test label on:
+- TSPL's `GAP`/`SIZE` assume gapped label stock, and TSPL bitmap polarity (0 = black) follows the TSPL manual. If labels
+  feed wrongly or print inverted, that is where to look (`raster.rs`).
+- ESC/POS sends a partial-cut command after each page; printers without a cutter ignore it. Paper width is not scaled: a
+  110 mm label on a 58 mm receipt printer is cut off.
+- Bluetooth: classic (SPP) only. BLE-only printers (some very small label printers) do not show up as pairable
+  serial devices and are not supported.
+- Printers that only take a vendor SDK / proprietary protocol (some Brother, Epson, Star models) need that protocol.
+- `ipps://` (TLS) is not supported.
+- Targeting Android 17 (target SDK 37) or higher needs the runtime `ACCESS_LOCAL_NETWORK` permission for LAN printing and
+  discovery ([docs](https://developer.android.com/privacy-and-security/local-network-permission)). Up to SDK 36 the
+  `INTERNET` permission is enough.
+
+### How the system print dialog works on Android
 `print_pdf` writes the PDF to the app cache directory and calls the in-repo Kotlin plugin
 `src-tauri/plugins/android-print`:
 
@@ -76,8 +118,7 @@ Things to know:
 - "Open dialog" in the result panel ends when the preview is requested, not when paper comes out.
 - If Gradle sync fails, check the plugin's `build.gradle.kts`, `settings.gradle` and
   `register_android_plugin` against the current Tauri v2 mobile-plugin docs. They follow the plugin template.
-- Direct IPP (silent, Wi-Fi printers) and vendor SDKs (Bluetooth/USB label printers) are not implemented.
-  See `ANDROID_PLAN.md`, Phase 3B and 3C. Silent printing on Android needs one of them.
+- Silent printing needs a direct transport: see "Direct printing on Android" above. Vendor SDKs are not implemented.
 
 ## Build
 Builds bundle the frontend into the app, so they don't need the Vite dev server (or the network setup `android dev` needs).
@@ -138,6 +179,8 @@ Linux and Android, and a debug APK build.
 
 ## Project layout
 - `src-tauri/src/lib.rs`: commands shared by all platforms (random data, template storage, `capabilities`, print entry points).
+- `src-tauri/src/direct.rs`: IPP / raw-socket printing and the saved-printer store (no Tauri dependency).
+- `src-tauri/src/raster.rs`: 1-bit bitmap -> ZPL / TSPL / ESC-POS / CPCL / PWG raster encoders (no Tauri dependency).
 - `src-tauri/src/print_windows.rs`, `print_android.rs`, `print_other.rs`: one backend per platform; only one is compiled.
 - `src-tauri/tauri.conf.json`: shared config. `tauri.windows.conf.json` holds the Windows-only bundle settings
   (`externalBin` for SumatraPDF, nsis/msi targets).

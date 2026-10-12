@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import {
-  listPrinters, printerResolutions, printLabels, NO_MARGINS,
+  listPrinters, listSavedPrinters, printerResolutions, printLabels, NO_MARGINS,
   type Margins, type Orientation, type PrintReport, type Rotation, type Timings,
 } from './printApi';
 import { useCapabilities } from './capabilities';
 import TemplateTransfer from './TemplateTransfer';
+import PrintersPanel from './PrintersPanel';
 
 const fmt = (ms: number) => (ms >= 1000 ? `${(ms / 1000).toFixed(2)} s` : `${Math.round(ms)} ms`);
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -54,6 +55,8 @@ export default function PrintPage() {
   const caps = useCapabilities();
   const [printers, setPrinters] = useState<string[]>([]);
   const [printer, setPrinter] = useState('');
+  // names of the network printers the user added; selecting one prints without a dialog
+  const [directNames, setDirectNames] = useState<string[]>([]);
   const [paper, setPaper] = useState('');
   const [orientation, setOrientation] = useState<Orientation>('auto');
   const [rotate, setRotate] = useState<Rotation>(0);
@@ -64,13 +67,24 @@ export default function PrintPage() {
   const [pages, setPages] = useState(3);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [result, setResult] = useState<{ pages: number; printer: string; t: Timings; report: PrintReport; source: string } | null>(null);
+  const [result, setResult] = useState<{ pages: number; printer: string; t: Timings; report: PrintReport; source: string; silent: boolean } | null>(null);
 
-  useEffect(() => {
-    listPrinters()
-      .then(p => { setPrinters(p); setPrinter(p[0] ?? ''); })
+  // True when printing now goes straight to the printer: always on Windows, and on Android when a
+  // saved network printer (not the "System print dialog" entry) is selected.
+  const silent = caps.silent || (caps.directPrinters && directNames.includes(printer));
+
+  // Reloads the printer list; `select` picks a printer (e.g. the one just saved), otherwise the
+  // current choice is kept if it still exists.
+  const reloadPrinters = (select?: string) =>
+    Promise.all([listPrinters(), caps.directPrinters ? listSavedPrinters() : Promise.resolve([])])
+      .then(([p, saved]) => {
+        setPrinters(p);
+        setDirectNames(saved.map(s => s.name));
+        setPrinter(cur => (select && p.includes(select) ? select : p.includes(cur) ? cur : p[0] ?? ''));
+      })
       .catch(e => setError(errMsg(e)));
-  }, []);
+
+  useEffect(() => { reloadPrinters(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Ask the driver which resolutions it supports whenever the printer changes.
   useEffect(() => {
@@ -87,7 +101,7 @@ export default function PrintPage() {
     setBusy(true); setError(''); setResult(null);
     try {
       const { timings, report, templateSource } = await printLabels({ printer, paper, orientation, rotate, margins, dpi, pages });
-      setResult({ pages, printer, t: timings, report, source: templateSource });
+      setResult({ pages, printer, t: timings, report, source: templateSource, silent });
     } catch (e) {
       setError(errMsg(e));
     } finally {
@@ -101,14 +115,14 @@ export default function PrintPage() {
         <header>
           <h1 className="text-xl font-semibold text-slate-900">Silent print test</h1>
           <p className="text-sm text-slate-500">
-            {caps.silent
+            {silent
               ? 'Generate random 110 × 86 mm labels and print without a dialog.'
               : 'Generate random 110 × 86 mm labels and print them through the system print dialog.'}
           </p>
-          {!caps.silent && caps.platform === 'android' && (
+          {!silent && caps.platform === 'android' && (
             <p className="mt-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-900 ring-1 ring-amber-200">
-              Android cannot print silently through the system print service: pressing Print opens the
-              print preview, where you pick the printer, paper and orientation and tap Print.
+              The system print service always opens its preview, where you pick the printer and tap Print.
+              To print with no dialog, add your printer under "Add a printer" below and select it.
             </p>
           )}
         </header>
@@ -120,6 +134,13 @@ export default function PrintPage() {
             {printers.map(p => <option key={p}>{p}</option>)}
           </select>
         </Field>
+
+        {caps.directPrinters && (
+          <details className="text-sm" open={directNames.length === 0}>
+            <summary className="cursor-pointer font-medium text-slate-700">Add a printer (no dialog)</summary>
+            <PrintersPanel disabled={busy} onChanged={reloadPrinters} />
+          </details>
+        )}
 
         {caps.paperSelect && (
         <Field label="Paper size" htmlFor="paper"
@@ -231,7 +252,7 @@ export default function PrintPage() {
               <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
             </svg>
           )}
-          {busy ? (caps.silent ? 'Printing…' : 'Opening…') : (caps.silent ? 'Print' : 'Print…')}
+          {busy ? (silent ? 'Printing…' : 'Opening…') : (silent ? 'Print' : 'Print…')}
         </button>
 
         {error && (
@@ -243,7 +264,7 @@ export default function PrintPage() {
         {result && (
           <section className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
             <p className="text-sm text-emerald-800">
-              {caps.silent ? 'Sent' : 'Opened the print dialog for'} {result.pages} page(s) {caps.silent ? 'to' : 'via'} <span className="font-medium">{result.printer}</span>
+              {result.silent ? 'Sent' : 'Opened the print dialog for'} {result.pages} page(s) {result.silent ? 'to' : 'via'} <span className="font-medium">{result.printer}</span>
               {' '}using the <span className="font-medium">{result.source}</span> template
             </p>
             <div className="flex items-baseline justify-between">
@@ -251,7 +272,7 @@ export default function PrintPage() {
               <span className="text-2xl font-semibold text-slate-900">{fmt(result.t.total)}</span>
             </div>
             <dl className="grid grid-cols-3 gap-2 text-center text-xs">
-              {([['Data', result.t.data], ['PDF build', result.t.pdf], [caps.silent ? 'Send to printer' : 'Open dialog', result.t.print]] as const)
+              {([['Data', result.t.data], ['PDF build', result.t.pdf], [result.silent ? 'Send to printer' : 'Open dialog', result.t.print]] as const)
                 .map(([k, v]) => (
                   <div key={k} className="rounded-md bg-white p-2 ring-1 ring-slate-200">
                     <dt className="text-slate-500">{k}</dt>
@@ -260,8 +281,8 @@ export default function PrintPage() {
                 ))}
             </dl>
             <p className="text-xs text-slate-500">
-              {caps.silent
-                ? '"Send to printer" ends when the print tool hands the job to the OS spooler, not when paper comes out.'
+              {result.silent
+                ? '"Send to printer" ends when the job has been handed to the printer or the OS spooler, not when paper comes out.'
                 : '"Open dialog" ends when the system print preview is requested, not when you tap Print or paper comes out.'}
             </p>
 
