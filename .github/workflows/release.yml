@@ -31,6 +31,8 @@ jobs:
           releaseDraft: true
 
   android:
+    # Wait for the Windows job so both attach to the same draft release instead of racing to create two.
+    needs: windows
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -59,9 +61,13 @@ jobs:
           workspaces: src-tauri
       - run: pnpm install --frozen-lockfile
       - run: if [ ! -d src-tauri/gen/android ]; then pnpm tauri android init --ci; fi
+      # A project committed from Windows has no executable bit on gradlew, which makes Gradle fail on Linux.
+      - name: Make gradlew executable
+        run: chmod +x src-tauri/gen/android/gradlew
       - name: Build release APK (unsigned unless you add signing)
-        run: pnpm tauri android build --apk
+        run: pnpm build:android
       - uses: softprops/action-gh-release@v2
         with:
           draft: true
+          fail_on_unmatched_files: true
           files: src-tauri/gen/android/app/build/outputs/apk/**/*.apk

@@ -7,7 +7,15 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "typecheck": "tsc --noEmit",
+    "icons": "tauri icon app-icon.png",
+    "dev:android": "tauri android dev",
+    "android:init": "tauri android init",
+    "build:windows": "tauri build",
+    "build:android": "tauri android build --apk",
+    "build:android:debug": "tauri android build --debug --apk --target aarch64",
+    "build:android:aab": "tauri android build --aab"
   },
   "dependencies": {
     "@pdfme/common": "^5.2.0",
