@@ -28,12 +28,32 @@ export type Timings = { data: number; pdf: number; print: number; total: number 
 export const listPrinters = () => invoke<string[]>('list_printers');
 export const printerResolutions = (printer: string) => invoke<string[]>('printer_resolutions', { printer });
 
-// Rotates every page inside the PDF itself, so it works the same on any printer driver.
-async function rotatePdf(bytes: Uint8Array, angle: Rotation): Promise<Uint8Array> {
-  if (!angle) return bytes;
+export type Margins = { top: number; right: number; bottom: number; left: number };
+export const NO_MARGINS: Margins = { top: 0, right: 0, bottom: 0, left: 0 };
+
+const MM = 72 / 25.4;
+
+// Post-processes every page inside the PDF itself, so it works the same on any printer driver.
+//  - margins (mm, in the label's own orientation): positive adds white space around the label
+//    (label prints smaller), negative trims the label's edge (label prints larger). SumatraPDF's
+//    "fit" then scales the resulting page box to the printable area.
+//  - rotate: turns the page 0/90/180/270.
+async function postProcessPdf(bytes: Uint8Array, angle: Rotation, m: Margins): Promise<Uint8Array> {
+  const hasMargin = m.top || m.right || m.bottom || m.left;
+  if (!angle && !hasMargin) return bytes;
   const doc = await PDFDocument.load(bytes);
   for (const page of doc.getPages()) {
-    page.setRotation(degrees((page.getRotation().angle + angle) % 360));
+    if (hasMargin) {
+      const { x, y, width, height } = page.getMediaBox();
+      const nx = x - m.left * MM;
+      const ny = y - m.bottom * MM;
+      const nw = width + (m.left + m.right) * MM;
+      const nh = height + (m.top + m.bottom) * MM;
+      if (nw < 10 || nh < 10) throw new Error('Margins are too large: nothing of the label would be left.');
+      page.setMediaBox(nx, ny, nw, nh);
+      page.setCropBox(nx, ny, nw, nh);
+    }
+    if (angle) page.setRotation(degrees((page.getRotation().angle + angle) % 360));
   }
   return doc.save();
 }
@@ -61,7 +81,7 @@ export async function loadFont(): Promise<ArrayBuffer> {
   return buf;
 }
 
-export async function printLabels(opts: { printer: string; paper: string; orientation: Orientation; rotate: Rotation; dpi: string; pages: number },
+export async function printLabels(opts: { printer: string; paper: string; orientation: Orientation; rotate: Rotation; margins: Margins; dpi: string; pages: number },
 ): Promise<{ timings: Timings; report: PrintReport; templateSource: TemplateSource }> {
   const t0 = performance.now();
 
@@ -80,7 +100,7 @@ export async function printLabels(opts: { printer: string; paper: string; orient
     plugins: { text, rectangle, ...barcodes },
     options: { font: { NotoSansJP: { data: fontData, fallback: true } } },
   });
-  const pdf = await rotatePdf(generated, opts.rotate);
+  const pdf = await postProcessPdf(generated, opts.rotate, opts.margins);
   const t2 = performance.now();
 
   // 3. silent print with scale-to-fit

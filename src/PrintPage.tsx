@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
-  listPrinters, printerResolutions, printLabels,
-  type Orientation, type PrintReport, type Rotation, type Timings,
+  listPrinters, printerResolutions, printLabels, NO_MARGINS,
+  type Margins, type Orientation, type PrintReport, type Rotation, type Timings,
 } from './printApi';
 
 const fmt = (ms: number) => (ms >= 1000 ? `${(ms / 1000).toFixed(2)} s` : `${Math.round(ms)} ms`);
@@ -48,6 +48,7 @@ export default function PrintPage() {
   const [paper, setPaper] = useState('');
   const [orientation, setOrientation] = useState<Orientation>('auto');
   const [rotate, setRotate] = useState<Rotation>(0);
+  const [margins, setMargins] = useState<Margins>(NO_MARGINS);
   const [dpi, setDpi] = useState('');
   const [resolutions, setResolutions] = useState<string[]>([]);
   const [dpiNote, setDpiNote] = useState('');
@@ -76,7 +77,7 @@ export default function PrintPage() {
   const onPrint = async () => {
     setBusy(true); setError(''); setResult(null);
     try {
-      const { timings, report, templateSource } = await printLabels({ printer, paper, orientation, rotate, dpi, pages });
+      const { timings, report, templateSource } = await printLabels({ printer, paper, orientation, rotate, margins, dpi, pages });
       setResult({ pages, printer, t: timings, report, source: templateSource });
     } catch (e) {
       setError(errMsg(e));
@@ -94,17 +95,17 @@ export default function PrintPage() {
         </header>
 
         <Field label="Printer" htmlFor="printer"
-          hint={printers.length === 0 ? 'No printers found.' : `${printers.length} printer(s) detected`}>
+               hint={printers.length === 0 ? 'No printers found.' : `${printers.length} printer(s) detected`}>
           <select id="printer" className={inputCls + ' cursor-pointer disabled:cursor-not-allowed'} value={printer}
-            disabled={busy} onChange={e => setPrinter(e.target.value)}>
+                  disabled={busy} onChange={e => setPrinter(e.target.value)}>
             {printers.map(p => <option key={p}>{p}</option>)}
           </select>
         </Field>
 
         <Field label="Paper size" htmlFor="paper"
-          hint="SumatraPDF can only set named sizes. A custom size such as 110 × 86 mm must be the printer driver's default paper.">
+               hint="SumatraPDF can only set named sizes. A custom size such as 110 × 86 mm must be the printer driver's default paper.">
           <select id="paper" className={inputCls + ' cursor-pointer disabled:cursor-not-allowed'} value={paper}
-            disabled={busy} onChange={e => setPaper(e.target.value)}>
+                  disabled={busy} onChange={e => setPaper(e.target.value)}>
             {PAPERS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
           </select>
         </Field>
@@ -116,15 +117,15 @@ export default function PrintPage() {
               const selected = orientation === o.value;
               return (
                 <label key={o.value}
-                  className={
-                    'rounded-lg border px-3 py-2 text-center text-sm transition ' +
-                    (busy ? 'cursor-not-allowed opacity-60 ' : 'cursor-pointer ') +
-                    (selected
-                      ? 'border-indigo-600 bg-indigo-50 font-medium text-indigo-700 ring-1 ring-indigo-600'
-                      : 'border-slate-300 text-slate-700 hover:bg-slate-50')
-                  }>
+                       className={
+                         'rounded-lg border px-3 py-2 text-center text-sm transition ' +
+                         (busy ? 'cursor-not-allowed opacity-60 ' : 'cursor-pointer ') +
+                         (selected
+                           ? 'border-indigo-600 bg-indigo-50 font-medium text-indigo-700 ring-1 ring-indigo-600'
+                           : 'border-slate-300 text-slate-700 hover:bg-slate-50')
+                       }>
                   <input type="radio" name="orientation" value={o.value} checked={selected}
-                    onChange={() => setOrientation(o.value)} className="sr-only" />
+                         onChange={() => setOrientation(o.value)} className="sr-only" />
                   {o.label}
                 </label>
               );
@@ -142,15 +143,15 @@ export default function PrintPage() {
               const selected = rotate === r;
               return (
                 <label key={r}
-                  className={
-                    'rounded-lg border px-3 py-2 text-center text-sm transition ' +
-                    (busy ? 'cursor-not-allowed opacity-60 ' : 'cursor-pointer ') +
-                    (selected
-                      ? 'border-indigo-600 bg-indigo-50 font-medium text-indigo-700 ring-1 ring-indigo-600'
-                      : 'border-slate-300 text-slate-700 hover:bg-slate-50')
-                  }>
+                       className={
+                         'rounded-lg border px-3 py-2 text-center text-sm transition ' +
+                         (busy ? 'cursor-not-allowed opacity-60 ' : 'cursor-pointer ') +
+                         (selected
+                           ? 'border-indigo-600 bg-indigo-50 font-medium text-indigo-700 ring-1 ring-indigo-600'
+                           : 'border-slate-300 text-slate-700 hover:bg-slate-50')
+                       }>
                   <input type="radio" name="rotate" value={r} checked={selected}
-                    onChange={() => setRotate(r)} className="sr-only" />
+                         onChange={() => setRotate(r)} className="sr-only" />
                   {r}°
                 </label>
               );
@@ -162,10 +163,31 @@ export default function PrintPage() {
           </p>
         </fieldset>
 
+        <fieldset className="space-y-1" disabled={busy}>
+          <legend className="text-sm font-medium text-slate-700">Margins (mm)</legend>
+          <div className="grid grid-cols-4 gap-2">
+            {(['top', 'right', 'bottom', 'left'] as const).map(side => (
+              <label key={side} className="space-y-0.5 text-xs text-slate-500">
+                <span className="capitalize">{side}</span>
+                <input type="number" step={0.1} className={inputCls} value={margins[side]}
+                       onChange={e => setMargins({ ...margins, [side]: Number.isFinite(+e.target.value) ? +e.target.value : 0 })} />
+              </label>
+            ))}
+          </div>
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-xs text-slate-500">
+              Positive adds white space (label prints smaller). Negative trims the label's edge so it fills more of the
+              paper. Sides refer to the label before rotation. The printer's own non-printable area cannot be removed.
+            </p>
+            <button type="button" onClick={() => setMargins(NO_MARGINS)}
+                    className="shrink-0 cursor-pointer text-xs text-indigo-600 hover:underline">Reset</button>
+          </div>
+        </fieldset>
+
         <Field label="Print resolution" htmlFor="dpi"
-          hint={dpiNote || 'Options are what the printer driver reports. The previous setting is restored after printing.'}>
+               hint={dpiNote || 'Options are what the printer driver reports. The previous setting is restored after printing.'}>
           <select id="dpi" className={inputCls + ' cursor-pointer disabled:cursor-not-allowed'} value={dpi}
-            disabled={busy} onChange={e => setDpi(e.target.value)}>
+                  disabled={busy} onChange={e => setDpi(e.target.value)}>
             <option value="">Printer default</option>
             {resolutions.map(r => <option key={r} value={r}>{dpiLabel(r)}</option>)}
           </select>
@@ -173,11 +195,11 @@ export default function PrintPage() {
 
         <Field label="Number of pages" htmlFor="pages" hint="One label per page, each with different data.">
           <input id="pages" type="number" min={1} className={inputCls} value={pages} disabled={busy}
-            onChange={e => setPages(Math.max(1, Math.floor(+e.target.value) || 1))} />
+                 onChange={e => setPages(Math.max(1, Math.floor(+e.target.value) || 1))} />
         </Field>
 
         <button onClick={onPrint} disabled={!printer || busy}
-          className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-300">
+                className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-300">
           {busy && (
             <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
               <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25" />
