@@ -12,6 +12,8 @@ export type Orientation = 'auto' | 'portrait' | 'landscape';
 export type Rotation = 0 | 90 | 180 | 270;
 
 export type PrintReport = {
+  /** 'sumatra' | 'android-dialog' | 'ipp' | 'vendor' */
+  transport: string;
   tool: string;
   command: string;
   paperRequested: string;
@@ -22,6 +24,9 @@ export type PrintReport = {
   dpiApplied: boolean;
   dpiNote: string;
 };
+
+/** Jobs with more pages than this are sent as a raw binary payload instead of a JSON number array. */
+const RAW_THRESHOLD_PAGES = 50;
 
 export type Timings = { data: number; pdf: number; print: number; total: number };
 
@@ -103,14 +108,14 @@ export async function printLabels(opts: { printer: string; paper: string; orient
   const pdf = await postProcessPdf(generated, opts.rotate, opts.margins);
   const t2 = performance.now();
 
-  // 3. silent print with scale-to-fit
-  const report = await invoke<PrintReport>('print_pdf', {
-    printer: opts.printer,
-    paper: opts.paper,
-    orientation: opts.orientation,
-    dpi: opts.dpi,
-    bytes: Array.from(pdf),
-  });
+  // 3. print (silent with scale-to-fit where the platform allows it, else the system dialog)
+  const printOpts = { printer: opts.printer, paper: opts.paper, orientation: opts.orientation, dpi: opts.dpi };
+  const report = opts.pages > RAW_THRESHOLD_PAGES
+    ? await invoke<PrintReport>('print_pdf_raw', pdf, {
+        // header values must be ASCII; printer names may not be
+        headers: { 'x-print-options': encodeURIComponent(JSON.stringify(printOpts)) },
+      })
+    : await invoke<PrintReport>('print_pdf', { ...printOpts, bytes: Array.from(pdf) });
   const t3 = performance.now();
 
   return {

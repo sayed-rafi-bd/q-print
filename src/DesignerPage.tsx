@@ -4,6 +4,7 @@ import { Designer } from '@pdfme/ui';
 import { text, rectangle, barcodes } from '@pdfme/schemas';
 import type { Template } from '@pdfme/common';
 import { loadFont } from './printApi';
+import TemplateTransfer from './TemplateTransfer';
 import { defaultLabelTemplate, getTemplate, resetTemplate, saveTemplate, type TemplateSource } from './templateStore';
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -117,6 +118,19 @@ export default function DesignerPage() {
     }
   };
 
+  // A template imported through the transfer panel is already saved; show it in the designer.
+  const onImported = (t: Template) => {
+    const d = designer.current;
+    if (!d) return;
+    d.updateTemplate(t);
+    savedSnapshot.current = JSON.stringify(d.getTemplate());
+    setDirty(false);
+    setSource('custom');
+    setSize(readSize(t));
+    setError('');
+    setMessage('Imported template saved. Printing now uses it.');
+  };
+
   return (
     <div className="flex h-full flex-col bg-white">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-slate-200 px-4 py-2">
@@ -161,6 +175,11 @@ export default function DesignerPage() {
           {error || message}
         </div>
       )}
+
+      <details className="border-b border-slate-200 px-4 py-2 text-sm">
+        <summary className="cursor-pointer text-slate-700">Export / import template (move it between devices)</summary>
+        <div className="mt-2"><TemplateTransfer onImported={onImported} /></div>
+      </details>
 
       {keys.length > 0 && (
         <details className="border-b border-slate-200 px-4 py-2 text-sm">

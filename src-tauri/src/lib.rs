@@ -1,7 +1,17 @@
 use rand::{seq::SliceRandom, Rng};
-use serde::Serialize;
-use std::process::Command;
+use serde::{Deserialize, Serialize};
 use tauri::Manager;
+
+// Platform print backends. Each exposes the same functions; only one is compiled in.
+#[cfg(target_os = "windows")]
+#[path = "print_windows.rs"]
+mod platform;
+#[cfg(target_os = "android")]
+#[path = "print_android.rs"]
+mod platform;
+#[cfg(not(any(target_os = "windows", target_os = "android")))]
+#[path = "print_other.rs"]
+mod platform;
 
 // camelCase keys match the field names in src/templates/label.json
 #[derive(Serialize)]
@@ -50,11 +60,6 @@ fn yen(n: u32) -> String {
     }
 }
 
-#[tauri::command]
-fn list_printers() -> Vec<String> {
-    printers::get_printers().into_iter().map(|p| p.name).collect()
-}
-
 /// Random data API: one entry per page.
 #[tauri::command]
 fn generate_random_data(count: usize) -> Vec<LabelData> {
@@ -89,89 +94,148 @@ fn generate_random_data(count: usize) -> Vec<LabelData> {
         .collect()
 }
 
-/// What was actually handed to SumatraPDF, so the UI can show it.
+/// What was actually handed to the print transport, so the UI can show it.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct PrintReport {
-    tool: String,
-    command: String,
-    paper_requested: String,
-    paper_applied: bool,
-    paper_note: String,
-    orientation: String,
-    dpi_requested: String,
-    dpi_applied: bool,
-    dpi_note: String,
+pub struct PrintReport {
+    /// "sumatra" | "android-dialog" (later: "ipp" | "vendor")
+    pub transport: String,
+    pub tool: String,
+    pub command: String,
+    pub paper_requested: String,
+    pub paper_applied: bool,
+    pub paper_note: String,
+    pub orientation: String,
+    pub dpi_requested: String,
+    pub dpi_applied: bool,
+    pub dpi_note: String,
 }
 
-// Paper names SumatraPDF's `paper=` setting accepts.
-const SUMATRA_PAPERS: [&str; 9] = ["A2", "A3", "A4", "A5", "A6", "letter", "legal", "tabloid", "statement"];
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-
-fn quote(s: &str) -> String {
-    if s.contains(' ') { format!("\"{s}\"") } else { s.to_string() }
+/// The options the UI sends with a print job.
+#[derive(Deserialize)]
+pub struct PrintOptions {
+    pub printer: String,
+    pub paper: String,
+    pub orientation: String,
+    pub dpi: String,
 }
 
-// ---- printer resolution (dpi) via the Windows print ticket (System.Printing) ----
+/// What the current platform's print backend can do, so the UI can hide options that don't apply.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Capabilities {
+    platform: &'static str, // "windows" | "android" | "other"
+    transport: &'static str,
+    silent: bool,             // prints without a dialog
+    paper_select: bool,       // SumatraPDF named sizes / IPP media
+    orientation_select: bool,
+    dpi_select: bool,
+    printer_list: bool,       // false => show an "Add printer" UI
+}
 
-const PS_PRELUDE: &str = r#"
-$ErrorActionPreference = 'Stop'
-Add-Type -AssemblyName System.Printing
-$srv = New-Object System.Printing.LocalPrintServer
-$q = $srv.GetPrintQueue($env:PRINT_NAME)
-"#;
-
-const PS_LIST_DPI: &str = r#"
-$q.GetPrintCapabilities().PageResolutionCapability | ForEach-Object { "{0}x{1}" -f $_.X, $_.Y }
-"#;
-
-// Back up the user's current print ticket, then set the resolution on it.
-const PS_APPLY_DPI: &str = r#"
-$s = $q.UserPrintTicket.GetXmlStream(); $s.Position = 0
-$ms = New-Object IO.MemoryStream; $s.CopyTo($ms)
-[IO.File]::WriteAllBytes($env:PRINT_BACKUP, $ms.ToArray())
-$q.UserPrintTicket.PageResolution = New-Object -TypeName System.Printing.PageResolution -ArgumentList ([int]$env:PRINT_DPI_X), ([int]$env:PRINT_DPI_Y)
-$q.Commit()
-"#;
-
-const PS_RESTORE_DPI: &str = r#"
-$bytes = [IO.File]::ReadAllBytes($env:PRINT_BACKUP)
-$ms = New-Object -TypeName IO.MemoryStream -ArgumentList (,$bytes)
-$q.UserPrintTicket = New-Object -TypeName System.Printing.PrintTicket -ArgumentList $ms
-$q.Commit()
-Remove-Item $env:PRINT_BACKUP -Force
-"#;
-
-fn run_ps(body: &str, envs: &[(&str, &str)]) -> Result<String, String> {
-    use std::os::windows::process::CommandExt;
-    let script = format!("{}{}", PS_PRELUDE, body);
-    let out = Command::new("powershell.exe")
-        .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", &script])
-        .envs(envs.iter().copied())
-        .creation_flags(CREATE_NO_WINDOW)
-        .output()
-        .map_err(|e| format!("could not start powershell: {e}"))?;
-    if out.status.success() {
-        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+#[tauri::command]
+fn capabilities() -> Capabilities {
+    if cfg!(target_os = "windows") {
+        Capabilities {
+            platform: "windows", transport: "sumatra", silent: true,
+            paper_select: true, orientation_select: true, dpi_select: true, printer_list: true,
+        }
+    } else if cfg!(target_os = "android") {
+        Capabilities {
+            platform: "android", transport: "android-dialog", silent: false,
+            paper_select: false, orientation_select: false, dpi_select: false, printer_list: true,
+        }
     } else {
-        let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
-        Err(if err.is_empty() { format!("powershell exited with {}", out.status) } else { err })
+        Capabilities {
+            platform: "other", transport: "none", silent: false,
+            paper_select: false, orientation_select: false, dpi_select: false, printer_list: false,
+        }
     }
 }
 
-fn parse_dpi(s: &str) -> Option<(u32, u32)> {
-    let (a, b) = s.trim().split_once('x')?;
-    Some((a.trim().parse().ok()?, b.trim().parse().ok()?))
+#[tauri::command]
+fn list_printers(app: tauri::AppHandle) -> Vec<String> {
+    #[cfg(target_os = "windows")]
+    {
+        let _ = app;
+        platform::list_printers()
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        platform::list_printers(&app)
+    }
 }
 
-/// Resolutions the printer driver reports, as "300x300" strings. Empty if it reports none.
 #[tauri::command]
-fn printer_resolutions(printer: String) -> Result<Vec<String>, String> {
-    let out = run_ps(PS_LIST_DPI, &[("PRINT_NAME", &printer)])?;
-    let mut found: Vec<(u32, u32)> = out.lines().filter_map(parse_dpi).collect();
-    found.sort();
-    found.dedup();
-    Ok(found.into_iter().map(|(x, y)| format!("{x}x{y}")).collect())
+async fn printer_resolutions(printer: String) -> Result<Vec<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || platform::printer_resolutions(&printer))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Runs the platform backend off the main thread (printing blocks on child processes / the Android UI thread).
+async fn run_print(app: tauri::AppHandle, opts: PrintOptions, bytes: Vec<u8>) -> Result<PrintReport, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        #[cfg(target_os = "windows")]
+        {
+            let _ = &app;
+            platform::print_pdf(&opts, bytes)
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            platform::print_pdf(&app, &opts, bytes)
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn print_pdf(
+    app: tauri::AppHandle,
+    printer: String,
+    paper: String,
+    orientation: String,
+    dpi: String,
+    bytes: Vec<u8>,
+) -> Result<PrintReport, String> {
+    run_print(app, PrintOptions { printer, paper, orientation, dpi }, bytes).await
+}
+
+fn percent_decode(s: &str) -> Result<String, String> {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%' {
+            let hex = s.get(i + 1..i + 3).ok_or("truncated %-escape in print options")?;
+            out.push(u8::from_str_radix(hex, 16).map_err(|_| "bad %-escape in print options")?);
+            i += 3;
+        } else {
+            out.push(b[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8(out).map_err(|e| e.to_string())
+}
+
+/// Same as `print_pdf`, but the PDF travels as a raw binary body (no JSON number array), which is
+/// much faster for big jobs. The options come in the `x-print-options` header as
+/// `encodeURIComponent(JSON.stringify({ printer, paper, orientation, dpi }))`.
+#[tauri::command]
+async fn print_pdf_raw(app: tauri::AppHandle, request: tauri::ipc::Request<'_>) -> Result<PrintReport, String> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err("print_pdf_raw expects the PDF as a raw binary body".into());
+    };
+    let header = request
+        .headers()
+        .get("x-print-options")
+        .ok_or("missing x-print-options header")?
+        .to_str()
+        .map_err(|e| e.to_string())?;
+    let opts: PrintOptions =
+        serde_json::from_str(&percent_decode(header)?).map_err(|e| format!("bad print options: {e}"))?;
+    run_print(app, opts, bytes.clone()).await
 }
 
 fn template_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
@@ -209,123 +273,22 @@ fn reset_template(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
-fn print_pdf(printer: String, paper: String, orientation: String, dpi: String, bytes: Vec<u8>)
-    -> Result<PrintReport, String> {
-    use std::os::windows::process::CommandExt;
-
-    let paper = paper.trim().to_string();
-    let dpi = dpi.trim().to_string();
-    let orientation = match orientation.as_str() {
-        "portrait" => "portrait",
-        "landscape" => "landscape",
-        _ => "auto",
-    };
-
-    // -print-settings: fit [,portrait|landscape] [,paper=NAME]
-    let mut settings = vec!["fit".to_string()];
-    if orientation != "auto" {
-        settings.push(orientation.to_string());
-    }
-    let (paper_applied, paper_note) = if paper.is_empty() {
-        (false, "No paper size selected; the printer driver's default paper is used.".to_string())
-    } else if SUMATRA_PAPERS.iter().any(|n| n.eq_ignore_ascii_case(&paper)) {
-        settings.push(format!("paper={paper}"));
-        (true, format!("Passed to SumatraPDF as paper={paper}."))
-    } else {
-        (false, format!(
-            "\"{paper}\" was NOT sent: SumatraPDF only accepts A2-A6, letter, legal, tabloid and \
-             statement. The printer driver's default paper is used."))
-    };
-
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?
-        .parent().ok_or("no exe dir")?.join("SumatraPDF.exe");
-    let args = vec![
-        "-print-to".to_string(), printer.clone(),
-        "-print-settings".to_string(), settings.join(","),
-        "-silent".to_string(),
-    ];
-    let shown: Vec<String> = args.iter().map(|s| quote(s)).collect();
-    let command = format!("SumatraPDF.exe {} <file.pdf>", shown.join(" "));
-    eprintln!("[print] paper: {:?} | dpi: {:?} | {}", paper, dpi, command);
-
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_err(|e| e.to_string())?
-        .as_nanos();
-    let path = std::env::temp_dir().join(format!("print-{nanos}.pdf"));
-    let backup = std::env::temp_dir().join(format!("print-ticket-{nanos}.xml"));
-    std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
-
-    // Optional: set the printer resolution for this job (previous settings are restored afterwards).
-    let mut dpi_applied = false;
-    let mut dpi_note = "No resolution selected; the printer's current default is used.".to_string();
-    if !dpi.is_empty() {
-        let applied = parse_dpi(&dpi)
-            .ok_or_else(|| format!("invalid resolution \"{dpi}\""))
-            .and_then(|(x, y)| {
-                run_ps(PS_APPLY_DPI, &[
-                    ("PRINT_NAME", printer.as_str()),
-                    ("PRINT_DPI_X", &x.to_string()),
-                    ("PRINT_DPI_Y", &y.to_string()),
-                    ("PRINT_BACKUP", &backup.display().to_string()),
-                ])
-                .map(|_| (x, y))
-            });
-        match applied {
-            Ok((x, y)) => {
-                dpi_applied = true;
-                dpi_note = format!(
-                    "Printer resolution set to {x} x {y} dpi for this job; your previous settings are restored afterwards.");
-            }
-            Err(e) => {
-                let _ = std::fs::remove_file(&path);
-                return Err(format!("could not set {dpi} dpi on \"{printer}\": {e}"));
-            }
-        }
-    }
-
-    let status = Command::new(&exe)
-        .args(&args)
-        .arg(&path)
-        .creation_flags(CREATE_NO_WINDOW)
-        .status();
-    let _ = std::fs::remove_file(&path);
-
-    if dpi_applied {
-        if let Err(e) = run_ps(PS_RESTORE_DPI, &[
-            ("PRINT_NAME", printer.as_str()),
-            ("PRINT_BACKUP", &backup.display().to_string()),
-        ]) {
-            dpi_note.push_str(&format!(" WARNING: could not restore the previous printer settings: {e}"));
-        }
-    }
-
-    match status {
-        Ok(s) if s.success() => Ok(PrintReport {
-            tool: "SumatraPDF".into(),
-            command,
-            paper_requested: paper,
-            paper_applied,
-            paper_note,
-            orientation: orientation.to_string(),
-            dpi_requested: dpi,
-            dpi_applied,
-            dpi_note,
-        }),
-        Ok(s) => Err(format!("SumatraPDF exited with {s}")),
-        Err(e) => Err(format!("could not start {}: {e}", exe.display())),
-    }
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+
+    // Kotlin plugin that talks to Android's PrintManager.
+    #[cfg(target_os = "android")]
+    let builder = builder.plugin(tauri_plugin_android_print::init());
+
+    builder
         .invoke_handler(tauri::generate_handler![
+            capabilities,
             list_printers,
             generate_random_data,
             printer_resolutions,
             print_pdf,
+            print_pdf_raw,
             load_template,
             save_template,
             reset_template

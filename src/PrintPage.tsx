@@ -3,13 +3,21 @@ import {
   listPrinters, printerResolutions, printLabels, NO_MARGINS,
   type Margins, type Orientation, type PrintReport, type Rotation, type Timings,
 } from './printApi';
+import { useCapabilities } from './capabilities';
+import TemplateTransfer from './TemplateTransfer';
 
 const fmt = (ms: number) => (ms >= 1000 ? `${(ms / 1000).toFixed(2)} s` : `${Math.round(ms)} ms`);
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-const inputCls =
-  'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm ' +
+// Shared look of every text/number/select control. Padding and width are NOT in here, so each
+// variant sets its own (two conflicting utilities on one element are resolved by stylesheet order,
+// not by class order, so overriding one with the other is unreliable).
+const fieldBase =
+  'rounded-lg border border-slate-300 bg-white text-sm shadow-sm ' +
   'focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:bg-slate-100';
+const inputCls = fieldBase + ' w-full px-3 py-2';
+// The four margin boxes share one row, so they need tighter padding and must be allowed to shrink.
+const marginInputCls = fieldBase + ' w-full min-w-0 px-2 py-1.5';
 
 const PAPERS: { value: string; label: string }[] = [
   { value: '', label: 'Printer driver default (set this to 110 × 86 mm)' },
@@ -43,6 +51,7 @@ function Field({ label, hint, htmlFor, children }: {
 }
 
 export default function PrintPage() {
+  const caps = useCapabilities();
   const [printers, setPrinters] = useState<string[]>([]);
   const [printer, setPrinter] = useState('');
   const [paper, setPaper] = useState('');
@@ -66,13 +75,13 @@ export default function PrintPage() {
   // Ask the driver which resolutions it supports whenever the printer changes.
   useEffect(() => {
     setDpi(''); setResolutions([]); setDpiNote('');
-    if (!printer) return;
+    if (!printer || !caps.dpiSelect) return;
     let stale = false;
     printerResolutions(printer)
       .then(r => { if (!stale) { setResolutions(r); if (r.length === 0) setDpiNote('This driver reports no selectable resolutions.'); } })
       .catch(e => { if (!stale) setDpiNote(`Could not read resolutions: ${errMsg(e)}`); });
     return () => { stale = true; };
-  }, [printer]);
+  }, [printer, caps.dpiSelect]);
 
   const onPrint = async () => {
     setBusy(true); setError(''); setResult(null);
@@ -91,25 +100,38 @@ export default function PrintPage() {
       <div className="mx-auto max-w-md space-y-5 rounded-2xl bg-white p-6 shadow-lg ring-1 ring-slate-200">
         <header>
           <h1 className="text-xl font-semibold text-slate-900">Silent print test</h1>
-          <p className="text-sm text-slate-500">Generate random 110 × 86 mm labels and print without a dialog.</p>
+          <p className="text-sm text-slate-500">
+            {caps.silent
+              ? 'Generate random 110 × 86 mm labels and print without a dialog.'
+              : 'Generate random 110 × 86 mm labels and print them through the system print dialog.'}
+          </p>
+          {!caps.silent && caps.platform === 'android' && (
+            <p className="mt-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-900 ring-1 ring-amber-200">
+              Android cannot print silently through the system print service: pressing Print opens the
+              print preview, where you pick the printer, paper and orientation and tap Print.
+            </p>
+          )}
         </header>
 
         <Field label="Printer" htmlFor="printer"
                hint={printers.length === 0 ? 'No printers found.' : `${printers.length} printer(s) detected`}>
-          <select id="printer" className={inputCls + ' cursor-pointer'} value={printer}
+          <select id="printer" className={inputCls + ' cursor-pointer disabled:cursor-not-allowed'} value={printer}
                   disabled={busy} onChange={e => setPrinter(e.target.value)}>
             {printers.map(p => <option key={p}>{p}</option>)}
           </select>
         </Field>
 
+        {caps.paperSelect && (
         <Field label="Paper size" htmlFor="paper"
                hint="SumatraPDF can only set named sizes. A custom size such as 110 × 86 mm must be the printer driver's default paper.">
-          <select id="paper" className={inputCls + ' cursor-pointer'} value={paper}
+          <select id="paper" className={inputCls + ' cursor-pointer disabled:cursor-not-allowed'} value={paper}
                   disabled={busy} onChange={e => setPaper(e.target.value)}>
             {PAPERS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
           </select>
         </Field>
+        )}
 
+        {caps.orientationSelect && (
         <fieldset className="space-y-1" disabled={busy}>
           <legend className="text-sm font-medium text-slate-700">Orientation</legend>
           <div className="grid grid-cols-3 gap-2">
@@ -135,6 +157,7 @@ export default function PrintPage() {
             The label itself is landscape (110 × 86 mm). Auto leaves the choice to the printer driver.
           </p>
         </fieldset>
+        )}
 
         <fieldset className="space-y-1" disabled={busy}>
           <legend className="text-sm font-medium text-slate-700">Rotate label content</legend>
@@ -167,9 +190,9 @@ export default function PrintPage() {
           <legend className="text-sm font-medium text-slate-700">Margins (mm)</legend>
           <div className="grid grid-cols-4 gap-2">
             {(['top', 'right', 'bottom', 'left'] as const).map(side => (
-              <label key={side} className="space-y-0.5 text-xs text-slate-500">
+              <label key={side} className="flex flex-col gap-0.5 text-xs text-slate-500">
                 <span className="capitalize">{side}</span>
-                <input type="number" step={0.1} className={inputCls} value={margins[side]}
+                <input type="number" step={0.1} className={marginInputCls} value={margins[side]}
                        onChange={e => setMargins({ ...margins, [side]: Number.isFinite(+e.target.value) ? +e.target.value : 0 })} />
               </label>
             ))}
@@ -184,14 +207,16 @@ export default function PrintPage() {
           </div>
         </fieldset>
 
+        {caps.dpiSelect && (
         <Field label="Print resolution" htmlFor="dpi"
                hint={dpiNote || 'Options are what the printer driver reports. The previous setting is restored after printing.'}>
-          <select id="dpi" className={inputCls + ' cursor-pointer'} value={dpi}
+          <select id="dpi" className={inputCls + ' cursor-pointer disabled:cursor-not-allowed'} value={dpi}
                   disabled={busy} onChange={e => setDpi(e.target.value)}>
             <option value="">Printer default</option>
             {resolutions.map(r => <option key={r} value={r}>{dpiLabel(r)}</option>)}
           </select>
         </Field>
+        )}
 
         <Field label="Number of pages" htmlFor="pages" hint="One label per page, each with different data.">
           <input id="pages" type="number" min={1} className={inputCls} value={pages} disabled={busy}
@@ -199,14 +224,14 @@ export default function PrintPage() {
         </Field>
 
         <button onClick={onPrint} disabled={!printer || busy}
-                className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500">
+                className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-300">
           {busy && (
             <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
               <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25" />
               <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
             </svg>
           )}
-          {busy ? 'Printing…' : 'Print'}
+          {busy ? (caps.silent ? 'Printing…' : 'Opening…') : (caps.silent ? 'Print' : 'Print…')}
         </button>
 
         {error && (
@@ -218,7 +243,7 @@ export default function PrintPage() {
         {result && (
           <section className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
             <p className="text-sm text-emerald-800">
-              Sent {result.pages} page(s) to <span className="font-medium">{result.printer}</span>
+              {caps.silent ? 'Sent' : 'Opened the print dialog for'} {result.pages} page(s) {caps.silent ? 'to' : 'via'} <span className="font-medium">{result.printer}</span>
               {' '}using the <span className="font-medium">{result.source}</span> template
             </p>
             <div className="flex items-baseline justify-between">
@@ -226,7 +251,7 @@ export default function PrintPage() {
               <span className="text-2xl font-semibold text-slate-900">{fmt(result.t.total)}</span>
             </div>
             <dl className="grid grid-cols-3 gap-2 text-center text-xs">
-              {([['Data', result.t.data], ['PDF build', result.t.pdf], ['Send to printer', result.t.print]] as const)
+              {([['Data', result.t.data], ['PDF build', result.t.pdf], [caps.silent ? 'Send to printer' : 'Open dialog', result.t.print]] as const)
                 .map(([k, v]) => (
                   <div key={k} className="rounded-md bg-white p-2 ring-1 ring-slate-200">
                     <dt className="text-slate-500">{k}</dt>
@@ -235,31 +260,56 @@ export default function PrintPage() {
                 ))}
             </dl>
             <p className="text-xs text-slate-500">
-              "Send to printer" ends when the print tool hands the job to the OS spooler, not when paper comes out.
+              {caps.silent
+                ? '"Send to printer" ends when the print tool hands the job to the OS spooler, not when paper comes out.'
+                : '"Open dialog" ends when the system print preview is requested, not when you tap Print or paper comes out.'}
             </p>
 
             <div className="space-y-1.5 border-t border-emerald-200 pt-3">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-600">
-                  Paper size <span className="font-medium text-slate-900">{result.report.paperRequested || '(driver default)'}</span>
-                </span>
-                <span className={
-                  'rounded-full px-2 py-0.5 text-xs font-medium ' +
-                  (result.report.paperApplied ? 'bg-emerald-200 text-emerald-900' : 'bg-slate-200 text-slate-800')
-                }>
-                  {result.report.paperApplied ? 'sent to SumatraPDF' : 'driver default'}
-                </span>
-              </div>
-              <p className="text-xs text-slate-600 break-words">{result.report.paperNote}</p>
-              <p className="text-xs text-slate-600">Orientation: <span className="font-medium">{result.report.orientation}</span></p>
               <p className="text-xs text-slate-600">
-                Resolution: <span className="font-medium">{result.report.dpiRequested ? dpiLabel(result.report.dpiRequested) : 'printer default'}</span>
-                {' — '}{result.report.dpiNote}
+                Transport: <span className="rounded-full bg-emerald-200 px-2 py-0.5 font-medium text-emerald-900">{result.report.transport}</span>
+                {' '}<span className="text-slate-500">({result.report.tool})</span>
               </p>
+              {caps.paperSelect ? (
+                <>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-slate-600">
+                      Paper size <span className="font-medium text-slate-900">{result.report.paperRequested || '(driver default)'}</span>
+                    </span>
+                    <span className={
+                      'rounded-full px-2 py-0.5 text-xs font-medium ' +
+                      (result.report.paperApplied ? 'bg-emerald-200 text-emerald-900' : 'bg-slate-200 text-slate-800')
+                    }>
+                      {result.report.paperApplied ? `sent to ${result.report.tool}` : 'driver default'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-600 break-words">{result.report.paperNote}</p>
+                </>
+              ) : (
+                <p className="text-xs text-slate-600 break-words">{result.report.paperNote}</p>
+              )}
+              {caps.orientationSelect && (
+                <p className="text-xs text-slate-600">Orientation: <span className="font-medium">{result.report.orientation}</span></p>
+              )}
+              {caps.dpiSelect && (
+                <p className="text-xs text-slate-600">
+                  Resolution: <span className="font-medium">{result.report.dpiRequested ? dpiLabel(result.report.dpiRequested) : 'printer default'}</span>
+                  {' — '}{result.report.dpiNote}
+                </p>
+              )}
               <pre className="overflow-x-auto rounded-md bg-slate-900 p-2 text-xs text-slate-100">{result.report.command}</pre>
             </div>
           </section>
         )}
+
+        <details className="border-t border-slate-200 pt-3 text-sm">
+          <summary className="cursor-pointer font-medium text-slate-700">Template: export / import</summary>
+          <p className="mb-2 mt-2 text-xs text-slate-500">
+            The saved label template lives on each device. Export it from one and import it on another
+            (for example from desktop to Android) so both print the same layout.
+          </p>
+          <TemplateTransfer />
+        </details>
       </div>
     </main>
   );
