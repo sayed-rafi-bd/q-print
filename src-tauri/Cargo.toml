@@ -12,7 +12,14 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
-printers = "2"   # list printers on every OS
 rand = "0.8"     # random label data
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+# The `printers` crate has no Android support, so only Windows uses it.
+[target.'cfg(windows)'.dependencies]
+printers = "2"
+
+# Kotlin plugin that opens Android's system print dialog (PrintManager).
+[target.'cfg(target_os = "android")'.dependencies]
+tauri-plugin-android-print = { path = "plugins/android-print" }
