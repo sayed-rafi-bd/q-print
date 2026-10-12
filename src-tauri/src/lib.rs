@@ -1,6 +1,7 @@
 use rand::{seq::SliceRandom, Rng};
 use serde::Serialize;
 use std::process::Command;
+use tauri::Manager;
 
 // camelCase keys match the field names in src/templates/label.json
 #[derive(Serialize)]
@@ -98,21 +99,123 @@ struct PrintReport {
     paper_applied: bool,
     paper_note: String,
     orientation: String,
+    dpi_requested: String,
+    dpi_applied: bool,
+    dpi_note: String,
 }
 
 // Paper names SumatraPDF's `paper=` setting accepts.
 const SUMATRA_PAPERS: [&str; 9] = ["A2", "A3", "A4", "A5", "A6", "letter", "legal", "tabloid", "statement"];
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 fn quote(s: &str) -> String {
     if s.contains(' ') { format!("\"{s}\"") } else { s.to_string() }
 }
 
+// ---- printer resolution (dpi) via the Windows print ticket (System.Printing) ----
+
+const PS_PRELUDE: &str = r#"
+$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Printing
+$srv = New-Object System.Printing.LocalPrintServer
+$q = $srv.GetPrintQueue($env:PRINT_NAME)
+"#;
+
+const PS_LIST_DPI: &str = r#"
+$q.GetPrintCapabilities().PageResolutionCapability | ForEach-Object { "{0}x{1}" -f $_.X, $_.Y }
+"#;
+
+// Back up the user's current print ticket, then set the resolution on it.
+const PS_APPLY_DPI: &str = r#"
+$s = $q.UserPrintTicket.GetXmlStream(); $s.Position = 0
+$ms = New-Object IO.MemoryStream; $s.CopyTo($ms)
+[IO.File]::WriteAllBytes($env:PRINT_BACKUP, $ms.ToArray())
+$q.UserPrintTicket.PageResolution = New-Object -TypeName System.Printing.PageResolution -ArgumentList ([int]$env:PRINT_DPI_X), ([int]$env:PRINT_DPI_Y)
+$q.Commit()
+"#;
+
+const PS_RESTORE_DPI: &str = r#"
+$bytes = [IO.File]::ReadAllBytes($env:PRINT_BACKUP)
+$ms = New-Object -TypeName IO.MemoryStream -ArgumentList (,$bytes)
+$q.UserPrintTicket = New-Object -TypeName System.Printing.PrintTicket -ArgumentList $ms
+$q.Commit()
+Remove-Item $env:PRINT_BACKUP -Force
+"#;
+
+fn run_ps(body: &str, envs: &[(&str, &str)]) -> Result<String, String> {
+    use std::os::windows::process::CommandExt;
+    let script = format!("{}{}", PS_PRELUDE, body);
+    let out = Command::new("powershell.exe")
+        .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", &script])
+        .envs(envs.iter().copied())
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .map_err(|e| format!("could not start powershell: {e}"))?;
+    if out.status.success() {
+        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    } else {
+        let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        Err(if err.is_empty() { format!("powershell exited with {}", out.status) } else { err })
+    }
+}
+
+fn parse_dpi(s: &str) -> Option<(u32, u32)> {
+    let (a, b) = s.trim().split_once('x')?;
+    Some((a.trim().parse().ok()?, b.trim().parse().ok()?))
+}
+
+/// Resolutions the printer driver reports, as "300x300" strings. Empty if it reports none.
 #[tauri::command]
-fn print_pdf(printer: String, paper: String, orientation: String, bytes: Vec<u8>)
+fn printer_resolutions(printer: String) -> Result<Vec<String>, String> {
+    let out = run_ps(PS_LIST_DPI, &[("PRINT_NAME", &printer)])?;
+    let mut found: Vec<(u32, u32)> = out.lines().filter_map(parse_dpi).collect();
+    found.sort();
+    found.dedup();
+    Ok(found.into_iter().map(|(x, y)| format!("{x}x{y}")).collect())
+}
+
+fn template_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir.join("label-template.json"))
+}
+
+/// Saved pdfme template (JSON text), or None if the designer has never saved one.
+#[tauri::command]
+fn load_template(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    let path = template_path(&app)?;
+    if !path.exists() {
+        return Ok(None);
+    }
+    std::fs::read_to_string(path).map(Some).map_err(|e| e.to_string())
+}
+
+/// Saves the designer's template; returns the file path.
+#[tauri::command]
+fn save_template(app: tauri::AppHandle, json: String) -> Result<String, String> {
+    serde_json::from_str::<serde_json::Value>(&json).map_err(|e| format!("invalid template JSON: {e}"))?;
+    let path = template_path(&app)?;
+    std::fs::write(&path, json).map_err(|e| e.to_string())?;
+    Ok(path.display().to_string())
+}
+
+/// Deletes the saved template so the built-in default is used again.
+#[tauri::command]
+fn reset_template(app: tauri::AppHandle) -> Result<(), String> {
+    let path = template_path(&app)?;
+    if path.exists() {
+        std::fs::remove_file(path).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn print_pdf(printer: String, paper: String, orientation: String, dpi: String, bytes: Vec<u8>)
     -> Result<PrintReport, String> {
     use std::os::windows::process::CommandExt;
 
     let paper = paper.trim().to_string();
+    let dpi = dpi.trim().to_string();
     let orientation = match orientation.as_str() {
         "portrait" => "portrait",
         "landscape" => "landscape",
@@ -143,32 +246,73 @@ fn print_pdf(printer: String, paper: String, orientation: String, bytes: Vec<u8>
         "-silent".to_string(),
     ];
     let shown: Vec<String> = args.iter().map(|s| quote(s)).collect();
-    let report = PrintReport {
-        tool: "SumatraPDF".into(),
-        command: format!("SumatraPDF.exe {} <file.pdf>", shown.join(" ")),
-        paper_requested: paper.clone(),
-        paper_applied,
-        paper_note,
-        orientation: orientation.to_string(),
-    };
-    eprintln!("[print] paper requested: {:?} | {}", paper, report.command);
+    let command = format!("SumatraPDF.exe {} <file.pdf>", shown.join(" "));
+    eprintln!("[print] paper: {:?} | dpi: {:?} | {}", paper, dpi, command);
 
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|e| e.to_string())?
         .as_nanos();
     let path = std::env::temp_dir().join(format!("print-{nanos}.pdf"));
+    let backup = std::env::temp_dir().join(format!("print-ticket-{nanos}.xml"));
     std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
+
+    // Optional: set the printer resolution for this job (previous settings are restored afterwards).
+    let mut dpi_applied = false;
+    let mut dpi_note = "No resolution selected; the printer's current default is used.".to_string();
+    if !dpi.is_empty() {
+        let applied = parse_dpi(&dpi)
+            .ok_or_else(|| format!("invalid resolution \"{dpi}\""))
+            .and_then(|(x, y)| {
+                run_ps(PS_APPLY_DPI, &[
+                    ("PRINT_NAME", printer.as_str()),
+                    ("PRINT_DPI_X", &x.to_string()),
+                    ("PRINT_DPI_Y", &y.to_string()),
+                    ("PRINT_BACKUP", &backup.display().to_string()),
+                ])
+                .map(|_| (x, y))
+            });
+        match applied {
+            Ok((x, y)) => {
+                dpi_applied = true;
+                dpi_note = format!(
+                    "Printer resolution set to {x} x {y} dpi for this job; your previous settings are restored afterwards.");
+            }
+            Err(e) => {
+                let _ = std::fs::remove_file(&path);
+                return Err(format!("could not set {dpi} dpi on \"{printer}\": {e}"));
+            }
+        }
+    }
 
     let status = Command::new(&exe)
         .args(&args)
         .arg(&path)
-        .creation_flags(0x0800_0000) // CREATE_NO_WINDOW
+        .creation_flags(CREATE_NO_WINDOW)
         .status();
     let _ = std::fs::remove_file(&path);
 
+    if dpi_applied {
+        if let Err(e) = run_ps(PS_RESTORE_DPI, &[
+            ("PRINT_NAME", printer.as_str()),
+            ("PRINT_BACKUP", &backup.display().to_string()),
+        ]) {
+            dpi_note.push_str(&format!(" WARNING: could not restore the previous printer settings: {e}"));
+        }
+    }
+
     match status {
-        Ok(s) if s.success() => Ok(report),
+        Ok(s) if s.success() => Ok(PrintReport {
+            tool: "SumatraPDF".into(),
+            command,
+            paper_requested: paper,
+            paper_applied,
+            paper_note,
+            orientation: orientation.to_string(),
+            dpi_requested: dpi,
+            dpi_applied,
+            dpi_note,
+        }),
         Ok(s) => Err(format!("SumatraPDF exited with {s}")),
         Err(e) => Err(format!("could not start {}: {e}", exe.display())),
     }
@@ -177,7 +321,15 @@ fn print_pdf(printer: String, paper: String, orientation: String, bytes: Vec<u8>
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![list_printers, generate_random_data, print_pdf])
+        .invoke_handler(tauri::generate_handler![
+            list_printers,
+            generate_random_data,
+            printer_resolutions,
+            print_pdf,
+            load_template,
+            save_template,
+            reset_template
+        ])
         .run(tauri::generate_context!())
         .expect("error while running app");
 }

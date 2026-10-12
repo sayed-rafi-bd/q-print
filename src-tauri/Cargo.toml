@@ -15,3 +15,4 @@ tauri = { version = "2", features = [] }
 printers = "2"   # list printers on every OS
 rand = "0.8"     # random label data
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"

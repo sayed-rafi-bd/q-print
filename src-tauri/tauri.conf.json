@@ -12,9 +12,11 @@
   "app": {
     "windows": [
       {
-        "title": "Print test",
-        "width": 520,
-        "height": 860
+        "title": "Q-Print",
+        "width": 1200,
+        "height": 860,
+        "minWidth": 900,
+        "minHeight": 640
       }
     ],
     "security": {

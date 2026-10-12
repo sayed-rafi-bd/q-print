@@ -2311,6 +2311,7 @@ dependencies = [
  "printers",
  "rand",
  "serde",
+ "serde_json",
  "tauri",
  "tauri-build",
 ]
