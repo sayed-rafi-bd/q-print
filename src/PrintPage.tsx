@@ -96,7 +96,7 @@ export default function PrintPage() {
 
         <Field label="Printer" htmlFor="printer"
                hint={printers.length === 0 ? 'No printers found.' : `${printers.length} printer(s) detected`}>
-          <select id="printer" className={inputCls + ' cursor-pointer disabled:cursor-not-allowed'} value={printer}
+          <select id="printer" className={inputCls + ' cursor-pointer'} value={printer}
                   disabled={busy} onChange={e => setPrinter(e.target.value)}>
             {printers.map(p => <option key={p}>{p}</option>)}
           </select>
@@ -104,7 +104,7 @@ export default function PrintPage() {
 
         <Field label="Paper size" htmlFor="paper"
                hint="SumatraPDF can only set named sizes. A custom size such as 110 × 86 mm must be the printer driver's default paper.">
-          <select id="paper" className={inputCls + ' cursor-pointer disabled:cursor-not-allowed'} value={paper}
+          <select id="paper" className={inputCls + ' cursor-pointer'} value={paper}
                   disabled={busy} onChange={e => setPaper(e.target.value)}>
             {PAPERS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
           </select>
