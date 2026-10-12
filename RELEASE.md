@@ -60,13 +60,13 @@ git push origin v0.3.1
 
 Run these from the project folder, the one containing `package.json` and `src-tauri`. Builds bundle the frontend into the app, so they need no dev server.
 
-| Command | Produces | Output folder |
-| --- | --- | --- |
-| `pnpm build:windows` | NSIS installer and MSI | `src-tauri\target\release\bundle\` |
-| `pnpm build:android:debug` | Debug APK for 64-bit phones (aarch64), signed with the debug key, installs straight away | `src-tauri\gen\android\app\build\outputs\apk\universal\debug\` |
-| `pnpm build:android` | Release APK for all four CPU types, unsigned until signing is set up | `src-tauri\gen\android\app\build\outputs\apk\universal\release\` |
-| `pnpm build:android:aab` | Play Store bundle | `src-tauri\gen\android\app\build\outputs\bundle\` |
-| `pnpm dev:android` | Runs on a connected phone from your PC's dev server. Not a release; the phone must be on the same Wi-Fi | none |
+| Command                    | Produces                                                                                                | Output folder                                                    |
+|----------------------------|---------------------------------------------------------------------------------------------------------|------------------------------------------------------------------|
+| `pnpm build:windows`       | NSIS installer and MSI                                                                                  | `src-tauri\target\release\bundle\`                               |
+| `pnpm build:android:debug` | Debug APK for 64-bit phones (aarch64), signed with the debug key, installs straight away                | `src-tauri\gen\android\app\build\outputs\apk\universal\debug\`   |
+| `pnpm build:android`       | Release APK for all four CPU types, unsigned until signing is set up                                    | `src-tauri\gen\android\app\build\outputs\apk\universal\release\` |
+| `pnpm build:android:aab`   | Play Store bundle                                                                                       | `src-tauri\gen\android\app\build\outputs\bundle\`                |
+| `pnpm dev:android`         | Runs on a connected phone from your PC's dev server. Not a release; the phone must be on the same Wi-Fi | none                                                             |
 
 Other scripts: `pnpm typecheck` (TypeScript only), `pnpm icons` (regenerates app icons from `app-icon.png`) and `pnpm android:init` (creates `src-tauri/gen/android`).
 
@@ -124,11 +124,11 @@ adb logcat -d -s RustStdoutStderr AndroidRuntime chromium
 
 One bug is open and blocks a trusted Android release: the debug APK shows an error page on a Pixel 4a.
 
-| Issue | Status | Next step |
-| --- | --- | --- |
+| Issue                                                                                                                                  | Status                                                                                                                                                                                      | Next step                                                                                           |
+|----------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------|
 | The app shows "The webpage at http://tauri.localhost could not be loaded" on a Pixel 4a, using the APK from `pnpm build:android:debug` | Open. Not caused by the dev server, release minification, cleartext rules or CPU type (the Pixel 4a is 64-bit ARM). A startup crash on the Rust side is the likely cause but is unconfirmed | Capture the `adb logcat` output from the testing section and look for `panicked at` or an exception |
-| Release APK is unsigned, so it cannot be installed | Open | Set up signing (see the signing section), then add the signing step to `release.yml` |
-| CI and `package.json` changes from this guide (new scripts, `gradlew` fix, release job order) are in `q-print-ci-and-scripts.patch` | Not merged | Apply the patch, then commit and push |
+| Release APK is unsigned, so it cannot be installed                                                                                     | Open                                                                                                                                                                                        | Set up signing (see the signing section), then add the signing step to `release.yml`                |
+| CI and `package.json` changes from this guide (new scripts, `gradlew` fix, release job order) are in `q-print-ci-and-scripts.patch`    | Not merged                                                                                                                                                                                  | Apply the patch, then commit and push                                                               |
 
 **Common build errors**
 
