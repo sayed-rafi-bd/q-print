@@ -36,16 +36,28 @@ don't apply, instead of showing controls that would silently do nothing.
    rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
    ```
 4. Do the Windows setup steps 2-4 above (dependencies, icons, font). SumatraPDF is Windows-only and is not used on Android.
-5. Generate the Android project (once) and commit it:
+5. **Turn on Windows Developer Mode** (once per PC): Settings -> System -> For developers -> **Developer Mode: On**
+   (on older Windows 10: Settings -> Update & Security -> For developers). Then close and reopen your terminal.
+   Tauri links the built `libprint_test_lib.so` into the Android project with a symbolic link, and Windows only lets
+   regular users create those when Developer Mode is on. Without it the build stops with
+   `Creation symbolic link is not allowed for this system`.
+6. Connect a device. For printing, use a real phone or tablet (emulators don't reach your network printers):
+   enable *Developer options* and *USB debugging* on the device, plug it in, accept the prompt on the device, and check
+   that it is listed:
+   ```powershell
+   & "$env:ANDROID_HOME\platform-tools\adb.exe" devices
+   ```
+   The message `No available Android Emulator detected` is harmless when a physical device is connected.
+7. Generate the Android project (once) and commit it:
    ```powershell
    pnpm tauri android init
    ```
-6. Run on a device or emulator. The phone must reach your PC over the network, so keep both on the same Wi-Fi.
+8. Run on the device. The phone must reach your PC over the network, so keep both on the same Wi-Fi.
    Vite binds to `TAURI_DEV_HOST`, which `tauri android dev` sets for you.
    ```powershell
    pnpm tauri android dev
    ```
-7. Release build (APK/AAB): `pnpm tauri android build`
+9. Release build (APK/AAB): `pnpm tauri android build`
 
 `src-tauri/gen/android` is a normal Gradle project. Commit it, but not its build output (see `.gitignore`).
 
@@ -66,6 +78,16 @@ Things to know:
   `register_android_plugin` against the current Tauri v2 mobile-plugin docs. They follow the plugin template.
 - Direct IPP (silent, Wi-Fi printers) and vendor SDKs (Bluetooth/USB label printers) are not implemented.
   See `ANDROID_PLAN.md`, Phase 3B and 3C. Silent printing on Android needs one of them.
+
+## Troubleshooting (Android on Windows)
+| Symptom                                                               | Cause and fix                                                                                                                                                          |
+|-----------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `Creation symbolic link is not allowed for this system`               | Developer Mode is off. Turn it on (Setup, Android, step 5) and reopen the terminal. Running the terminal as Administrator also works.                                  |
+| `No available Android Emulator detected`                              | Only a notice. Connect a physical device with USB debugging, or start an emulator from Android Studio.                                                                 |
+| App opens but shows a blank page or "can't connect"                   | The phone can't reach the Vite dev server at `http://<PC-IP>:1420`. Use the same Wi-Fi for both, and allow Node.js through Windows Firewall on private networks.       |
+| `adb devices` shows `unauthorized` or nothing                         | Unlock the phone and accept the "Allow USB debugging" prompt; try another cable or USB mode (File transfer).                                                           |
+| Gradle sync or Kotlin compile errors in the plugin                    | Check `src-tauri/plugins/android-print/android` (`build.gradle.kts`, `settings.gradle`) and `register_android_plugin` against the current Tauri v2 mobile-plugin docs. |
+| `resource path binaries\SumatraPDF-... doesn't exist` (Windows build) | The SumatraPDF exe is missing from `src-tauri/binaries`.                                                                                                               |
 
 ## Project layout
 - `src-tauri/src/lib.rs`: commands shared by all platforms (random data, template storage, `capabilities`, print entry points).
