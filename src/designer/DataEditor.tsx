@@ -20,6 +20,11 @@ type Props = {
   onChange: (next: GeneratorSpec) => void;
   /** Opens the label preview with the data as it stands now. */
   onPreview: () => void;
+  /**
+   * A built-in label keeps only its layout on disk; its generator lives in the app, so edits here
+   * would be thrown away on save. Duplicate the label to get an editable copy.
+   */
+  readOnly?: boolean;
 };
 
 /**
@@ -28,7 +33,7 @@ type Props = {
  * This is deliberately a fixed set of rule kinds rather than a small language, so what a label
  * prints is always something the screen shows before saving.
  */
-export default function DataEditor({ template, spec, onChange, onPreview }: Props) {
+export default function DataEditor({ template, spec, onChange, onPreview, readOnly }: Props) {
   const [pane, setPane] = useState<'fields' | 'tables'>('fields');
   const [sampleTick, setSampleTick] = useState(0);
 
@@ -36,6 +41,8 @@ export default function DataEditor({ template, spec, onChange, onPreview }: Prop
   const allNames = useMemo(() => templateFields(template).map(f => f.name), [template]);
   const orphans = useMemo(() => orphanRules(template, spec), [template, spec]);
   const problems = useMemo(() => validateSpec(spec), [spec]);
+
+  const locked = readOnly === true;
 
   const setRule = (name: string, rule: FieldRule | null) => {
     const fields = { ...spec.fields };
@@ -90,6 +97,13 @@ export default function DataEditor({ template, spec, onChange, onPreview }: Prop
         </div>
       )}
 
+      {locked && (
+        <p className="mb-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+          This is a built-in label, so its data rules ship with the app and cannot be changed here.
+          Use <strong>Duplicate</strong> above to get a copy you can edit, layout and data alike.
+        </p>
+      )}
+
       {pane === 'fields' && (
         <div className="space-y-2">
           {fields.length === 0 && (
@@ -125,14 +139,18 @@ export default function DataEditor({ template, spec, onChange, onPreview }: Prop
                   {barcode && field.hint && (
                     <p className="text-xs text-slate-500">{field.hint}</p>
                   )}
-                  <RuleRow rule={rule} spec={spec} fieldNames={allNames}
+                  <RuleRow rule={rule} spec={spec} fieldNames={allNames} locked={locked}
                     onChange={next => setRule(field.name, next)} />
                   {fieldProblems.length > 0 && (
                     <ul className="list-inside list-disc text-xs text-red-700">
                       {fieldProblems.map(p => <li key={p}>{p}</li>)}
                     </ul>
                   )}
-                  {rule && <button className={btnCls} onClick={() => setRule(field.name, null)}>Remove this rule</button>}
+                  {rule && (
+                    <button className={btnCls} disabled={locked} onClick={() => setRule(field.name, null)}>
+                      Remove this rule
+                    </button>
+                  )}
                 </div>
               </details>
             );
@@ -152,14 +170,14 @@ export default function DataEditor({ template, spec, onChange, onPreview }: Prop
                     <label className="flex items-center gap-1">
                       <span className="text-amber-800">Move to</span>
                       <select className="rounded border border-slate-300 px-1.5 py-0.5 text-xs"
-                        value="" onChange={e => e.target.value && moveRule(name, e.target.value)}>
+                        value="" disabled={locked} onChange={e => e.target.value && moveRule(name, e.target.value)}>
                         <option value="">Choose a field…</option>
                         {fields.filter(f => !spec.fields[f.name]).map(f => (
                           <option key={f.name} value={f.name}>{f.name}</option>
                         ))}
                       </select>
                     </label>
-                    <button className={btnCls} onClick={() => dropRule(name)}>Delete rule</button>
+                    <button className={btnCls} disabled={locked} onClick={() => dropRule(name)}>Delete rule</button>
                   </li>
                 ))}
               </ul>
@@ -168,7 +186,7 @@ export default function DataEditor({ template, spec, onChange, onPreview }: Prop
         </div>
       )}
 
-      {pane === 'tables' && <TableEditor spec={spec} onChange={onChange} />}
+      {pane === 'tables' && <TableEditor spec={spec} onChange={onChange} readOnly={locked} />}
     </div>
   );
 }

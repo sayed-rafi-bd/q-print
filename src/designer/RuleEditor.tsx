@@ -232,18 +232,20 @@ export default function RuleEditor({ rule, spec, fieldNames, onChange }: {
 }
 
 /** The rule picker plus its parameters, for one field. */
-export function RuleRow({ rule, spec, fieldNames, onChange }: {
+export function RuleRow({ rule, spec, fieldNames, onChange, locked }: {
   rule: FieldRule | null;
   spec: GeneratorSpec;
   fieldNames: string[];
   onChange: (next: FieldRule | null) => void;
+  /** Show the rule but do not let it be changed. */
+  locked?: boolean;
 }) {
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
         <label className="flex items-center gap-1 text-xs text-slate-600">
           <span>Fill with</span>
-          <select aria-label="Rule" className={inputCls + ' w-auto'}
+          <select aria-label="Rule" disabled={locked} className={inputCls + ' w-auto'}
             value={rule?.kind ?? ''}
             onChange={e => onChange(e.target.value ? defaultRule(e.target.value as FieldRule['kind'], spec.tables) : null)}>
             <option value="">— nothing, print the text as designed —</option>
@@ -251,7 +253,12 @@ export function RuleRow({ rule, spec, fieldNames, onChange }: {
           </select>
         </label>
       </div>
-      {rule && asFieldRule(rule) && <RuleEditor rule={rule} spec={spec} fieldNames={fieldNames} onChange={onChange} />}
+      {rule && asFieldRule(rule) && (
+        // A locked rule still shows its settings, so it can be read and copied into a duplicate.
+        <fieldset disabled={locked} className="contents">
+          <RuleEditor rule={rule} spec={spec} fieldNames={fieldNames} onChange={onChange} />
+        </fieldset>
+      )}
     </div>
   );
 }

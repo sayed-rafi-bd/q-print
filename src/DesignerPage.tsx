@@ -155,8 +155,9 @@ export default function DesignerPage() {
     try {
       const template = d.getTemplate();
       // A field added in the Layout but never given a rule gets a sensible default, so printing
-      // fills it rather than showing the designer's placeholder text.
-      const next = scaffoldSpec(template, generator);
+      // fills it rather than showing the designer's placeholder text. A built-in's generator lives
+      // in the app, so this only applies to a label the user owns.
+      const next = meta.builtin ? generator : scaffoldSpec(template, generator);
       const problems = validateSpec(next);
       if (problems.length > 0) throw new Error(problems[0]);
 
@@ -245,7 +246,11 @@ export default function DesignerPage() {
     setLayoutDirty(false);
     setSource(meta?.builtin ? 'custom' : 'custom label');
     setSize(readSize(t));
-    setGenerator(g => { const next = scaffoldSpec(t, g); setGeneratorSaved(next); return next; });
+    setGenerator(g => {
+      const next = meta?.builtin ? g : scaffoldSpec(t, g);
+      setGeneratorSaved(next);
+      return next;
+    });
     setError('');
     setMessage('Imported template saved. Printing now uses it.');
   };
@@ -337,7 +342,7 @@ export default function DesignerPage() {
 
       {tab === 'data' ? (
         <div className="min-h-0 flex-1">
-          <DataEditor template={currentTemplate} spec={generator}
+          <DataEditor template={currentTemplate} spec={generator} readOnly={meta?.builtin === true}
             onChange={setGenerator} onPreview={() => setPreviewing(true)} />
         </div>
       ) : (

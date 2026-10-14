@@ -263,7 +263,6 @@ rename or delete leaves its rule behind in an "unused rules" list, where you can
 field or delete it, rather than losing the work.
 
 The rules are a fixed, small set — there is no scripting:
-
 | Rule | What it does |
 | ---- | ------------ |
 | Fixed text | Always the same text. |
@@ -281,6 +280,9 @@ Every rule can also add text before and after the value, and run it through *dig
 there, a copy that loops) are listed at the top and stop Save until they are fixed. Barcode fields
 show what their format accepts and flag a sample it could not encode, so a bad value is caught
 before it reaches a print job. **Preview label** renders the real page with pdfme.
+
+A built-in label's rules ship with the app, so the Data tab is read-only for them; **Duplicate**
+gives you an editable copy with the same layout and the same rules.
 
 ### Label files and moving one between devices
 

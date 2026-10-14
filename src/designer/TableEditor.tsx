@@ -25,6 +25,8 @@ export function parseCsv(text: string): string[][] {
 type Props = {
   spec: GeneratorSpec;
   onChange: (next: GeneratorSpec) => void;
+  /** Show the tables but do not let them be changed. */
+  readOnly?: boolean;
 };
 
 /**
@@ -32,12 +34,14 @@ type Props = {
  * postcode and the address that goes with it). One row is chosen per page and shared by every
  * field reading the same table.
  */
-export default function TableEditor({ spec, onChange }: Props) {
+export default function TableEditor({ spec, onChange, readOnly }: Props) {
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
   const [pasting, setPasting] = useState<string | null>(null);
   const [pasted, setPasted] = useState('');
   const [target, setTarget] = useState<string>('');
+
+  const locked = readOnly === true;
 
   const tables = spec.tables ?? {};
   const names = Object.keys(tables);
@@ -104,17 +108,18 @@ export default function TableEditor({ spec, onChange }: Props) {
                 {usedBy.length > 0 && ` · used by ${usedBy.join(', ')}`}
               </span>
               <span className="ml-auto flex gap-1.5">
-                <button className={btnCls} onClick={() => { setTarget(tableName); setPasting(tableName); }}>Paste / import CSV</button>
-                <button className={btnCls} disabled={table.columns.length >= LIMITS.maxTableRows}
+                <button className={btnCls} disabled={locked}
+                  onClick={() => { setTarget(tableName); setPasting(tableName); }}>Paste / import CSV</button>
+                <button className={btnCls} disabled={locked || table.columns.length >= LIMITS.maxTableRows}
                   onClick={() => edit(tableName, {
                     columns: [...table.columns, `column${table.columns.length + 1}`],
                     rows: table.rows.map(r => [...r, '']),
                   })}>Add column</button>
-                <button className={btnCls} disabled={table.rows.length >= LIMITS.maxTableRows}
+                <button className={btnCls} disabled={locked || table.rows.length >= LIMITS.maxTableRows}
                   onClick={() => edit(tableName, { ...table, rows: [...table.rows, table.columns.map(() => '')] })}>
                   Add row
                 </button>
-                <button className={btnCls} onClick={() => remove(tableName)}>Delete table</button>
+                <button className={btnCls} disabled={locked} onClick={() => remove(tableName)}>Delete table</button>
               </span>
             </div>
 
@@ -135,6 +140,8 @@ export default function TableEditor({ spec, onChange }: Props) {
             )}
 
             <div className="mt-2 overflow-x-auto">
+              {/* One disabled fieldset rather than a disabled prop on every cell. */}
+              <fieldset disabled={locked} className="contents">
               <table className="w-full border-collapse text-xs">
                 <thead>
                   <tr>
@@ -176,6 +183,7 @@ export default function TableEditor({ spec, onChange }: Props) {
                   ))}
                 </tbody>
               </table>
+              </fieldset>
             </div>
             {table.rows.length === 0 && (
               <p className="mt-1 text-xs text-slate-500">No rows yet, so this table cannot fill anything.</p>
@@ -192,7 +200,7 @@ export default function TableEditor({ spec, onChange }: Props) {
           <button className={btnCls} onClick={() => { setAdding(false); setName(''); }}>Cancel</button>
         </div>
       ) : (
-        <button className={btnCls} onClick={() => setAdding(true)}>Add a table</button>
+        <button className={btnCls} disabled={locked} onClick={() => setAdding(true)}>Add a table</button>
       )}
     </div>
   );
