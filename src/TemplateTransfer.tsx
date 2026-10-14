@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Template } from '@pdfme/common';
 import { getTemplate, saveTemplate } from './templateStore';
+import type { LabelId } from './labels';
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -30,7 +31,7 @@ function parseTemplate(text: string): Template {
  * Moves the saved template between devices as JSON, so a layout designed on desktop can be used on
  * Android. Works with a file picker or copy/paste (a download link is not reliable in every WebView).
  */
-export default function TemplateTransfer({ onImported }: { onImported?: (t: Template) => void }) {
+export default function TemplateTransfer({ label, onImported }: { label: LabelId; onImported?: (t: Template) => void }) {
   const [mode, setMode] = useState<'export' | 'import' | null>(null);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
@@ -42,7 +43,7 @@ export default function TemplateTransfer({ onImported }: { onImported?: (t: Temp
   const openExport = async () => {
     reset(); setBusy(true);
     try {
-      const { template, source } = await getTemplate();
+      const { template, source } = await getTemplate(label);
       setText(JSON.stringify(template, null, 2));
       setMode('export');
       setMessage(`Exporting the ${source} template (the saved one, not unsaved Designer edits).`);
@@ -70,7 +71,7 @@ export default function TemplateTransfer({ onImported }: { onImported?: (t: Temp
     const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'label-template.json';
+    a.download = `label-template-${label}.json`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -92,7 +93,7 @@ export default function TemplateTransfer({ onImported }: { onImported?: (t: Temp
     reset(); setBusy(true);
     try {
       const t = parseTemplate(text);
-      await saveTemplate(t);
+      await saveTemplate(label, t);
       onImported?.(t);
       setMessage('Imported and saved. Printing now uses this template.');
     } catch (e) {

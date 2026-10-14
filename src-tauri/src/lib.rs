@@ -2,6 +2,11 @@ use rand::{seq::SliceRandom, Rng};
 use serde::{Deserialize, Serialize};
 use tauri::Manager;
 
+// Direct network printing (IPP / raw socket) and the saved-printer store. Used by the Android backend.
+mod direct;
+// Bitmap -> ZPL / TSPL / ESC-POS / CPCL / PWG raster encoders, for printers that cannot take a PDF.
+mod raster;
+
 // Platform print backends. Each exposes the same functions; only one is compiled in.
 #[cfg(target_os = "windows")]
 #[path = "print_windows.rs"]
@@ -60,9 +65,81 @@ fn yen(n: u32) -> String {
     }
 }
 
-/// Random data API: one entry per page.
+// Product / location label (190 x 160 mm). Field names match src/templates/product-label.json.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProductLabelData {
+    item_barcode: String,
+    item_code_text: String,
+    issue_date: String,
+    brand_name: String,
+    product_code: String,
+    product_name: String,
+    loc_zone: String,
+    loc_code: String,
+    tracking_barcode: String,
+    tracking_text: String,
+    warehouse: String,
+    operator: String,
+}
+
+// (brand, product name)
+const PRODUCTS: [(&str, &str); 4] = [
+    ("ケラスターセ", "EC専用 SP バンディバレント R 250ml"),
+    ("ミルボン", "EC専用 ディーセス エルジューダ 120ml"),
+    ("資生堂", "EC専用 プロフェッショナル ヘアマスク 200g"),
+    ("ロレアル", "EC専用 セリエ エクスパート 500ml"),
+];
+
+fn generate_product_data(count: usize) -> Vec<ProductLabelData> {
+    let mut rng = rand::thread_rng();
+    (0..count)
+        .map(|_| {
+            let (brand, name) = *PRODUCTS.choose(&mut rng).unwrap();
+            let zone = rng.gen_range(10..60);
+            let tracking = digits(&mut rng, 13);
+            let item_code = format!("100{}", digits(&mut rng, 4));
+            ProductLabelData {
+                item_barcode: item_code.clone(),
+                item_code_text: item_code,
+                issue_date: format!("2610{:02} 再", rng.gen_range(1..26)),
+                brand_name: brand.to_string(),
+                product_code: format!("035{}", digits(&mut rng, 10)),
+                product_name: name.to_string(),
+                loc_zone: format!("{zone}-"),
+                loc_code: format!("{zone}-{}-{}", rng.gen_range(1..10), rng.gen_range(10..100)),
+                tracking_barcode: tracking.clone(),
+                tracking_text: tracking,
+                warehouse: "Chiba・ロジ".to_string(),
+                operator: "SUJON MD SAIDUR".to_string(),
+            }
+        })
+        .collect()
+}
+
+/// Labels the app knows. Keep in sync with `LABELS` in src/labels.ts. The first one is the default.
+const LABEL_IDS: [&str; 2] = ["shipping", "product"];
+
+/// Validates the label id coming from the UI (it ends up in a file name).
+fn label_id(label: &Option<String>) -> Result<&str, String> {
+    let id = label.as_deref().unwrap_or(LABEL_IDS[0]);
+    LABEL_IDS.iter().copied().find(|l| *l == id).ok_or_else(|| format!("unknown label \"{id}\""))
+}
+
+fn to_json_rows<T: Serialize>(rows: Vec<T>) -> Result<Vec<serde_json::Value>, String> {
+    rows.iter().map(|r| serde_json::to_value(r).map_err(|e| e.to_string())).collect()
+}
+
+/// Random data API: one entry per page, shaped for the chosen label.
 #[tauri::command]
-fn generate_random_data(count: usize) -> Vec<LabelData> {
+fn generate_random_data(count: usize, label: Option<String>) -> Result<Vec<serde_json::Value>, String> {
+    match label_id(&label)? {
+        "product" => to_json_rows(generate_product_data(count)),
+        _ => to_json_rows(generate_shipping_data(count)),
+    }
+}
+
+fn generate_shipping_data(count: usize) -> Vec<LabelData> {
     let mut rng = rand::thread_rng();
     (0..count)
         .map(|_| {
@@ -131,6 +208,7 @@ struct Capabilities {
     orientation_select: bool,
     dpi_select: bool,
     printer_list: bool,       // false => show an "Add printer" UI
+    direct_printers: bool,    // user can add network printers that print without a dialog
 }
 
 #[tauri::command]
@@ -139,18 +217,88 @@ fn capabilities() -> Capabilities {
         Capabilities {
             platform: "windows", transport: "sumatra", silent: true,
             paper_select: true, orientation_select: true, dpi_select: true, printer_list: true,
+            direct_printers: false,
         }
     } else if cfg!(target_os = "android") {
         Capabilities {
             platform: "android", transport: "android-dialog", silent: false,
             paper_select: false, orientation_select: false, dpi_select: false, printer_list: true,
+            direct_printers: true,
         }
     } else {
         Capabilities {
             platform: "other", transport: "none", silent: false,
             paper_select: false, orientation_select: false, dpi_select: false, printer_list: false,
+            direct_printers: false,
         }
     }
+}
+
+fn printers_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir.join("printers.json"))
+}
+
+/// Network printers the user added (IPP / raw socket). These print without any dialog.
+#[tauri::command]
+fn list_saved_printers(app: tauri::AppHandle) -> Result<Vec<direct::SavedPrinter>, String> {
+    direct::load_all(&printers_path(&app)?)
+}
+
+/// Adds a network printer, or replaces the one with the same name.
+#[tauri::command]
+fn save_printer(app: tauri::AppHandle, printer: direct::SavedPrinter) -> Result<(), String> {
+    direct::upsert(&printers_path(&app)?, &printer)
+}
+
+#[tauri::command]
+fn delete_printer(app: tauri::AppHandle, name: String) -> Result<(), String> {
+    direct::remove(&printers_path(&app)?, &name)
+}
+
+/// Connects to the printer (IPP: asks for its model, state and supported formats) without printing.
+#[tauri::command]
+async fn test_printer(printer: direct::SavedPrinter) -> Result<direct::TestResult, String> {
+    tauri::async_runtime::spawn_blocking(move || direct::test(&printer))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Looks for printers on the local network (mDNS) for a few seconds. Android only.
+#[tauri::command]
+async fn discover_printers(app: tauri::AppHandle) -> Result<Vec<direct::Discovered>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        #[cfg(target_os = "android")]
+        {
+            platform::discover(&app)
+        }
+        #[cfg(not(target_os = "android"))]
+        {
+            let _ = &app;
+            Err("Finding printers on the network is only available on Android.".to_string())
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Paired Bluetooth devices (`kind` = "bluetooth") or connected USB printers (`kind` = "usb"). Android only.
+#[tauri::command]
+async fn list_devices(app: tauri::AppHandle, kind: String) -> Result<Vec<direct::Device>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        #[cfg(target_os = "android")]
+        {
+            platform::list_devices(&app, &kind)
+        }
+        #[cfg(not(target_os = "android"))]
+        {
+            let _ = (&app, &kind);
+            Err("Bluetooth and USB printers are only available on Android.".to_string())
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -238,16 +386,23 @@ async fn print_pdf_raw(app: tauri::AppHandle, request: tauri::ipc::Request<'_>) 
     run_print(app, opts, bytes.clone()).await
 }
 
-fn template_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+/// One template file per label. The first (default) label keeps the original file name, so a
+/// template saved before labels existed is still picked up.
+fn template_path(app: &tauri::AppHandle, label: &Option<String>) -> Result<std::path::PathBuf, String> {
+    let id = label_id(label)?;
     let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    Ok(dir.join("label-template.json"))
+    Ok(dir.join(if id == LABEL_IDS[0] {
+        "label-template.json".to_string()
+    } else {
+        format!("label-template-{id}.json")
+    }))
 }
 
 /// Saved pdfme template (JSON text), or None if the designer has never saved one.
 #[tauri::command]
-fn load_template(app: tauri::AppHandle) -> Result<Option<String>, String> {
-    let path = template_path(&app)?;
+fn load_template(app: tauri::AppHandle, label: Option<String>) -> Result<Option<String>, String> {
+    let path = template_path(&app, &label)?;
     if !path.exists() {
         return Ok(None);
     }
@@ -256,17 +411,17 @@ fn load_template(app: tauri::AppHandle) -> Result<Option<String>, String> {
 
 /// Saves the designer's template; returns the file path.
 #[tauri::command]
-fn save_template(app: tauri::AppHandle, json: String) -> Result<String, String> {
+fn save_template(app: tauri::AppHandle, label: Option<String>, json: String) -> Result<String, String> {
     serde_json::from_str::<serde_json::Value>(&json).map_err(|e| format!("invalid template JSON: {e}"))?;
-    let path = template_path(&app)?;
+    let path = template_path(&app, &label)?;
     std::fs::write(&path, json).map_err(|e| e.to_string())?;
     Ok(path.display().to_string())
 }
 
 /// Deletes the saved template so the built-in default is used again.
 #[tauri::command]
-fn reset_template(app: tauri::AppHandle) -> Result<(), String> {
-    let path = template_path(&app)?;
+fn reset_template(app: tauri::AppHandle, label: Option<String>) -> Result<(), String> {
+    let path = template_path(&app, &label)?;
     if path.exists() {
         std::fs::remove_file(path).map_err(|e| e.to_string())?;
     }
@@ -285,6 +440,12 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             capabilities,
             list_printers,
+            list_saved_printers,
+            save_printer,
+            delete_printer,
+            test_printer,
+            discover_printers,
+            list_devices,
             generate_random_data,
             printer_resolutions,
             print_pdf,
