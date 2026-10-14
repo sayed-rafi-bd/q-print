@@ -127,25 +127,37 @@ Windows needs the SumatraPDF exe in `src-tauri/binaries` and the font in `public
 ### Windows
 ```powershell
 pnpm install
-pnpm tauri build
+pnpm build:windows      # runs `tauri build`, then moves the installers into releases\
 ```
 Output:
-- `src-tauri\target\release\bundle\nsis\*.exe`: setup installer
-- `src-tauri\target\release\bundle\msi\*.msi`
+- `releases\*-setup.exe`: setup installer
+- `releases\*.msi`
 - `src-tauri\target\release\q-print.exe`: the bare app, with `SumatraPDF.exe` next to it
+
+### Linux
+Build on a Linux machine with the Tauri Linux packages installed (`libwebkit2gtk-4.1-dev build-essential libxdo-dev
+libssl-dev libayatana-appindicator3-dev librsvg2-dev` on Debian/Ubuntu):
+```bash
+pnpm install
+pnpm build:linux      # runs `tauri build`, then moves the .deb, .rpm and AppImage into releases/
+```
+**Printing is not implemented on Linux yet.** The app opens and the Designer works, but the printer list is empty and
+printing returns an error.
 
 ### Android
 Debug APK (signed with the debug key, installs straight away). `--target aarch64` builds only 64-bit phones, which is
 faster; leave it out to build all four architectures:
 ```powershell
-pnpm tauri android build --debug --apk --target aarch64
-& "$env:ANDROID_HOME\platform-tools\adb.exe" install -r src-tauri\gen\android\app\build\outputs\apk\universal\debug\app-universal-debug.apk
+pnpm build:android:debug
+& "$env:ANDROID_HOME\platform-tools\adb.exe" install -r releases\q-print_0.1.0_android-universal-debug.apk
 ```
+The build moves the APK into `releases\` and adds the app name and version to its file name, so use the current version
+in the path.
 
 Release builds:
 ```powershell
-pnpm tauri android build --apk     # APK
-pnpm tauri android build --aab     # Play Store bundle
+pnpm build:android        # APK
+pnpm build:android:aab    # Play Store bundle
 ```
 A release APK is **unsigned** and Android refuses to install it. Create a keystore once and set up signing following the
 Tauri v2 docs section "Android Code Signing" (a `keystore.properties` file plus a `signingConfigs` block in
@@ -155,13 +167,26 @@ keytool -genkey -v -keystore $HOME\upload-keystore.jks -keyalg RSA -keysize 2048
 ```
 Keep the keystore and its passwords out of git and back them up; a lost Play Store signing key can't be replaced.
 
+### Version and release scripts
+| Command                                                  | What it does                                                                                                                                                                               |
+|----------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `pnpm version:major` / `version:minor` / `version:patch` | Bumps the version in `package.json`, `tauri.conf.json`, `Cargo.toml` and `Cargo.lock`. Add `--tag` to also commit and create the tag `vX.Y.Z` (it never pushes), or `--dry-run` to preview |
+| `pnpm version:set 1.2.3`                                 | Sets an exact version (plain `x.y.z`, no `-beta`: the MSI installer rejects it)                                                                                                            |
+| `pnpm releases:collect`                                  | Moves existing build output into `releases\`. The `build:*` scripts already do this. `--copy` keeps the originals                                                                          |
+| `pnpm releases:clean`                                    | Empties `releases\` after asking. `--yes` skips the question, `--dry-run` only lists                                                                                                       |
+| `node scripts/rename-app.mjs --name "New Name"`          | Renames the app (display name, package name, Rust lib). Try `--dry-run` first. `--id` also changes the identifier, which Android treats as a new app                                       |
+
+`releases/` is git-ignored; add `/releases/` to `.gitignore` if it is missing.
+
 ### Both at once on GitHub
 Pushing a version tag runs `.github/workflows/release.yml`, which builds the Windows installers and an Android APK and
 attaches them to a draft release (the APK is unsigned until you add signing secrets):
 ```powershell
-git tag v0.1.0
-git push origin v0.1.0
+pnpm version:minor --tag    # 0.1.0 -> 0.2.0: commits "Release v0.2.0" and creates the tag
+git push origin main        # wait for CI to pass
+git push origin v0.2.0      # starts the release build
 ```
+See `RELEASE.md` for the full checklist.
 `.github/workflows/ci.yml` runs on every push to `main` and on pull requests: frontend build, Rust checks for Windows,
 Linux and Android, and a debug APK build.
 

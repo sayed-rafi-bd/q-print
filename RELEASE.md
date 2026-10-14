@@ -1,6 +1,6 @@
 # Q-Print Release Guide
 
-Oct 12, 2026 · @Rafi
+Oct 14, 2026 · @Rafi
 
 ## Overview
 
@@ -8,6 +8,7 @@ Pushing a version tag such as `v0.2.0` builds the Windows installers and an Andr
 
 - **Windows:** NSIS installer (`.exe`) and `.msi`. SumatraPDF is bundled with the app and does the silent printing.
 - **Android:** one APK that opens the system print dialog (no silent printing on Android). A release APK is unsigned until you set up signing, so it cannot be installed as it comes out of CI.
+- **Linux:** the release workflow does not build it. You can build `.deb`, `.rpm` and AppImage packages by hand on a Linux machine (`pnpm build:linux`), but printing is not implemented on Linux yet: the app opens and the Designer works, but nothing prints.
 - **Trigger:** `.github/workflows/release.yml`, on any tag matching `v*`. Normal pushes and pull requests only run `ci.yml`, which checks the build and compiles a debug APK.
 
 ## Prerequisites
@@ -19,11 +20,16 @@ Releases built by GitHub Actions need nothing on your PC. Building by hand needs
 - Node 24 or newer (`engines` in `package.json`) and pnpm 10.18 (`packageManager`).
 - Rust (stable), installed with rustup.
 - `pnpm install` run once in the project folder.
+- `/releases/` in `.gitignore`. Builds put the finished installers and APKs in that folder (see "Building by hand"), and they must not be committed.
 - `public/fonts/NotoSansJP-Regular.ttf` and `src-tauri/binaries/SumatraPDF-x86_64-pc-windows-msvc.exe` present. Both are committed to the repo.
 
 **Windows build**
 
 - WebView2 and the MSVC build tools (Tauri's Windows prerequisites).
+
+**Linux build** (by hand, on a Linux machine)
+
+- The Tauri Linux packages that CI installs: `libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev` (Debian/Ubuntu names).
 
 **Android build**
 
@@ -43,32 +49,48 @@ rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-andro
 A release is a version bump, a tag and a review of the draft.
 
 1. Confirm the latest `CI` run on `main` is green (frontend build, Rust checks, debug APK).
-2. Set the same new version in `package.json`, `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml`. All three say `0.1.0` today.
-3. Commit and push to `main`.
-4. Tag and push the tag:
+2. Bump the version, commit it and create the tag, all from `main`. Pick major, minor or patch:
 
 ```powershell
-git tag v0.3.1
-git push origin v0.3.1
+pnpm version:minor --tag     # 0.1.0 -> 0.2.0, commits "Release v0.2.0" and creates the tag v0.2.0
+```
+
+The other forms are `pnpm version:major`, `pnpm version:patch` and `pnpm version:set 1.2.3`. Add `--dry-run` to preview without writing. The script updates `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` and the app's entry in `src-tauri/Cargo.lock`, and it never pushes. Versions must be plain `x.y.z`, because the MSI installer does not accept suffixes such as `-beta`. To do it by hand instead, set the same version in those files (run `cargo check` in `src-tauri` to refresh the lock file), commit, and run `git tag v0.2.0`.
+
+3. Push the version commit and wait for `CI` on `main` to pass:
+
+```powershell
+git push origin main
+```
+
+4. Push the tag. This starts the release build:
+
+```powershell
+git push origin v0.2.0
 ```
 
 5. Watch the `Release` run. The Windows job runs first, then the Android job starts (`needs: windows`) so both attach to the same draft release.
-6. Open the draft release "Q-Print v0.3.1" on GitHub and check that it holds the NSIS `.exe`, the `.msi` and the `.apk`.
+6. Open the draft release "Q-Print v0.2.0" on GitHub and check that it holds the NSIS `.exe`, the `.msi` and the `.apk`.
 7. Install each build once on a clean machine or phone, print a test label, then publish the draft.
 
 ## Building by hand
 
 Run these from the project folder, the one containing `package.json` and `src-tauri`. Builds bundle the frontend into the app, so they need no dev server.
 
-| Command                    | Produces                                                                                                | Output folder                                                    |
+| Command                    | Produces                                                                                                | Build output folder                                              |
 |----------------------------|---------------------------------------------------------------------------------------------------------|------------------------------------------------------------------|
 | `pnpm build:windows`       | NSIS installer and MSI                                                                                  | `src-tauri\target\release\bundle\`                               |
+| `pnpm build:linux`         | `.deb`, `.rpm` and AppImage. Run it on a Linux machine; the app cannot print on Linux yet               | `src-tauri/target/release/bundle/`                               |
 | `pnpm build:android:debug` | Debug APK for 64-bit phones (aarch64), signed with the debug key, installs straight away                | `src-tauri\gen\android\app\build\outputs\apk\universal\debug\`   |
 | `pnpm build:android`       | Release APK for all four CPU types, unsigned until signing is set up                                    | `src-tauri\gen\android\app\build\outputs\apk\universal\release\` |
 | `pnpm build:android:aab`   | Play Store bundle                                                                                       | `src-tauri\gen\android\app\build\outputs\bundle\`                |
 | `pnpm dev:android`         | Runs on a connected phone from your PC's dev server. Not a release; the phone must be on the same Wi-Fi | none                                                             |
 
+After each `build:*` script finishes, `scripts/collect-releases.mjs` **moves** the finished files into `releases\` (git-ignored), so the build output folder in the last column is empty afterwards. Desktop installers keep their names. Android files are renamed with the app name and version, for example `q-print_0.2.0_android-universal-release.apk`, because Gradle always calls them `app-universal-release.apk`. Desktop installers are only taken when their name contains the version from `tauri.conf.json`, so leftovers from older builds are ignored.
+
 Other scripts: `pnpm typecheck` (TypeScript only), `pnpm icons` (regenerates app icons from `app-icon.png`) and `pnpm android:init` (creates `src-tauri/gen/android`).
+
+Release helpers: `pnpm version:major`, `version:minor`, `version:patch` and `version:set` (see the checklist), `pnpm releases:collect` (moves existing build output into `releases\`; add `--copy` to keep the originals or `--dry-run` to preview) and `pnpm releases:clean` (empties `releases\` after asking; `--yes` skips the question, `--dry-run` only lists). To rename the app, run `node scripts/rename-app.mjs --name "New Name"` (try `--dry-run` first). It leaves the app identifier alone unless you pass `--id`, because changing the identifier makes Android treat the app as a new app and moves the folder that holds saved printers and the label template.
 
 ## Signing the Android release
 
@@ -90,7 +112,7 @@ storeFile=C:\\Users\\YOU\\upload-keystore.jks
 ```
 
 3. In `src-tauri/gen/android/app/build.gradle.kts`, add `import java.io.FileInputStream` at the top and a `signingConfigs` block inside `android { }` that reads `keystore.properties`. Then point the release build type at it with `signingConfig = signingConfigs.getByName("release")`. Use the exact block from Tauri's "Android Code Signing" page, because the generated file can change between Tauri CLI versions.
-4. Run `pnpm build:android`. The signed APK is in the `universal\release\` folder listed above.
+4. Run `pnpm build:android`. The build moves the signed APK to `releases\q-print_<version>_android-universal-release.apk`.
 
 To sign in CI, store the keystore (base64) and passwords as GitHub secrets and write them out before the build step. That step is not written yet.
 
@@ -100,8 +122,10 @@ For a quick test, install over USB. Turn on USB debugging on the phone and accep
 
 ```powershell
 pnpm build:android:debug
-& "$env:ANDROID_HOME\platform-tools\adb.exe" install -r src-tauri\gen\android\app\build\outputs\apk\universal\debug\app-universal-debug.apk
+& "$env:ANDROID_HOME\platform-tools\adb.exe" install -r releases\q-print_0.1.0_android-universal-debug.apk
 ```
+
+The build moves the debug APK into `releases\` and adds the app name and version to its file name, so use the current version in the path above.
 
 To install without a PC, copy the APK to the phone, tap it and allow "install unknown apps" when asked. A release APK must be signed first (see the signing section).
 
@@ -129,6 +153,7 @@ One bug is open and blocks a trusted Android release: the debug APK shows an err
 | The app shows "The webpage at http://tauri.localhost could not be loaded" on a Pixel 4a, using the APK from `pnpm build:android:debug` | Open. Not caused by the dev server, release minification, cleartext rules or CPU type (the Pixel 4a is 64-bit ARM). A startup crash on the Rust side is the likely cause but is unconfirmed | Capture the `adb logcat` output from the testing section and look for `panicked at` or an exception |
 | Release APK is unsigned, so it cannot be installed                                                                                     | Open                                                                                                                                                                                        | Set up signing (see the signing section), then add the signing step to `release.yml`                |
 | CI and `package.json` changes from this guide (new scripts, `gradlew` fix, release job order) are in `q-print-ci-and-scripts.patch`    | Not merged                                                                                                                                                                                  | Apply the patch, then commit and push                                                               |
+| The Linux build cannot print: `print_other.rs` returns "printing is not implemented on this platform yet"                              | Open. The app starts and the Designer works, but the printer list is empty                                                                                                                  | Add a CUPS backend (`lpstat` and `lp`) and turn on the printer list for Linux in `capabilities()`   |
 
 **Common build errors**
 
