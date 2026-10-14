@@ -7,7 +7,8 @@
  *   node scripts/rename-app.mjs --name "Q-Print" --dry-run
  *
  * Options
- *   --name  <text>  Display name: window title, installer/product name, <title>, Android launcher label. (required)
+ *   --name  <text>  Display name: window title, installer/product name, <title>, Android launcher name (both the app and the
+ *                  main-activity label, which is the one launchers show). (required)
  *   --slug  <text>  Package/crate/exe name: lowercase letters, digits and dashes. Default: derived from --name.
  *   --id    <text>  App identifier, e.g. com.mycompany.qprint. Optional, see the warning below.
  *   --dry-run       Show what would change without writing anything.
@@ -130,7 +131,10 @@ edit(f('README.md'), (t) => {
 
 // Android launcher label, only when the Android project has been generated locally.
 edit(f('src-tauri', 'gen', 'android', 'app', 'src', 'main', 'res', 'values', 'strings.xml'), (t) =>
-  t.replace(/(<string name="app_name">)[^<]*(<\/string>)/, `$1${name}$2`));
+  t.replace(/(<string name="app_name">)[^<]*(<\/string>)/, `$1${name}$2`)
+   // The launcher shows the main activity's label, not the application's, so both must change.
+   // (The generated value may be wrapped in quotes, e.g. "print-test".)
+   .replace(/(<string name="main_activity_title">)[^<]*(<\/string>)/, `$1${name}$2`));
 const androidGen = existsSync(f('src-tauri', 'gen', 'android'));
 
 // ---- report ------------------------------------------------------------------------------------

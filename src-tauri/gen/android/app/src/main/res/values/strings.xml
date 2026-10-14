@@ -1,4 +1,4 @@
 <resources>
     <string name="app_name">Q-Print</string>
-    <string name="main_activity_title">"print-test"</string>
+    <string name="main_activity_title">Q-Print</string>
 </resources>
