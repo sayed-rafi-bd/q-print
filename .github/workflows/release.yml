@@ -7,6 +7,7 @@ on:
 
 jobs:
   windows:
+    if: false   # TEMPORARILY DISABLED: remove this line (and the one in `android`) to re-enable releases
     runs-on: windows-latest
     permissions:
       contents: write
@@ -33,6 +34,7 @@ jobs:
   android:
     # Wait for the Windows job so both attach to the same draft release instead of racing to create two.
     needs: windows
+    if: false   # TEMPORARILY DISABLED (see `windows` above)
     runs-on: ubuntu-latest
     permissions:
       contents: write
