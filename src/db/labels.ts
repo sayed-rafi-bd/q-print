@@ -5,11 +5,15 @@
  * account and never from a value the caller passes as "whose labels do you want", so a label id
  * guessed from another account finds nothing rather than someone else's label.
  *
+ * Rows are keyed by `slug`, not the internal uuid, because the slug is what the rest of the app
+ * has always called a label id — it is what appears in the picker, in the Designer and in exported
+ * file names.
+ *
  * A row is a LabelBundle split across columns, so export/import and the generator engine are
  * unchanged.
  */
 
-import { one, str, strOr, type Db, type Row } from './types';
+import { one, strOr, type Db, type Row } from './types';
 
 /** What the picker needs: enough to draw a row, not the whole template. */
 export type LabelSummary = {
@@ -30,7 +34,6 @@ export type StoredLabel = LabelSummary & {
 
 export type LabelInput = {
   name: string;
-  slug: string;
   /** pdfme template, as JSON text. */
   template: string;
   /** generator spec, as JSON text. */
@@ -58,8 +61,7 @@ export function sizeOfTemplateJson(templateJson: string): { widthMm: number; hei
 }
 
 const toSummary = (row: Row): LabelSummary => {
-  const template = strOr(row, 'template', '');
-  const { widthMm, heightMm } = sizeOfTemplateJson(template);
+  const { widthMm, heightMm } = sizeOfTemplateJson(strOr(row, 'template', ''));
   return {
     id: strOr(row, 'id', ''),
     slug: strOr(row, 'slug', ''),
@@ -87,18 +89,8 @@ export async function listLabels(db: Db, userId: string): Promise<LabelSummary[]
   return rows.map(toSummary);
 }
 
-/** One label, or null. Scoped, so another account's label id finds nothing. */
-export async function getLabel(db: Db, userId: string, id: string): Promise<StoredLabel | null> {
-  const { rows } = await db.execute({
-    sql: `SELECT ${COLUMNS} FROM labels WHERE user_id = ? AND id = ?`,
-    args: [userId, id],
-  });
-  const row = one(rows);
-  return row ? toStored(row) : null;
-}
-
-/** One label by its per-user slug, which is how the registry and the UI address labels. */
-export async function getLabelBySlug(db: Db, userId: string, slug: string): Promise<StoredLabel | null> {
+/** One label, or null. Scoped, so another account's slug finds nothing. */
+export async function getLabel(db: Db, userId: string, slug: string): Promise<StoredLabel | null> {
   const { rows } = await db.execute({
     sql: `SELECT ${COLUMNS} FROM labels WHERE user_id = ? AND slug = ?`,
     args: [userId, slug],
@@ -107,31 +99,36 @@ export async function getLabelBySlug(db: Db, userId: string, slug: string): Prom
   return row ? toStored(row) : null;
 }
 
-/** Stores a new label. Throws if the slug is already taken by this account. */
-export async function createLabel(db: Db, userId: string, label: LabelInput): Promise<StoredLabel> {
+/** Stores a new label. Throws if this account already has one with that slug. */
+export async function createLabel(db: Db, userId: string, slug: string, label: LabelInput): Promise<StoredLabel> {
   const now = new Date().toISOString();
   const id = crypto.randomUUID();
   await db.execute({
     sql: `INSERT INTO labels (id, user_id, name, slug, template, generator, created_at, updated_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    args: [id, userId, label.name, label.slug, label.template, label.generator, now, now],
+    args: [id, userId, label.name, slug, label.template, label.generator, now, now],
   });
-  return { ...toSummary({ id, slug: label.slug, name: label.name, template: label.template, updated_at: now }), template: label.template, generator: label.generator };
+  return {
+    id, slug, name: label.name, updatedAt: now,
+    ...sizeOfTemplateJson(label.template),
+    template: label.template,
+    generator: label.generator,
+  };
 }
 
 /**
- * Replaces a label's contents, or renames it. Scoped by user, so a guess at another account's id
- * changes nothing. Returns false when the id is not this account's.
+ * Replaces a label's contents, or renames it. Scoped by user, so another account's slug changes
+ * nothing. Returns false when the slug is not this account's.
  */
 export async function updateLabel(
   db: Db,
   userId: string,
-  id: string,
+  slug: string,
   patch: Partial<LabelInput>,
 ): Promise<boolean> {
   const sets: string[] = [];
   const args: (string | null)[] = [];
-  for (const column of ['name', 'slug', 'template', 'generator'] as const) {
+  for (const column of ['name', 'template', 'generator'] as const) {
     const value = patch[column];
     if (value !== undefined) {
       sets.push(`${column} = ?`);
@@ -140,20 +137,20 @@ export async function updateLabel(
   }
   if (sets.length === 0) return false;
   sets.push('updated_at = ?');
-  args.push(new Date().toISOString(), userId, id);
+  args.push(new Date().toISOString(), userId, slug);
 
   const { rows } = await db.execute({
-    sql: `UPDATE labels SET ${sets.join(', ')} WHERE user_id = ? AND id = ? RETURNING id`,
+    sql: `UPDATE labels SET ${sets.join(', ')} WHERE user_id = ? AND slug = ? RETURNING id`,
     args,
   });
   return rows.length > 0;
 }
 
-/** Removes a label. Returns false when the id is not this account's. */
-export async function deleteLabel(db: Db, userId: string, id: string): Promise<boolean> {
+/** Removes a label. Returns false when the slug is not this account's. */
+export async function deleteLabel(db: Db, userId: string, slug: string): Promise<boolean> {
   const { rows } = await db.execute({
-    sql: 'DELETE FROM labels WHERE user_id = ? AND id = ? RETURNING id',
-    args: [userId, id],
+    sql: 'DELETE FROM labels WHERE user_id = ? AND slug = ? RETURNING id',
+    args: [userId, slug],
   });
   return rows.length > 0;
 }
@@ -167,8 +164,8 @@ export async function countLabels(db: Db, userId: string): Promise<number> {
   return Number(rows[0]?.n ?? 0);
 }
 
-/** Every label belonging to an account, for the one-time import from files on disk. */
+/** The slugs this account already has, so an import can skip names that would collide. */
 export async function listSlugs(db: Db, userId: string): Promise<string[]> {
   const { rows } = await db.execute({ sql: 'SELECT slug FROM labels WHERE user_id = ?', args: [userId] });
-  return rows.map(r => str(r, 'slug') ?? '');
+  return rows.map(r => strOr(r, 'slug', ''));
 }

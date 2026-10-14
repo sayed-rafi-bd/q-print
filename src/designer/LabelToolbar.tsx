@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import NewLabelDialog from './NewLabelDialog';
 import { createLabel, deleteLabel, renameLabel, type LabelId, type LabelMeta, type NewLabel } from '../labels';
+import { useAuth } from '../auth/AuthProvider';
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -14,8 +15,6 @@ const selectCls =
 
 type Props = {
   labels: LabelMeta[];
-  /** Files in `labels/` that could not be read, so they can be cleaned up. */
-  broken: { id: string; reason: string }[];
   value: LabelId;
   disabled?: boolean;
   /** Switching to another label. The page asks about unsaved changes first. */
@@ -31,7 +30,8 @@ type Props = {
  * Built-in labels keep their names and their files, so they can be copied and reset but not renamed
  * or deleted. Everything else is the user's own.
  */
-export default function LabelToolbar({ labels, broken, value, disabled, onPick, onChanged, onError }: Props) {
+export default function LabelToolbar({ labels, value, disabled, onPick, onChanged, onError }: Props) {
+  const { user } = useAuth();
   const [creating, setCreating] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [newName, setNewName] = useState('');
@@ -53,14 +53,16 @@ export default function LabelToolbar({ labels, broken, value, disabled, onPick, 
   };
 
   const onCreate = async (label: NewLabel): Promise<void> => {
-    const created = await createLabel(label);
+    if (!user) throw new Error('You are not signed in.');
+    const created = await createLabel(user, label);
     setCreating(false);
     onChanged(created.id);
   };
 
   const onDuplicate = () =>
     run(async () => {
-      const copy = await createLabel({
+      if (!user) throw new Error('You are not signed in.');
+      const copy = await createLabel(user, {
         name: `${current!.name} copy`,
         widthMm: current!.widthMm,
         heightMm: current!.heightMm,
@@ -73,8 +75,9 @@ export default function LabelToolbar({ labels, broken, value, disabled, onPick, 
     e.preventDefault();
     const name = newName.trim();
     if (!name || !current) return;
+    if (!user) return;
     await run(async () => {
-      await renameLabel(current.id, name);
+      await renameLabel(user, current.id, name);
       setRenaming(false);
       onChanged();
     });
@@ -82,9 +85,10 @@ export default function LabelToolbar({ labels, broken, value, disabled, onPick, 
 
   const onDelete = () =>
     run(async () => {
+      if (!user) throw new Error('You are not signed in.');
       const id = current!.id;
       setConfirmDelete(false);
-      await deleteLabel(id);
+      await deleteLabel(user, id);
       onChanged();
     });
 
@@ -140,27 +144,6 @@ export default function LabelToolbar({ labels, broken, value, disabled, onPick, 
         <NewLabelDialog labels={labels} onCreate={onCreate} onClose={() => setCreating(false)} />
       )}
 
-      {broken.length > 0 && (
-        <div className="tab-enter space-y-1 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-          <p className="font-medium">
-            {broken.length} label file{broken.length > 1 ? 's' : ''} could not be read. They are not printable.
-          </p>
-          <ul className="space-y-1">
-            {broken.map(b => (
-              <li key={b.id || b.reason} className="flex flex-wrap items-center gap-2">
-                <code className="rounded bg-white/70 px-1.5 py-0.5">{b.id || '(unnamed)'}</code>
-                <span className="break-words">{b.reason}</span>
-                {b.id && (
-                  <button className="underline" disabled={busy}
-                    onClick={() => run(async () => { await deleteLabel(b.id); onChanged(); })}>
-                    delete it
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
     </div>
   );
 }

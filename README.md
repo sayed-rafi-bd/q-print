@@ -223,6 +223,39 @@ any other field prints its own text.
 
 On Android phones the Designer tab is hidden because the editor needs a large screen; tablets show it.
 
+## Signing in, and where labels live
+
+The app asks for a username and password before it shows anything. There is no server: accounts and
+labels live in a [Turso](https://turso.app) database, reached over HTTPS from the app, so there is
+nothing to host or keep running.
+
+To set this up:
+
+1. Create a database at turso.app and create a **write** token.
+2. Copy `.env.example` to `.env` and fill in `VITE_TURSO_URL` and `VITE_TURSO_TOKEN`.
+3. Apply the schema once, by pasting `db/schema.sql` into the Turso console, or:
+   `turso db execute <your-db> < db/schema.sql`
+4. Restart the dev server — the URL and token are read at build time.
+
+Each account sees only its own labels. A built-in label's layout is still a file on the device
+(`label-template-product.json`) and its generator is still in the app; everything a user creates is
+one row in the database, scoped to their account. Labels saved by an earlier version, as files in
+`app_data_dir()/labels`, are offered for copying onto the account the first time that account signs
+in — once, and never again if the user deletes what was imported.
+
+> **This is a test build.** The database token is compiled into the frontend bundle, so anyone who
+> opens the app can read it and query the whole database. The sign-in screen decides which labels
+> the app *shows*; it is not a security boundary. Passwords are salted and hashed so they are not
+> stored in the clear, and that is the whole of the protection. Before this goes anywhere real, put
+> a server in front of it. See `AUTH_AND_DATABASE_PLAN.md` §7.
+
+### Commands
+
+| Command | Does |
+| ------- | ---- |
+| `pnpm test` | Unit tests, including the SQL run against a local SQLite file. No credentials needed. |
+| `pnpm test:db` | The same flows against the **real** Turso database. Needs `.env`; creates and removes a throwaway account. |
+
 ## Labels
 
 The app ships with one label and lets you add your own, all chosen with the **Label** `<select>`:
@@ -232,11 +265,10 @@ The app ships with one label and lets you add your own, all chosen with the **La
 | Product label          | `product`  | 190 x 160 mm | `src/templates/product-label.json`   |
 
 A built-in keeps its saved template next to the bundled one (`label-template-product.json` for `product`)
-and has its own *Reset to default*. A label you create
-yourself is a single file in `app_data_dir()/labels/<id>.json` holding its layout **and** the rule
-that fills it, so the two can never drift apart. The page size comes from the template, so a label
-resized in the Designer reports the size it will actually print at. The last label used is
-remembered; if it has since been deleted the app falls back to the default.
+and has its own *Reset to default*. A label you create yourself is one row in the database, holding
+its layout **and** the rule that fills it, so the two can never drift apart. The page size comes from
+the template, so a label resized in the Designer reports the size it will actually print at. The last
+label used is remembered per account, so two people on one device do not fight over it.
 
 Set the printer driver's default paper to the label's page size (see the hint under *Paper size*).
 

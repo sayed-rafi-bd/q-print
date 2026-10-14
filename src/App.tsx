@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import PrintPage from './PrintPage';
 import DesignerPage from './DesignerPage';
 import { useCapabilities } from './capabilities';
+import { AuthProvider, useAuth } from './auth/AuthProvider';
+import LoginPage from './auth/LoginPage';
 
 type Tab = 'print' | 'designer';
 
@@ -18,7 +20,8 @@ function useViewportWidth() {
   return w;
 }
 
-export default function App() {
+function Workspace() {
+  const { status, user } = useAuth();
   const { platform } = useCapabilities();
   const width = useViewportWidth();
   const designerAvailable = platform !== 'android' || width >= DESIGNER_MIN_WIDTH;
@@ -30,6 +33,18 @@ export default function App() {
     (tab === t
       ? 'bg-indigo-500 text-white shadow-md shadow-indigo-300/60'
       : 'text-slate-500 hover:bg-indigo-100 hover:text-indigo-700');
+
+  // Restoring the previous sign-in is the one thing that happens before there is a user to show.
+  if (status === 'loading') {
+    return (
+      <div className="flex h-dvh items-center justify-center text-sm text-slate-500">
+        <span className="text-4xl" style={{ animation: 'mascot-bounce 1.2s ease-in-out infinite' }} aria-hidden="true">🔐</span>
+        Signing in…
+      </div>
+    );
+  }
+
+  if (status === 'signed-out' || !user) return <LoginPage />;
 
   return (
     // h-dvh (not h-screen) so the bottom is not clipped by Android's browser/navigation bars;
@@ -48,6 +63,9 @@ export default function App() {
         {designerAvailable && (
           <button className={tabCls('designer')} onClick={() => setChosen('designer')}>🎨 Designer</button>
         )}
+        <span className="ml-auto text-xs text-slate-500">
+          Signed in as <span className="font-semibold text-slate-700">{user.username}</span>
+        </span>
       </nav>
       {/* Both pages stay mounted so unsaved designer edits survive switching tabs. */}
       <div className="relative z-10 min-h-0 flex-1">
@@ -61,5 +79,13 @@ export default function App() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <Workspace />
+    </AuthProvider>
   );
 }

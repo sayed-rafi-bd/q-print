@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 use tauri::Manager;
 
-// Storage for user-created labels (template + generator in one file).
-mod labels;
+// Reading label files from before labels moved into the database, for the one-time import.
+mod legacy;
 // Direct network printing (IPP / raw socket) and the saved-printer store. Used by the Android backend.
 mod direct;
 // Bitmap -> ZPL / TSPL / ESC-POS / CPCL / PWG raster encoders, for printers that cannot take a PDF.
@@ -244,12 +244,13 @@ async fn print_pdf_raw(app: tauri::AppHandle, request: tauri::ipc::Request<'_>) 
 }
 
 /// Labels the app ships with. Keep in sync with `BUILTINS` in src/builtinLabels.ts. The first one
-/// is the default. These keep their own `label-template*.json` override files; user-created labels
-/// live in `labels/` and are handled by `mod labels`.
+/// is the default. Only the built-ins have a layout file on this device; everything a user creates
+/// lives in the database and never touches the filesystem.
 const BUILTIN_IDS: [&str; 1] = ["product"];
 
-/// Validates the built-in label id coming from the UI. Only the built-ins have a template override
-/// file, so anything else is rejected here; custom labels go through `labels::validate_id`.
+/// Validates the built-in label id coming from the UI. Only the built-ins have a layout override
+/// file, so anything else is rejected here; a user's own labels are addressed by slug in the
+/// database, where they are not a file name at all.
 fn builtin_id(label: &Option<String>) -> Result<&str, String> {
     let id = label.as_deref().unwrap_or(BUILTIN_IDS[0]);
     BUILTIN_IDS.iter().copied().find(|l| *l == id).ok_or_else(|| format!("unknown label \"{id}\""))
@@ -311,10 +312,7 @@ pub fn run() {
             test_printer,
             discover_printers,
             list_devices,
-            labels::list_custom_labels,
-            labels::load_custom_label,
-            labels::save_custom_label,
-            labels::delete_custom_label,
+            legacy::read_legacy_labels,
             printer_resolutions,
             print_pdf,
             print_pdf_raw,

@@ -8,6 +8,8 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig({
   base: './',
   plugins: [react(), tailwindcss()],
+  // `src/test/setup.ts` gives the node test environment the `localStorage` the app uses.
+  test: { setupFiles: ['./src/test/setup.ts'] },
   clearScreen: false,
   server: {
     port: 1420,

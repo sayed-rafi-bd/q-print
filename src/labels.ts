@@ -1,20 +1,25 @@
-import { invoke } from '@tauri-apps/api/core';
 import type { Template } from '@pdfme/common';
-import { BUILTINS, DEFAULT_LABEL, builtin, isBuiltin } from './builtinLabels';
-import { templateSizeMm } from './bundle';
-import { scaffoldSpec } from './generator/scaffold';
+import { BUILTINS, builtin, isBuiltin } from './builtinLabels';
+import { isBundle, makeBundle, templateSizeMm } from './bundle';
 import { builtinSpec } from './generator/builtins';
-import { isValidId, slugify } from './labelId';
+import { scaffoldSpec } from './generator/scaffold';
+import type { GeneratorSpec, LabelBundle } from './generator/spec';
 import { sampleSpec, sampleTemplate } from './sampleLabel';
-import { loadBundle, saveBundle } from './templateStore';
-import type { GeneratorSpec } from './generator/spec';
+import { isValidId, slugify } from './labelId';
+import { getDb } from './db/client';
+import * as store from './db/labels';
+import type { User } from './db/users';
+import {
+  defaultLabelGenerator, defaultLabelTemplate, loadBuiltinTemplate,
+  saveBuiltinTemplate, withFont,
+} from './templateStore';
 
 /**
- * Every label the app can print: the two built-ins plus whatever the user has created.
+ * Every label the signed-in account can print: the built-ins, plus the labels of their own.
  *
- * A built-in keeps a saved template override next to its bundled one; a custom label is a single
- * file holding its template and its generator together. Adding a label is now a user action, so
- * this is a registry read from disk rather than a list compiled into the app.
+ * A built-in keeps its layout in a file on this device and its generator in the app, so it can be
+ * printed but not edited. A label the user created lives in the database, scoped to their account,
+ * which is what lets two people use the same build without seeing each other's work.
  */
 export type LabelId = string;
 
@@ -27,90 +32,104 @@ export type LabelMeta = {
   heightMm: number;
 };
 
-/** A file in `labels/` that is not a usable label, so the UI can offer to delete it. */
-export type BrokenLabelFile = { id: string; reason: string };
-
-/** What `list_custom_labels` sends back; one line per file. */
-type LabelFileSummary = {
-  id: string;
-  name: string;
-  widthMm: number | null;
-  heightMm: number | null;
+/** A label's layout together with the generator that fills it. */
+export type LabelContent = {
+  template: Template;
+  source: 'custom' | 'default' | 'custom label';
+  generator: GeneratorSpec;
 };
 
-const FALLBACK_SIZE = { widthMm: 100, heightMm: 50 };
-
-export type LabelRegistry = {
-  labels: LabelMeta[];
-  broken: BrokenLabelFile[];
-};
-
-const metaFrom = (id: string, name: string, size: { widthMm: number; heightMm: number } | null): LabelMeta => ({
+const metaFrom = (id: LabelId, name: string, size: { widthMm: number; heightMm: number } | null): LabelMeta => ({
   id,
   name,
   builtin: isBuiltin(id),
-  ...(size ?? FALLBACK_SIZE),
+  ...(size ?? { widthMm: 100, heightMm: 50 }),
 });
-
-/**
- * The built-ins and the user's own labels, in the order they are offered.
- *
- * A built-in's size is read from the template that would actually print, so a label resized in the
- * Designer shows the right size rather than the one it shipped with.
- */
-export async function listLabels(): Promise<LabelRegistry> {
-  const custom = await invoke<{ labels: LabelFileSummary[]; broken: BrokenLabelFile[] }>('list_custom_labels');
-
-  const builtins: LabelMeta[] = BUILTINS.map(b => {
-    // Only the size is needed here; the Designer and the print path load the template themselves.
-    const size = templateSizeMm(b.defaultTemplate);
-    return metaFrom(b.id, b.name, size);
-  });
-
-  const customs: LabelMeta[] = custom.labels.map(c =>
-    metaFrom(
-      c.id,
-      c.name,
-      c.widthMm && c.heightMm ? { widthMm: c.widthMm, heightMm: c.heightMm } : null,
-    ),
-  );
-
-  return { labels: [...builtins, ...customs], broken: custom.broken };
-}
-
-/**
- * The label to fall back to: the one chosen last time, the default if that has been deleted, and
- * null if the registry is empty.
- */
-export async function resolveLabel(id: LabelId): Promise<LabelMeta | null> {
-  const { labels } = await listLabels();
-  return labels.find(l => l.id === id) ?? labels.find(l => l.id === DEFAULT_LABEL) ?? labels[0] ?? null;
-}
-
-/** Checks an id against the rule the backend enforces, so the UI can fail before writing. */
-export { isValidId, slugify };
 
 /** Where a new label's layout and rules come from. */
 export type LabelSource =
-  /** An empty page of the requested size. */
   | { kind: 'blank' }
-  /** The bundled sample, so there is something printable to start from. */
   | { kind: 'sample' }
-  /** A copy of an existing label: its layout and its rules. */
   | { kind: 'copy'; id: LabelId };
 
 export type NewLabel = {
-  /** Shown in the picker. */
   name: string;
   widthMm: number;
   heightMm: number;
   from: LabelSource;
 };
 
+/** Checks an id against the rule the rest of the app assumes. */
+export { isValidId, slugify };
+
+/** The built-in labels, which live in the app rather than in anybody's account. */
+export const builtinLabels = (): LabelMeta[] =>
+  BUILTINS.map(b => metaFrom(b.id, b.name, templateSizeMm(b.defaultTemplate)));
+
+/** The built-ins plus the signed-in account's own labels. */
+export async function listLabels(user: User): Promise<LabelMeta[]> {
+  const rows = await store.listLabels(getDb(), user.id);
+  return [
+    ...builtinLabels(),
+    ...rows.map(r => metaFrom(r.slug, r.name, { widthMm: r.widthMm, heightMm: r.heightMm })),
+  ];
+}
+
+/** The label to open: the one asked for, else the built-in default, else whatever exists. */
+export async function resolveLabel(user: User, id: LabelId): Promise<LabelMeta | null> {
+  const labels = await listLabels(user);
+  const first = labels[0] ?? null;
+  return labels.find(l => l.id === id) ?? first;
+}
+
+/**
+ * Everything needed to print a label: the layout in use and the generator that fills it.
+ *
+ * Built-in labels are assembled from the app and this device; everything else is one database row,
+ * so the layout and the generator can never drift apart.
+ */
+export async function loadLabel(user: User, label: LabelId): Promise<LabelContent> {
+  if (isBuiltin(label)) {
+    const { template, source } = await loadBuiltinTemplate(label);
+    return { template, source, generator: defaultLabelGenerator(label) };
+  }
+  const row = await store.getLabel(getDb(), user.id, label);
+  if (!row) throw new Error(`There is no label called “${label}” on this account.`);
+  return {
+    template: withFont(JSON.parse(row.template) as Template),
+    source: 'custom label',
+    generator: JSON.parse(row.generator) as GeneratorSpec,
+  };
+}
+
+/**
+ * Saves a label's layout and rules together.
+ *
+ * For a built-in only the layout is stored; its rules ship with the app and the Data tab is
+ * read-only, so there is nothing to save for them.
+ */
+export async function saveLabel(
+  user: User,
+  label: LabelId,
+  name: string,
+  template: Template,
+  generator: GeneratorSpec,
+): Promise<void> {
+  if (isBuiltin(label)) {
+    await saveBuiltinTemplate(label, template);
+    return;
+  }
+  const db = getDb();
+  const input = { name, template: JSON.stringify(template), generator: JSON.stringify(generator) };
+  if (!(await store.updateLabel(db, user.id, label, input))) {
+    await store.createLabel(db, user.id, label, input);
+  }
+}
+
 /** Creates a label and saves it, ready to open in the Designer. */
-export async function createLabel({ name, widthMm, heightMm, from }: NewLabel): Promise<LabelMeta> {
-  const { labels } = await listLabels();
-  const id = slugify(name, labels.map(l => l.id));
+export async function createLabel(user: User, { name, widthMm, heightMm, from }: NewLabel): Promise<LabelMeta> {
+  const existing = await listLabels(user);
+  const id = slugify(name, existing.map(l => l.id));
   if (!isValidId(id)) throw new Error(`“${name}” cannot be turned into a usable label id.`);
 
   let template: Template;
@@ -122,25 +141,19 @@ export async function createLabel({ name, widthMm, heightMm, from }: NewLabel): 
       break;
 
     case 'copy': {
-      const source = builtin(from.id);
-      if (source) {
-        template = structuredClone(source.defaultTemplate);
+      if (isBuiltin(from.id)) {
+        template = structuredClone(builtin(from.id)!.defaultTemplate);
         generator = builtinSpec(from.id);
-      } else if (labels.some(l => l.id === from.id)) {
-        const bundle = await loadBundle(from.id);
-        template = structuredClone(bundle.template as Template);
-        generator = structuredClone(bundle.generator);
       } else {
-        throw new Error(`There is no label called “${from.id}” to copy.`);
+        const content = await loadLabel(user, from.id);
+        template = structuredClone(content.template);
+        generator = structuredClone(content.generator);
       }
       break;
     }
 
     default:
-      template = {
-        basePdf: { width: widthMm, height: heightMm, padding: [0, 0, 0, 0] },
-        schemas: [[]],
-      } as unknown as Template;
+      template = { basePdf: { width: widthMm, height: heightMm, padding: [0, 0, 0, 0] }, schemas: [[]] } as unknown as Template;
       generator = { version: 1, fields: {} };
       break;
   }
@@ -148,36 +161,79 @@ export async function createLabel({ name, widthMm, heightMm, from }: NewLabel): 
   // The copy gets the size the user asked for, not the one it was copied from.
   template.basePdf = { width: widthMm, height: heightMm } as Template['basePdf'];
   generator = scaffoldSpec(template, generator);
-  await saveBundle(id, name.trim() || id, template, generator);
+
+  await store.createLabel(getDb(), user.id, id, {
+    name: name.trim() || id,
+    template: JSON.stringify(template),
+    generator: JSON.stringify(generator),
+  });
   return metaFrom(id, name.trim() || id, { widthMm, heightMm });
 }
 
-/** Changes only the display name; the id stays the same so the file does not move. */
-export async function renameLabel(id: LabelId, name: string): Promise<void> {
-  if (isBuiltin(id)) throw new Error('A built-in label cannot be renamed.');
+/**
+ * Adds a label under a slug that already exists on disk, which is what the one-time import needs.
+ *
+ * Returns false when the account already has that slug, so an import can never overwrite or
+ * duplicate work that is already in the database.
+ */
+export async function importLabel(
+  user: User,
+  slug: LabelId,
+  name: string,
+  template: Template,
+  generator: GeneratorSpec,
+): Promise<boolean> {
+  if (!isValidId(slug)) return false;
+  if (await store.getLabel(getDb(), user.id, slug)) return false;
+  await store.createLabel(getDb(), user.id, slug, {
+    name,
+    template: JSON.stringify(template),
+    generator: JSON.stringify(generator),
+  });
+  return true;
+}
+
+/** Changes only the display name; the id stays the same so nothing is rewritten. */
+export async function renameLabel(user: User, label: LabelId, name: string): Promise<void> {
+  if (isBuiltin(label)) throw new Error('A built-in label cannot be renamed.');
   const trimmed = name.trim();
   if (!trimmed) throw new Error('A label needs a name.');
-  const bundle = await loadBundle(id);
-  await saveBundle(id, trimmed, bundle.template as Template, bundle.generator);
-}
-
-/** Removes a custom label. Built-ins cannot be deleted, only reset. */
-export async function deleteLabel(id: LabelId): Promise<void> {
-  if (isBuiltin(id)) throw new Error('A built-in label cannot be deleted. Use "Reset to default" instead.');
-  await invoke<void>('delete_custom_label', { id });
-}
-
-const STORAGE_KEY = 'q-print.label';
-
-/** The label chosen last time, or null when nothing valid is remembered. */
-export function loadLastLabel(): LabelId | null {
-  try {
-    return localStorage.getItem(STORAGE_KEY);
-  } catch {
-    return null; // storage unavailable: not critical
+  if (!(await store.updateLabel(getDb(), user.id, label, { name: trimmed }))) {
+    throw new Error(`There is no label called “${label}” on this account.`);
   }
 }
 
-export function rememberLabel(id: LabelId) {
-  try { localStorage.setItem(STORAGE_KEY, id); } catch { /* storage unavailable: not critical */ }
+/** Removes one of the signed-in account's labels. Built-ins cannot be deleted, only reset. */
+export async function deleteLabel(user: User, label: LabelId): Promise<void> {
+  if (isBuiltin(label)) throw new Error('A built-in label cannot be deleted. Use "Reset to default" instead.');
+  if (!(await store.deleteLabel(getDb(), user.id, label))) {
+    throw new Error(`There is no label called “${label}” on this account.`);
+  }
 }
+
+// ---------------------------------------------------------------------------------------------
+// Remembering which label was last used. Keyed by account so two people on one device do not
+// fight over it.
+// ---------------------------------------------------------------------------------------------
+
+const lastKey = (user: User) => `q-print.label.${user.id}`;
+
+export function loadLastLabel(user: User): LabelId | null {
+  try { return localStorage.getItem(lastKey(user)); } catch { return null; }
+}
+
+export function rememberLabel(user: User, label: LabelId) {
+  try { localStorage.setItem(lastKey(user), label); } catch { /* not critical */ }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Export / import
+// ---------------------------------------------------------------------------------------------
+
+/** The whole label as a file: its layout and the generator that fills it. */
+export const exportBundle = async (user: User, label: LabelId, name: string): Promise<LabelBundle> => {
+  const { template, generator } = await loadLabel(user, label);
+  return makeBundle(name, template, generator);
+};
+
+export { isBundle };

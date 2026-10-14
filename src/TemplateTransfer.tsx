@@ -2,9 +2,10 @@ import { useState } from 'react';
 import type { Template } from '@pdfme/common';
 import { bundleJson, makeBundle, parseBundle } from './bundle';
 import { isBuiltin } from './builtinLabels';
-import { loadLabel, saveBundle, saveBuiltinTemplate, type LabelId } from './templateStore';
+import { saveBuiltinTemplate } from './templateStore';
 import { scaffoldSpec } from './generator/scaffold';
-import { createLabel, type LabelMeta } from './labels';
+import { createLabel, loadLabel, saveLabel, type LabelId } from './labels';
+import { useAuth } from './auth/AuthProvider';
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -28,6 +29,7 @@ export default function TemplateTransfer({ label, onImported }: {
   label: LabelId;
   onImported?: (t: Template) => void;
 }) {
+  const { user } = useAuth();
   const [mode, setMode] = useState<'export' | 'import' | null>(null);
   const [text, setText] = useState('');
   const [fileName, setFileName] = useState(`label-${label}.json`);
@@ -40,7 +42,8 @@ export default function TemplateTransfer({ label, onImported }: {
   const openExport = async () => {
     reset(); setBusy(true);
     try {
-      const { template, source, generator } = await loadLabel(label);
+      if (!user) throw new Error('You are not signed in.');
+      const { template, source, generator } = await loadLabel(user, label);
       // Export what is saved, not unsaved Designer edits.
       setText(bundleJson(makeBundle(label, template, generator)));
       setFileName(`label-${label}.json`);
@@ -100,13 +103,15 @@ export default function TemplateTransfer({ label, onImported }: {
         const template = parsed.bundle.template as Template;
         const generator = scaffoldSpec(template, parsed.bundle.generator);
         const size = (template.basePdf as { width?: number; height?: number }) ?? {};
-        const created = await createLabel({
+        if (!user) throw new Error('You are not signed in.');
+        const created = await createLabel(user, {
           name,
           widthMm: Number(size.width) || 100,
           heightMm: Number(size.height) || 50,
           from: { kind: 'blank' },
         });
-        await saveBundle(created.id, name, template, generator);
+        // createLabel starts from blank, so write the imported layout and rules over the top.
+        await saveLabel(user, created.id, name, template, generator);
         setMode(null);
         setMessage(`Imported as a new label, “${name}”. Find it in the label list above.`);
         onImported?.(template);
@@ -115,12 +120,13 @@ export default function TemplateTransfer({ label, onImported }: {
 
       // A bare template from an older version: replace the selected label's layout and keep its
       // generator, so the fields it already fills still do.
+      if (!user) throw new Error('You are not signed in.');
       const template = parsed.template!;
       if (isBuiltin(label)) {
         await saveBuiltinTemplate(label, template);
       } else {
-        const { generator } = await loadLabel(label);
-        await saveBundle(label, label, template, scaffoldSpec(template, generator));
+        const { generator } = await loadLabel(user, label);
+        await saveLabel(user, label, label, template, scaffoldSpec(template, generator));
       }
       setMode(null);
       setMessage('Imported the template. Printing now uses this layout, with the label’s existing data.');

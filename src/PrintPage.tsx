@@ -6,6 +6,7 @@ import {
 import { useCapabilities } from './capabilities';
 import TemplateTransfer from './TemplateTransfer';
 import { listLabels, loadLastLabel, rememberLabel, resolveLabel, type LabelId, type LabelMeta } from './labels';
+import { useAuth } from './auth/AuthProvider';
 import PrintersPanel from './PrintersPanel';
 import { Confetti, Mascot } from './Mascot';
 
@@ -84,6 +85,7 @@ function GroupTitle({ title, hint }: { title: string; hint: React.ReactNode }) {
 }
 
 export default function PrintPage() {
+  const { user } = useAuth();
   const caps = useCapabilities();
   const [labels, setLabels] = useState<LabelMeta[]>([]);
   const [labelsError, setLabelsError] = useState('');
@@ -133,29 +135,26 @@ export default function PrintPage() {
 
   // The label list is read from disk, so it changes when a label is added or removed elsewhere.
   useEffect(() => {
+    if (!user) return;
     let stale = false;
     (async () => {
       try {
-        const registry = await listLabels();
+        const registry = await listLabels(user);
         if (stale) return;
-        setLabels(registry.labels);
+        setLabels(registry);
         // The label remembered last time, unless it has since been deleted.
-        const wanted = loadLastLabel();
-        const target = registry.labels.find(l => l.id === wanted) ?? await resolveLabel(wanted ?? '');
-        if (target) { setLabelId(target.id); rememberLabel(target.id); }
-        setLabelsError(
-          registry.broken.length > 0
-            ? `${registry.broken.length} label file(s) in the label folder could not be read; open the Designer to remove them.`
-            : '',
-        );
+        const wanted = loadLastLabel(user);
+        const target = registry.find(l => l.id === wanted) ?? await resolveLabel(user, wanted ?? '');
+        if (target) { setLabelId(target.id); rememberLabel(user, target.id); }
+        setLabelsError('');
       } catch (e) {
-        if (!stale) setLabelsError(`Could not read the label list: ${errMsg(e)}`);
+        if (!stale) setLabelsError(`Could not read your labels: ${errMsg(e)}`);
       } finally {
         if (!stale) setLabelsReady(true);
       }
     })();
     return () => { stale = true; };
-  }, []);
+  }, [user]);
 
   // Ask the driver which resolutions it supports whenever the printer changes.
   useEffect(() => {
@@ -169,10 +168,10 @@ export default function PrintPage() {
   }, [printer, caps.dpiSelect]);
 
   const onPrint = async () => {
-    if (!label) return; // nothing selected yet; the button is disabled until there is one
+    if (!label || !user) return; // nothing selected yet; the button is disabled until there is one
     setBusy(true); setError(''); setResult(null);
     try {
-      const { timings, report, templateSource } = await printLabels({ label: label.id, printer, paper, orientation, rotate, margins, dpi, pages });
+      const { timings, report, templateSource } = await printLabels({ user, label: label.id, printer, paper, orientation, rotate, margins, dpi, pages });
       setResult({ label: label.name, pages, printer, t: timings, report, source: templateSource, silent });
       setCelebrate(n => n + 1);
     } catch (e) {
@@ -220,7 +219,12 @@ export default function PrintPage() {
         <Field label="Label" htmlFor="label" hint={`Page size ${sizeText}. Each label keeps its own saved template.`}>
           <select id="label" className={inputCls + ' cursor-pointer disabled:cursor-not-allowed'} value={labelId}
                   disabled={busy || labels.length === 0}
-                  onChange={e => { const id = e.target.value as LabelId; setLabelId(id); rememberLabel(id); setResult(null); }}>
+                  onChange={e => {
+                    const id = e.target.value as LabelId;
+                    setLabelId(id);
+                    if (user) rememberLabel(user, id);
+                    setResult(null);
+                  }}>
             {labels.map(l => <option key={l.id} value={l.id}>{l.name} — {l.widthMm} × {l.heightMm} mm</option>)}
           </select>
         </Field>

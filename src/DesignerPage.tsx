@@ -6,16 +6,15 @@ import { loadFont } from './printApi';
 import { DEFAULT_LABEL } from './builtinLabels';
 import TemplateTransfer from './TemplateTransfer';
 import LabelToolbar from './designer/LabelToolbar';
+import { useAuth } from './auth/AuthProvider';
 import DataEditor from './designer/DataEditor';
 import PreviewDialog from './designer/PreviewDialog';
 import {
-  listLabels, loadLastLabel, rememberLabel, resolveLabel,
-  type BrokenLabelFile, type LabelId, type LabelMeta,
+  listLabels, loadLabel, loadLastLabel, rememberLabel, resolveLabel, saveLabel,
+  type LabelId, type LabelMeta, type LabelContent,
 } from './labels';
-import {
-  loadLabel, defaultLabelTemplate, resetBuiltinTemplate, saveBuiltinTemplate, saveBundle,
-  type TemplateSource,
-} from './templateStore';
+import { defaultLabelTemplate, resetBuiltinTemplate } from './templateStore';
+import { importLegacyLabels, shouldOfferImport } from './db/migrate';
 import { scaffoldSpec } from './generator/scaffold';
 import { validateSpec } from './generator/engine';
 import type { GeneratorSpec } from './generator/spec';
@@ -37,6 +36,7 @@ const btnCls =
   'cursor-pointer rounded-full px-4 py-1.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50';
 
 export default function DesignerPage() {
+  const { user } = useAuth();
   const container = useRef<HTMLDivElement>(null);
   const designer = useRef<Designer | null>(null);
   const savedSnapshot = useRef<string>('');
@@ -47,13 +47,12 @@ export default function DesignerPage() {
   const [pendingLabel, setPendingLabel] = useState<LabelId | null>(null);
 
   const [labels, setLabels] = useState<LabelMeta[]>([]);
-  const [broken, setBroken] = useState<BrokenLabelFile[]>([]);
   const [meta, setMeta] = useState<LabelMeta | null>(null);
 
   const [ready, setReady] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const [source, setSource] = useState<TemplateSource>('default');
+  const [source, setSource] = useState<LabelContent['source']>('default');
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const [layoutDirty, setLayoutDirty] = useState(false);
   const [generator, setGenerator] = useState<GeneratorSpec>({ version: 1, fields: {} });
@@ -61,6 +60,8 @@ export default function DesignerPage() {
   const [tab, setTab] = useState<'layout' | 'data'>('layout');
   const [previewing, setPreviewing] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
+  // A one-off offer to copy label files from an earlier version onto this account.
+  const [offerImport, setOfferImport] = useState(false);
 
   /** True when the layout, the page size or the generator has something unsaved. */
   const generatorDirty = JSON.stringify(generator) !== JSON.stringify(generatorSaved);
@@ -69,8 +70,8 @@ export default function DesignerPage() {
   /** Puts a label's template and generator into the designer. */
   const openLabel = useCallback(async (target: LabelMeta) => {
     const d = designer.current;
-    if (!d) return;
-    const { template, source: from, generator: gen } = await loadLabel(target.id);
+    if (!d || !user) return;
+    const { template, source: from, generator: gen } = await loadLabel(user, target.id);
     d.updateTemplate(template);
     savedSnapshot.current = JSON.stringify(d.getTemplate());
     labelRef.current = target.id;
@@ -83,10 +84,11 @@ export default function DesignerPage() {
     setGeneratorSaved(gen);
     setError('');
     setConfirmReset(false);
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     let cancelled = false;
+    if (!user) return;
     let d: Designer | undefined;
     (async () => {
       try {
@@ -104,18 +106,17 @@ export default function DesignerPage() {
         d.onChangeTemplate(() => {
           setLayoutDirty(JSON.stringify(d!.getTemplate()) !== savedSnapshot.current);
         });
-        const registry = await listLabels();
+        const registry = await listLabels(user);
         if (cancelled) return;
-        setLabels(registry.labels);
-        setBroken(registry.broken);
+        setLabels(registry);
         // The label remembered last time, unless it has since been deleted.
-        const wanted = loadLastLabel() ?? '';
-        const target = registry.labels.find(l => l.id === wanted) ?? await resolveLabel(wanted);
+        const wanted = loadLastLabel(user) ?? '';
+        const target = registry.find(l => l.id === wanted) ?? await resolveLabel(user, wanted);
         if (!target) {
           setError('No labels were found.');
           return;
         }
-        const { template, source: from, generator: gen } = await loadLabel(target.id);
+        const { template, source: from, generator: gen } = await loadLabel(user, target.id);
         if (cancelled) return;
         d.updateTemplate(template);
         savedSnapshot.current = JSON.stringify(d.getTemplate());
@@ -125,7 +126,7 @@ export default function DesignerPage() {
         setSource(from);
         setSize(readSize(template));
         setGenerator(gen);
-        rememberLabel(target.id);
+        rememberLabel(user, target.id);
         setReady(true);
       } catch (e) {
         if (!cancelled) setError(errMsg(e));
@@ -136,7 +137,7 @@ export default function DesignerPage() {
       d?.destroy();
       designer.current = null;
     };
-  }, []);
+  }, [user]);
 
   const applySize = () => {
     const d = designer.current;
@@ -151,7 +152,7 @@ export default function DesignerPage() {
   /** Saves layout and data together, which is what keeps them from drifting apart. */
   const onSave = async () => {
     const d = designer.current;
-    if (!d || !meta) return;
+    if (!d || !meta || !user) return;
     setError(''); setMessage('');
     try {
       const template = d.getTemplate();
@@ -162,16 +163,16 @@ export default function DesignerPage() {
       const problems = validateSpec(next);
       if (problems.length > 0) throw new Error(problems[0]);
 
-      const path = meta.builtin
-        ? await saveBuiltinTemplate(meta.id, template)
-        : await saveBundle(meta.id, meta.name, template, next);
+      await saveLabel(user, meta.id, meta.name, template, next);
       savedSnapshot.current = JSON.stringify(template);
       setGenerator(next);
       setGeneratorSaved(next);
       setLayoutDirty(false);
       setSource(meta.builtin ? 'custom' : 'custom label');
       setMeta({ ...meta, widthMm: size?.w ?? meta.widthMm, heightMm: size?.h ?? meta.heightMm });
-      setMessage(`Saved. Printing now uses this template. (${path})`);
+      setMessage(meta.builtin
+        ? 'Saved. Printing now uses this template.'
+        : 'Saved. This label is on your account.');
     } catch (e) {
       setError(errMsg(e));
     }
@@ -179,12 +180,12 @@ export default function DesignerPage() {
 
   const onReset = async () => {
     const d = designer.current;
-    if (!d || !meta) return;
+    if (!d || !meta || !user) return;
     setConfirmReset(false); setError(''); setMessage('');
     try {
       if (!meta.builtin) throw new Error('A label of your own has no default to go back to.');
       await resetBuiltinTemplate(meta.id);
-      const { template, generator: gen } = await loadLabel(meta.id);
+      const { template, generator: gen } = await loadLabel(user, meta.id);
       d.updateTemplate(template);
       savedSnapshot.current = JSON.stringify(d.getTemplate());
       setLayoutDirty(false);
@@ -198,14 +199,39 @@ export default function DesignerPage() {
     }
   };
 
+  /** Offer the import once the Designer is up, since this is where labels are managed. */
+  useEffect(() => {
+    if (!ready || !user) return;
+    let cancelled = false;
+    shouldOfferImport(user).then(offer => { if (!cancelled) setOfferImport(offer); }).catch(() => { /* not worth a message */ });
+    return () => { cancelled = true; };
+  }, [ready, user]);
+
+  const runImport = async () => {
+    if (!user) return;
+    setOfferImport(false);
+    setError(''); setMessage('');
+    try {
+      const result = await importLegacyLabels(user);
+      await onLabelsChanged();
+      setMessage(
+        `Copied ${result.imported} label${result.imported === 1 ? '' : 's'} onto this account.` +
+        (result.skipped.length > 0 ? ` ${result.skipped.length} could not be read and were left alone.` : ''),
+      );
+    } catch (e) {
+      setError(errMsg(e));
+    }
+  };
+
   /** Shows another label in the same designer instance. */
   const switchLabel = async (id: string) => {
     setPendingLabel(null); setError(''); setMessage('');
+    if (!user) return;
     try {
       const target = labels.find(l => l.id === id);
       if (!target) throw new Error(`There is no label called “${id}”.`);
       await openLabel(target);
-      rememberLabel(target.id);
+      rememberLabel(user, target.id);
     } catch (e) {
       setError(errMsg(e));
     }
@@ -220,16 +246,16 @@ export default function DesignerPage() {
   /** After a create, rename or delete in the toolbar. */
   const onLabelsChanged = async (select?: string) => {
     setError(''); setMessage('');
+    if (!user) return;
     try {
-      const registry = await listLabels();
-      setLabels(registry.labels);
-      setBroken(registry.broken);
+      const registry = await listLabels(user);
+      setLabels(registry);
       const target = select
-        ? registry.labels.find(l => l.id === select)
-        : registry.labels.find(l => l.id === labelRef.current) ?? registry.labels[0];
+        ? registry.find(l => l.id === select)
+        : registry.find(l => l.id === labelRef.current) ?? registry[0];
       if (target) {
         await openLabel(target);
-        rememberLabel(target.id);
+        rememberLabel(user, target.id);
       } else {
         setError('No labels were found.');
       }
@@ -263,7 +289,7 @@ export default function DesignerPage() {
   return (
     <div className="relative flex h-full flex-col bg-white/90">
       <div className="flex flex-wrap items-start gap-x-4 gap-y-2 border-b border-slate-200 px-4 py-2">
-        <LabelToolbar labels={labels} broken={broken} value={labelId} disabled={!ready}
+        <LabelToolbar labels={labels} value={labelId} disabled={!ready}
           onPick={onPickLabel} onChanged={onLabelsChanged} onError={setError} />
 
         {size && (
@@ -326,6 +352,18 @@ export default function DesignerPage() {
           <button onClick={() => switchLabel(pendingLabel)} className={btnCls + ' bg-red-600 text-white hover:bg-red-500'}>Discard and switch</button>
           <button onClick={() => setPendingLabel(null)}
             className={btnCls + ' border border-slate-300 bg-white text-slate-700 hover:bg-slate-50'}>Cancel</button>
+        </div>
+      )}
+
+      {offerImport && (
+        <div className="tab-enter flex flex-wrap items-center gap-3 border-b border-indigo-200 bg-indigo-50 px-4 py-2 text-sm text-indigo-900">
+          <span>This device has labels saved from an earlier version. Copy them onto “{user?.username}”?</span>
+          <button onClick={runImport} className={btnCls + ' bg-indigo-600 text-white hover:bg-indigo-500'}>Copy them</button>
+          <button onClick={() => setOfferImport(false)}
+            className={btnCls + ' border border-slate-300 bg-white text-slate-700 hover:bg-slate-50'}>
+            Not now
+          </button>
+          <span className="text-xs text-indigo-700">The files stay on this device either way.</span>
         </div>
       )}
 

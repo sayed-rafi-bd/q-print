@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { createUser, findById, findByUsername, InvalidCredentialsError, verifyPassword, UsernameTakenError } from './users';
-import { createLabel, deleteLabel, getLabel, getLabelBySlug, listLabels, updateLabel } from './labels';
+import { countLabels, createLabel, deleteLabel, getLabel, listLabels, listSlugs, updateLabel } from './labels';
 import type { Db } from './types';
 
 const DB_FILE = join(tmpdir(), `q-print-test-${process.pid}.db`);
@@ -147,10 +147,10 @@ describe('lookups', () => {
 describe('labels', () => {
   it('stores a label and reads it back whole', async () => {
     const user = await signUp();
-    const created = await createLabel(db(), user.id, {
-      name: 'My parcel', slug: 'my-parcel', template: labelJson(100), generator: '{"version":1,"fields":{}}',
+    await createLabel(db(), user.id, 'my-parcel', {
+      name: 'My parcel', template: labelJson(100), generator: '{"version":1,"fields":{}}',
     });
-    const fetched = await getLabel(db(), user.id, created.id);
+    const fetched = await getLabel(db(), user.id, 'my-parcel');
     expect(fetched?.name).toBe('My parcel');
     expect(fetched?.slug).toBe('my-parcel');
     expect(fetched?.generator).toBe('{"version":1,"fields":{}}');
@@ -158,7 +158,7 @@ describe('labels', () => {
 
   it('reports the page size from the template, so it cannot go stale', async () => {
     const user = await signUp();
-    await createLabel(db(), user.id, { name: 'A', slug: 'a', template: labelJson(110), generator: '{}' });
+    await createLabel(db(), user.id, 'a', { name: 'A', template: labelJson(110), generator: '{}' });
     const [summary] = await listLabels(db(), user.id);
     expect(summary.widthMm).toBe(110);
     expect(summary.heightMm).toBe(50);
@@ -166,7 +166,7 @@ describe('labels', () => {
 
   it('still lists a label whose template cannot be read', async () => {
     const user = await signUp();
-    await createLabel(db(), user.id, { name: 'Broken', slug: 'broken', template: 'not json', generator: '{}' });
+    await createLabel(db(), user.id, 'broken', { name: 'Broken', template: 'not json', generator: '{}' });
     const [summary] = await listLabels(db(), user.id);
     expect(summary.name).toBe('Broken');
     expect(summary.widthMm).toBe(100);
@@ -174,39 +174,50 @@ describe('labels', () => {
 
   it('refuses two labels with the same slug for one account', async () => {
     const user = await signUp();
-    await createLabel(db(), user.id, { name: 'A', slug: 'a', template: labelJson(100), generator: '{}' });
-    await expect(createLabel(db(), user.id, { name: 'B', slug: 'a', template: labelJson(100), generator: '{}' }))
+    await createLabel(db(), user.id, 'a', { name: 'A', template: labelJson(100), generator: '{}' });
+    await expect(createLabel(db(), user.id, 'a', { name: 'B', template: labelJson(100), generator: '{}' }))
       .rejects.toThrow(/UNIQUE/i);
   });
 
   it('lets two accounts have a label with the same slug', async () => {
     const ann = await signUp('ann');
     const bob = await signUp('bob', 'hunter3');
-    await createLabel(db(), ann.id, { name: 'A', slug: 'a', template: labelJson(100), generator: '{}' });
-    await createLabel(db(), bob.id, { name: 'A', slug: 'a', template: labelJson(100), generator: '{}' });
+    await createLabel(db(), ann.id, 'a', { name: 'A', template: labelJson(100), generator: '{}' });
+    await createLabel(db(), bob.id, 'a', { name: 'A', template: labelJson(100), generator: '{}' });
     expect(await listLabels(db(), ann.id)).toHaveLength(1);
     expect(await listLabels(db(), bob.id)).toHaveLength(1);
   });
 
   it('updates a label in place', async () => {
     const user = await signUp();
-    const created = await createLabel(db(), user.id, { name: 'A', slug: 'a', template: labelJson(100), generator: '{}' });
-    expect(await updateLabel(db(), user.id, created.id, { name: 'Renamed' })).toBe(true);
-    expect((await getLabel(db(), user.id, created.id))?.name).toBe('Renamed');
+    await createLabel(db(), user.id, 'a', { name: 'A', template: labelJson(100), generator: '{}' });
+    expect(await updateLabel(db(), user.id, 'a', { name: 'Renamed' })).toBe(true);
+    expect((await getLabel(db(), user.id, 'a'))?.name).toBe('Renamed');
   });
 
   it('deletes a label', async () => {
     const user = await signUp();
-    const created = await createLabel(db(), user.id, { name: 'A', slug: 'a', template: labelJson(100), generator: '{}' });
-    expect(await deleteLabel(db(), user.id, created.id)).toBe(true);
-    expect(await getLabel(db(), user.id, created.id)).toBeNull();
+    await createLabel(db(), user.id, 'a', { name: 'A', template: labelJson(100), generator: '{}' });
+    expect(await deleteLabel(db(), user.id, 'a')).toBe(true);
+    expect(await getLabel(db(), user.id, 'a')).toBeNull();
   });
 
-  it('finds a label by its slug', async () => {
+  it('counts and lists slugs, which the one-time import needs', async () => {
     const user = await signUp();
-    await createLabel(db(), user.id, { name: 'My parcel', slug: 'my-parcel', template: labelJson(100), generator: '{}' });
-    expect((await getLabelBySlug(db(), user.id, 'my-parcel'))?.name).toBe('My parcel');
-    expect(await getLabelBySlug(db(), user.id, 'nope')).toBeNull();
+    expect(await countLabels(db(), user.id)).toBe(0);
+    await createLabel(db(), user.id, 'a', { name: 'A', template: labelJson(100), generator: '{}' });
+    await createLabel(db(), user.id, 'b', { name: 'B', template: labelJson(100), generator: '{}' });
+    expect(await countLabels(db(), user.id)).toBe(2);
+    expect((await listSlugs(db(), user.id)).sort()).toEqual(['a', 'b']);
+  });
+
+  it('moves updated_at forward when it saves, so the newest label can be offered', async () => {
+    const user = await signUp();
+    await createLabel(db(), user.id, 'a', { name: 'A', template: labelJson(100), generator: '{}' });
+    const before = (await getLabel(db(), user.id, 'a'))!.updatedAt;
+    await new Promise(r => setTimeout(r, 5));
+    await updateLabel(db(), user.id, 'a', { name: 'A again' });
+    expect((await getLabel(db(), user.id, 'a'))!.updatedAt > before).toBe(true);
   });
 });
 
@@ -214,30 +225,30 @@ describe('one account cannot reach another', () => {
   it('does not list another account’s labels', async () => {
     const ann = await signUp('ann');
     const bob = await signUp('bob', 'hunter3');
-    await createLabel(db(), ann.id, { name: 'Ann private', slug: 'anns', template: labelJson(100), generator: '{}' });
+    await createLabel(db(), ann.id, 'anns', { name: 'Ann private', template: labelJson(100), generator: '{}' });
     expect(await listLabels(db(), bob.id)).toEqual([]);
   });
 
   it('does not read another account’s label by id', async () => {
     const ann = await signUp('ann');
     const bob = await signUp('bob', 'hunter3');
-    const anns = await createLabel(db(), ann.id, { name: 'Ann private', slug: 'anns', template: labelJson(100), generator: '{}' });
-    expect(await getLabel(db(), bob.id, anns.id)).toBeNull();
+    await createLabel(db(), ann.id, 'anns', { name: 'Ann private', template: labelJson(100), generator: '{}' });
+    expect(await getLabel(db(), bob.id, 'anns')).toBeNull();
   });
 
   it('does not change another account’s label', async () => {
     const ann = await signUp('ann');
     const bob = await signUp('bob', 'hunter3');
-    const anns = await createLabel(db(), ann.id, { name: 'Ann private', slug: 'anns', template: labelJson(100), generator: '{}' });
-    expect(await updateLabel(db(), bob.id, anns.id, { name: 'Hijacked' })).toBe(false);
-    expect((await getLabel(db(), ann.id, anns.id))?.name).toBe('Ann private');
+    await createLabel(db(), ann.id, 'anns', { name: 'Ann private', template: labelJson(100), generator: '{}' });
+    expect(await updateLabel(db(), bob.id, 'anns', { name: 'Hijacked' })).toBe(false);
+    expect((await getLabel(db(), ann.id, 'anns'))?.name).toBe('Ann private');
   });
 
   it('does not delete another account’s label', async () => {
     const ann = await signUp('ann');
     const bob = await signUp('bob', 'hunter3');
-    const anns = await createLabel(db(), ann.id, { name: 'Ann private', slug: 'anns', template: labelJson(100), generator: '{}' });
-    expect(await deleteLabel(db(), bob.id, anns.id)).toBe(false);
-    expect(await getLabel(db(), ann.id, anns.id)).not.toBeNull();
+    await createLabel(db(), ann.id, 'anns', { name: 'Ann private', template: labelJson(100), generator: '{}' });
+    expect(await deleteLabel(db(), bob.id, 'anns')).toBe(false);
+    expect(await getLabel(db(), ann.id, 'anns')).not.toBeNull();
   });
 });

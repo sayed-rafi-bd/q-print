@@ -2,7 +2,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { generate } from '@pdfme/generator';
 import { PDFDocument, degrees } from 'pdf-lib';
 import { text, rectangle, barcodes } from '@pdfme/schemas';
-import { getTemplate, loadLabel, type LabelId, type TemplateSource } from './templateStore';
+import { loadLabel, type LabelId } from './labels';
+import type { User } from './db/users';
 import { generateRows } from './generator/engine';
 
 const FONT_URL = '/fonts/NotoSansJP-Regular.ttf';
@@ -118,13 +119,13 @@ export async function loadFont(): Promise<ArrayBuffer> {
   return buf;
 }
 
-export async function printLabels(opts: { label: LabelId; printer: string; paper: string; orientation: Orientation; rotate: Rotation; margins: Margins; dpi: string; pages: number },
-): Promise<{ timings: Timings; report: PrintReport; templateSource: TemplateSource }> {
+export async function printLabels(opts: { user: User; label: LabelId; printer: string; paper: string; orientation: Orientation; rotate: Rotation; margins: Margins; dpi: string; pages: number },
+): Promise<{ timings: Timings; report: PrintReport; templateSource: 'custom' | 'default' | 'custom label' }> {
   const t0 = performance.now();
 
   // 1. the label's template and generator. The rows are built here too, so nothing has to cross
   //    the IPC boundary just to be randomised.
-  const { template, source, generator } = await loadLabel(opts.label);
+  const { template, source, generator } = await loadLabel(opts.user, opts.label);
   const rows = generateRows(generator, opts.pages);
   const t1 = performance.now();
 
