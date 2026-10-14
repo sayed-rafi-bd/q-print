@@ -246,13 +246,20 @@ export default function DesignerPage() {
   const switchLabel = async (id: string) => {
     setPendingLabel(null); setError(''); setMessage('');
     if (!user) return;
+    const target = labels.find(l => l.id === id);
+    if (!target) {
+      setError(`There is no label called “${id}”.`);
+      return;
+    }
+    // The picker follows the selection even if the label turns out not to open. Otherwise a broken
+    // label could be seen in the list but never selected, and so never renamed or deleted —
+    // `meta` still points at whatever the canvas is really showing, so Save and Reset stay honest.
+    setLabelId(target.id);
     try {
-      const target = labels.find(l => l.id === id);
-      if (!target) throw new Error(`There is no label called “${id}”.`);
       await openLabel(target);
       rememberLabel(user, target.id);
     } catch (e) {
-      setError(errMsg(e));
+      setError(`Could not open “${target.name}”: ${errMsg(e)}`);
     }
   };
 

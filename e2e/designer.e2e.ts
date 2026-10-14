@@ -138,6 +138,13 @@ test.describe('designer: creating labels', () => {
     await createLabel(page, { name: 'Survivor', from: 'blank', size: [80, 40] });
     await expectCanvasPainted(page);
 
+    // A label that has just been created is already stored, so Save is deliberately disabled until
+    // something actually changes. Change the page size through the Layout controls to make it dirty.
+    await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+    await page.getByLabel('Width in mm').fill('95');
+    await page.getByRole('button', { name: 'Apply', exact: true }).click();
+    await expect(page.getByText('unsaved changes')).toBeVisible();
+
     await page.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(statusBar(page)).toContainText('Saved. This label is on your account.');
     await expect(page.getByText('unsaved changes')).toHaveCount(0);
@@ -146,11 +153,13 @@ test.describe('designer: creating labels', () => {
     await signIn(page, username, password);
     await expect(page.getByLabel('Label', { exact: true })).toHaveValue(/survivor/);   // remembered
     await expectCanvasPainted(page);
-    await expect(page.getByLabel('Width in mm')).toHaveValue('80');
+    // The saved width, not the one it was created with: this is what proves Save really stored it.
+    await expect(page.getByLabel('Width in mm')).toHaveValue('95');
 
     await page.reload();
     await designerReady(page);
     await expect(page.getByLabel('Label', { exact: true })).toHaveValue(/survivor/);
+    await expect(page.getByLabel('Width in mm')).toHaveValue('95');
   });
 
   test('another account does not see your labels', async ({ page }) => {

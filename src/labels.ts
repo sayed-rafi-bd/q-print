@@ -10,7 +10,7 @@ import { getDb } from './db/client';
 import * as store from './db/labels';
 import type { User } from './db/users';
 import {
-  defaultLabelGenerator, defaultLabelTemplate, loadBuiltinTemplate,
+  assertUsableTemplate, defaultLabelGenerator, defaultLabelTemplate, loadBuiltinTemplate,
   saveBuiltinTemplate, withFont,
 } from './templateStore';
 
@@ -95,8 +95,12 @@ export async function loadLabel(user: User, label: LabelId): Promise<LabelConten
   }
   const row = await store.getLabel(getDb(), user.id, label);
   if (!row) throw new Error(`There is no label called “${label}” on this account.`);
+  // A stored template that pdfme could not open would leave the Designer blank with no way out, so
+  // it is checked here and the caller falls back to a label that does open.
+  const template = JSON.parse(row.template) as Template;
+  assertUsableTemplate(template, `The template for “${label}”`);
   return {
-    template: withFont(JSON.parse(row.template) as Template),
+    template: withFont(template),
     source: 'custom label',
     generator: JSON.parse(row.generator) as GeneratorSpec,
   };
