@@ -3,6 +3,7 @@ import { generate } from '@pdfme/generator';
 import { PDFDocument, degrees } from 'pdf-lib';
 import { text, rectangle, barcodes } from '@pdfme/schemas';
 import { getTemplate, type TemplateSource } from './templateStore';
+import type { LabelId } from './labels';
 
 const FONT_URL = '/fonts/NotoSansJP-Regular.ttf';
 let fontCache: ArrayBuffer | null = null;
@@ -117,14 +118,14 @@ export async function loadFont(): Promise<ArrayBuffer> {
   return buf;
 }
 
-export async function printLabels(opts: { printer: string; paper: string; orientation: Orientation; rotate: Rotation; margins: Margins; dpi: string; pages: number },
+export async function printLabels(opts: { label: LabelId; printer: string; paper: string; orientation: Orientation; rotate: Rotation; margins: Margins; dpi: string; pages: number },
 ): Promise<{ timings: Timings; report: PrintReport; templateSource: TemplateSource }> {
   const t0 = performance.now();
 
   // 1. random data, one row per page
   const [rows, { template, source }] = await Promise.all([
-    invoke<Record<string, string>[]>('generate_random_data', { count: opts.pages }),
-    getTemplate(),
+    invoke<Record<string, string>[]>('generate_random_data', { count: opts.pages, label: opts.label }),
+    getTemplate(opts.label),
   ]);
   const t1 = performance.now();
 

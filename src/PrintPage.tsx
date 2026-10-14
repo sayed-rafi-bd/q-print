@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import {
   listPrinters, listSavedPrinters, printerResolutions, printLabels, NO_MARGINS,
   type Margins, type Orientation, type PrintReport, type Rotation, type Timings,
 } from './printApi';
 import { useCapabilities } from './capabilities';
 import TemplateTransfer from './TemplateTransfer';
+import { LABELS, getLabel, loadLastLabel, rememberLabel, type LabelId } from './labels';
 import PrintersPanel from './PrintersPanel';
 
 const fmt = (ms: number) => (ms >= 1000 ? `${(ms / 1000).toFixed(2)} s` : `${Math.round(ms)} ms`);
@@ -20,11 +21,9 @@ const inputCls = fieldBase + ' w-full px-3 py-2';
 // The four margin boxes share one row, so they need tighter padding and must be allowed to shrink.
 const marginInputCls = fieldBase + ' w-full min-w-0 px-2 py-1.5';
 
-const PAPERS: { value: string; label: string }[] = [
-  { value: '', label: 'Printer driver default (set this to 110 × 86 mm)' },
-  ...['A2', 'A3', 'A4', 'A5', 'A6', 'letter', 'legal', 'tabloid', 'statement']
-    .map(v => ({ value: v, label: v.length <= 2 ? v : v[0].toUpperCase() + v.slice(1) })),
-];
+const NAMED_PAPERS: { value: string; label: string }[] =
+  ['A2', 'A3', 'A4', 'A5', 'A6', 'letter', 'legal', 'tabloid', 'statement']
+    .map(v => ({ value: v, label: v.length <= 2 ? v : v[0].toUpperCase() + v.slice(1) }));
 
 const ROTATIONS: Rotation[] = [0, 90, 180, 270];
 
@@ -39,20 +38,55 @@ const ORIENTATIONS: { value: Orientation; label: string }[] = [
   { value: 'landscape', label: 'Landscape' },
 ];
 
+/** Small "i" icon; the helper text appears while hovering or focusing it (tap it on a phone). */
+function InfoTip({ text }: { text: React.ReactNode }) {
+  const id = useId();
+  return (
+    <span className="group relative inline-flex">
+      <button type="button" aria-label="More information" aria-describedby={id}
+              className="cursor-help rounded-full text-slate-400 transition hover:text-indigo-600 focus:text-indigo-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300">
+        <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4" aria-hidden="true">
+          <path fillRule="evenodd" clipRule="evenodd"
+                d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" />
+        </svg>
+      </button>
+      <span id={id} role="tooltip"
+            className="pointer-events-none invisible absolute left-0 top-full z-20 mt-1.5 w-64 max-w-[calc(100vw-3rem)] rounded-lg bg-slate-900 p-2.5 text-xs/5 font-normal text-white opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
+        {text}
+      </span>
+    </span>
+  );
+}
+
 function Field({ label, hint, htmlFor, children }: {
-  label: string; hint?: string; htmlFor: string; children: React.ReactNode;
+  label: string; hint?: React.ReactNode; htmlFor: string; children: React.ReactNode;
 }) {
   return (
     <div className="space-y-1">
-      <label htmlFor={htmlFor} className="block text-sm font-medium text-slate-700">{label}</label>
+      <div className="flex items-center gap-1.5">
+        <label htmlFor={htmlFor} className="text-sm font-medium text-slate-700">{label}</label>
+        {hint && <InfoTip text={hint} />}
+      </div>
       {children}
-      {hint && <p className="text-xs text-slate-500">{hint}</p>}
     </div>
+  );
+}
+
+/** Title row of a group of controls (fieldset legend) with the same info icon as `Field`. */
+function GroupTitle({ title, hint }: { title: string; hint: React.ReactNode }) {
+  return (
+    <legend className="flex items-center gap-1.5 text-sm font-medium text-slate-700">
+      {title}
+      <InfoTip text={hint} />
+    </legend>
   );
 }
 
 export default function PrintPage() {
   const caps = useCapabilities();
+  const [labelId, setLabelId] = useState<LabelId>(loadLastLabel);
+  const label = getLabel(labelId);
+  const sizeText = `${label.widthMm} × ${label.heightMm} mm`;
   const [printers, setPrinters] = useState<string[]>([]);
   const [printer, setPrinter] = useState('');
   // names of the network printers the user added; selecting one prints without a dialog
@@ -67,7 +101,7 @@ export default function PrintPage() {
   const [pages, setPages] = useState(3);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [result, setResult] = useState<{ pages: number; printer: string; t: Timings; report: PrintReport; source: string; silent: boolean } | null>(null);
+  const [result, setResult] = useState<{ label: string; pages: number; printer: string; t: Timings; report: PrintReport; source: string; silent: boolean } | null>(null);
 
   // True when printing now goes straight to the printer: always on Windows, and on Android when a
   // saved network printer (not the "System print dialog" entry) is selected.
@@ -100,8 +134,8 @@ export default function PrintPage() {
   const onPrint = async () => {
     setBusy(true); setError(''); setResult(null);
     try {
-      const { timings, report, templateSource } = await printLabels({ printer, paper, orientation, rotate, margins, dpi, pages });
-      setResult({ pages, printer, t: timings, report, source: templateSource, silent });
+      const { timings, report, templateSource } = await printLabels({ label: labelId, printer, paper, orientation, rotate, margins, dpi, pages });
+      setResult({ label: label.name, pages, printer, t: timings, report, source: templateSource, silent });
     } catch (e) {
       setError(errMsg(e));
     } finally {
@@ -111,13 +145,13 @@ export default function PrintPage() {
 
   return (
     <main className="min-h-full bg-slate-100 p-6">
-      <div className="mx-auto max-w-md space-y-5 rounded-2xl bg-white p-6 shadow-lg ring-1 ring-slate-200">
-        <header>
+      <div className="mx-auto grid max-w-md grid-cols-1 gap-x-8 gap-y-5 rounded-2xl bg-white p-6 shadow-lg ring-1 ring-slate-200 md:max-w-4xl md:grid-cols-2">
+        <header className="md:col-span-2">
           <h1 className="text-xl font-semibold text-slate-900">Silent print test</h1>
           <p className="text-sm text-slate-500">
             {silent
-              ? 'Generate random 110 × 86 mm labels and print without a dialog.'
-              : 'Generate random 110 × 86 mm labels and print them through the system print dialog.'}
+              ? `Generate random ${sizeText} labels and print without a dialog.`
+              : `Generate random ${sizeText} labels and print them through the system print dialog.`}
           </p>
           {!silent && caps.platform === 'android' && (
             <p className="mt-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-900 ring-1 ring-amber-200">
@@ -126,6 +160,14 @@ export default function PrintPage() {
             </p>
           )}
         </header>
+
+        <Field label="Label" htmlFor="label" hint={`Page size ${sizeText}. Each label keeps its own saved template.`}>
+          <select id="label" className={inputCls + ' cursor-pointer disabled:cursor-not-allowed'} value={labelId}
+                  disabled={busy}
+                  onChange={e => { const id = e.target.value as LabelId; setLabelId(id); rememberLabel(id); setResult(null); }}>
+            {LABELS.map(l => <option key={l.id} value={l.id}>{l.name} — {l.widthMm} × {l.heightMm} mm</option>)}
+          </select>
+        </Field>
 
         <Field label="Printer" htmlFor="printer"
                hint={printers.length === 0 ? 'No printers found.' : `${printers.length} printer(s) detected`}>
@@ -136,52 +178,53 @@ export default function PrintPage() {
         </Field>
 
         {caps.directPrinters && (
-          <details className="text-sm" open={directNames.length === 0}>
+          <details className="text-sm md:col-span-2" open={directNames.length === 0}>
             <summary className="cursor-pointer font-medium text-slate-700">Add a printer (no dialog)</summary>
             <PrintersPanel disabled={busy} onChanged={reloadPrinters} />
           </details>
         )}
 
         {caps.paperSelect && (
-        <Field label="Paper size" htmlFor="paper"
-               hint="SumatraPDF can only set named sizes. A custom size such as 110 × 86 mm must be the printer driver's default paper.">
-          <select id="paper" className={inputCls + ' cursor-pointer disabled:cursor-not-allowed'} value={paper}
-                  disabled={busy} onChange={e => setPaper(e.target.value)}>
-            {PAPERS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
-          </select>
-        </Field>
+          <Field label="Paper size" htmlFor="paper"
+                 hint={`SumatraPDF can only set named sizes. A custom size such as ${sizeText} must be the printer driver's default paper.`}>
+            <select id="paper" className={inputCls + ' cursor-pointer disabled:cursor-not-allowed'} value={paper}
+                    disabled={busy} onChange={e => setPaper(e.target.value)}>
+              <option value="">{`Printer driver default (set this to ${sizeText})`}</option>
+              {NAMED_PAPERS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+            </select>
+          </Field>
         )}
 
         {caps.orientationSelect && (
-        <fieldset className="space-y-1" disabled={busy}>
-          <legend className="text-sm font-medium text-slate-700">Orientation</legend>
-          <div className="grid grid-cols-3 gap-2">
-            {ORIENTATIONS.map(o => {
-              const selected = orientation === o.value;
-              return (
-                <label key={o.value}
-                       className={
-                         'rounded-lg border px-3 py-2 text-center text-sm transition ' +
-                         (busy ? 'cursor-not-allowed opacity-60 ' : 'cursor-pointer ') +
-                         (selected
-                           ? 'border-indigo-600 bg-indigo-50 font-medium text-indigo-700 ring-1 ring-indigo-600'
-                           : 'border-slate-300 text-slate-700 hover:bg-slate-50')
-                       }>
-                  <input type="radio" name="orientation" value={o.value} checked={selected}
-                         onChange={() => setOrientation(o.value)} className="sr-only" />
-                  {o.label}
-                </label>
-              );
-            })}
-          </div>
-          <p className="text-xs text-slate-500">
-            The label itself is landscape (110 × 86 mm). Auto leaves the choice to the printer driver.
-          </p>
-        </fieldset>
+          <fieldset className="space-y-1" disabled={busy}>
+            <GroupTitle title="Orientation"
+                        hint={<>The label itself is {label.widthMm >= label.heightMm ? 'landscape' : 'portrait'} ({sizeText}). Auto leaves the choice to the printer driver.</>} />
+            <div className="grid grid-cols-3 gap-2">
+              {ORIENTATIONS.map(o => {
+                const selected = orientation === o.value;
+                return (
+                  <label key={o.value}
+                         className={
+                           'rounded-lg border px-3 py-2 text-center text-sm transition ' +
+                           (busy ? 'cursor-not-allowed opacity-60 ' : 'cursor-pointer ') +
+                           (selected
+                             ? 'border-indigo-600 bg-indigo-50 font-medium text-indigo-700 ring-1 ring-indigo-600'
+                             : 'border-slate-300 text-slate-700 hover:bg-slate-50')
+                         }>
+                    <input type="radio" name="orientation" value={o.value} checked={selected}
+                           onChange={() => setOrientation(o.value)} className="sr-only" />
+                    {o.label}
+                  </label>
+                );
+              })}
+            </div>
+          </fieldset>
         )}
 
         <fieldset className="space-y-1" disabled={busy}>
-          <legend className="text-sm font-medium text-slate-700">Rotate label content</legend>
+          <GroupTitle title="Rotate label content"
+                      hint={<>Rotates the label inside the PDF, so it works with any driver. On stock turned the other way (e.g. {label.heightMm} × {label.widthMm} mm)
+                        use 90° or 270° so the {sizeText} label fills the paper at full size. If it prints upside-down, use the other one.</>} />
           <div className="grid grid-cols-4 gap-2">
             {ROTATIONS.map(r => {
               const selected = rotate === r;
@@ -201,14 +244,11 @@ export default function PrintPage() {
               );
             })}
           </div>
-          <p className="text-xs text-slate-500">
-            Rotates the label inside the PDF, so it works with any driver. On portrait stock (e.g. 86 × 110 mm)
-            use 90° or 270° so the 110 × 86 mm label fills the paper at full size. If it prints upside-down, use the other one.
-          </p>
         </fieldset>
 
         <fieldset className="space-y-1" disabled={busy}>
-          <legend className="text-sm font-medium text-slate-700">Margins (mm)</legend>
+          <GroupTitle title="Margins (mm)"
+                      hint="Positive adds white space (label prints smaller). Negative trims the label's edge so it fills more of the paper. Sides refer to the label before rotation. The printer's own non-printable area cannot be removed." />
           <div className="grid grid-cols-4 gap-2">
             {(['top', 'right', 'bottom', 'left'] as const).map(side => (
               <label key={side} className="flex flex-col gap-0.5 text-xs text-slate-500">
@@ -218,25 +258,21 @@ export default function PrintPage() {
               </label>
             ))}
           </div>
-          <div className="flex items-start justify-between gap-2">
-            <p className="text-xs text-slate-500">
-              Positive adds white space (label prints smaller). Negative trims the label's edge so it fills more of the
-              paper. Sides refer to the label before rotation. The printer's own non-printable area cannot be removed.
-            </p>
+          <div className="flex justify-end">
             <button type="button" onClick={() => setMargins(NO_MARGINS)}
-                    className="shrink-0 cursor-pointer text-xs text-indigo-600 hover:underline">Reset</button>
+                    className="cursor-pointer text-xs text-indigo-600 hover:underline">Reset</button>
           </div>
         </fieldset>
 
         {caps.dpiSelect && (
-        <Field label="Print resolution" htmlFor="dpi"
-               hint={dpiNote || 'Options are what the printer driver reports. The previous setting is restored after printing.'}>
-          <select id="dpi" className={inputCls + ' cursor-pointer disabled:cursor-not-allowed'} value={dpi}
-                  disabled={busy} onChange={e => setDpi(e.target.value)}>
-            <option value="">Printer default</option>
-            {resolutions.map(r => <option key={r} value={r}>{dpiLabel(r)}</option>)}
-          </select>
-        </Field>
+          <Field label="Print resolution" htmlFor="dpi"
+                 hint={dpiNote || 'Options are what the printer driver reports. The previous setting is restored after printing.'}>
+            <select id="dpi" className={inputCls + ' cursor-pointer disabled:cursor-not-allowed'} value={dpi}
+                    disabled={busy} onChange={e => setDpi(e.target.value)}>
+              <option value="">Printer default</option>
+              {resolutions.map(r => <option key={r} value={r}>{dpiLabel(r)}</option>)}
+            </select>
+          </Field>
         )}
 
         <Field label="Number of pages" htmlFor="pages" hint="One label per page, each with different data.">
@@ -245,7 +281,7 @@ export default function PrintPage() {
         </Field>
 
         <button onClick={onPrint} disabled={!printer || busy}
-                className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-300">
+                className="flex w-full md:col-span-2 cursor-pointer items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-300">
           {busy && (
             <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
               <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25" />
@@ -256,16 +292,16 @@ export default function PrintPage() {
         </button>
 
         {error && (
-          <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 break-words">
+          <div role="alert" className="md:col-span-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 break-words">
             {error}
           </div>
         )}
 
         {result && (
-          <section className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+          <section className="md:col-span-2 space-y-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
             <p className="text-sm text-emerald-800">
               {result.silent ? 'Sent' : 'Opened the print dialog for'} {result.pages} page(s) {result.silent ? 'to' : 'via'} <span className="font-medium">{result.printer}</span>
-              {' '}using the <span className="font-medium">{result.source}</span> template
+              {' '}using the <span className="font-medium">{result.label}</span> ({result.source} template)
             </p>
             <div className="flex items-baseline justify-between">
               <span className="text-sm text-slate-600">Total time</span>
@@ -323,13 +359,13 @@ export default function PrintPage() {
           </section>
         )}
 
-        <details className="border-t border-slate-200 pt-3 text-sm">
+        <details className="border-t border-slate-200 pt-3 text-sm md:col-span-2">
           <summary className="cursor-pointer font-medium text-slate-700">Template: export / import</summary>
           <p className="mb-2 mt-2 text-xs text-slate-500">
-            The saved label template lives on each device. Export it from one and import it on another
+            The saved template of the selected label lives on each device. Export it from one and import it on another
             (for example from desktop to Android) so both print the same layout.
           </p>
-          <TemplateTransfer />
+          <TemplateTransfer key={labelId} label={labelId} />
         </details>
       </div>
     </main>

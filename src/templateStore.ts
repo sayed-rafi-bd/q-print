@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { Template } from '@pdfme/common';
-import defaultTemplate from './templates/label.json';
+import { getLabel, type LabelId } from './labels';
 
 export type TemplateSource = 'custom' | 'default';
 
@@ -18,10 +18,10 @@ function withFont(t: Template): Template {
   };
 }
 
-/** The template used for printing: the one saved from the Designer, else the built-in default. */
-export async function getTemplate(): Promise<{ template: Template; source: TemplateSource }> {
-  const saved = await invoke<string | null>('load_template');
-  if (!saved) return { template: withFont(defaultTemplate as unknown as Template), source: 'default' };
+/** The template used for printing `label`: the one saved from the Designer, else the built-in default. */
+export async function getTemplate(label: LabelId): Promise<{ template: Template; source: TemplateSource }> {
+  const saved = await invoke<string | null>('load_template', { label });
+  if (!saved) return { template: defaultLabelTemplate(label), source: 'default' };
   try {
     return { template: withFont(JSON.parse(saved) as Template), source: 'custom' };
   } catch {
@@ -29,9 +29,9 @@ export async function getTemplate(): Promise<{ template: Template; source: Templ
   }
 }
 
-export const saveTemplate = (template: Template) =>
-  invoke<string>('save_template', { json: JSON.stringify(template) });
+export const saveTemplate = (label: LabelId, template: Template) =>
+  invoke<string>('save_template', { label, json: JSON.stringify(template) });
 
-export const resetTemplate = () => invoke<void>('reset_template');
+export const resetTemplate = (label: LabelId) => invoke<void>('reset_template', { label });
 
-export const defaultLabelTemplate = () => withFont(defaultTemplate as unknown as Template);
+export const defaultLabelTemplate = (label: LabelId) => withFont(getLabel(label).defaultTemplate as Template);

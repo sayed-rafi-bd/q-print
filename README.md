@@ -197,6 +197,22 @@ any other field prints its own text.
 
 On Android phones the Designer tab is hidden because the editor needs a large screen; tablets show it.
 
+## Labels
+
+The app maintains two labels, chosen with the **Label** `<select>` on the Print tab (and on the Designer tab):
+
+| Label                  | id         | Page size    | Default layout                       |
+| ---------------------- | ---------- | ------------ | ------------------------------------ |
+| Shipping label (Sagawa) | `shipping` | 110 x 86 mm | `src/templates/label.json`           |
+| Product label          | `product`  | 190 x 160 mm | `src/templates/product-label.json`   |
+
+Each label has its own saved template (`label-template.json` for `shipping`, `label-template-product.json`
+for `product`), its own *Reset to default*, and its own random test data. The last label used is remembered.
+
+To add another label: add a template under `src/templates/`, register it in `src/labels.ts`, and add its id
+to `LABEL_IDS` and a data generator to `generate_random_data` in `src-tauri/src/lib.rs`.
+Set the printer driver's default paper to the label's page size (see the hint under *Paper size*).
+
 ## Moving a template between devices
 The saved template lives on each device. To use a layout designed on desktop on Android:
 
