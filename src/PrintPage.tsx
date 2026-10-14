@@ -7,6 +7,7 @@ import { useCapabilities } from './capabilities';
 import TemplateTransfer from './TemplateTransfer';
 import { LABELS, getLabel, loadLastLabel, rememberLabel, type LabelId } from './labels';
 import PrintersPanel from './PrintersPanel';
+import { Confetti, Mascot } from './Mascot';
 
 const fmt = (ms: number) => (ms >= 1000 ? `${(ms / 1000).toFixed(2)} s` : `${Math.round(ms)} ms`);
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -15,7 +16,7 @@ const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 // variant sets its own (two conflicting utilities on one element are resolved by stylesheet order,
 // not by class order, so overriding one with the other is unreliable).
 const fieldBase =
-  'rounded-lg border border-slate-300 bg-white text-sm shadow-sm ' +
+  'rounded-xl border border-slate-300 bg-white text-sm shadow-sm transition ' +
   'focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:bg-slate-100';
 const inputCls = fieldBase + ' w-full px-3 py-2';
 // The four margin boxes share one row, so they need tighter padding and must be allowed to shrink.
@@ -101,6 +102,8 @@ export default function PrintPage() {
   const [pages, setPages] = useState(3);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // bumped on every successful print so the confetti burst replays
+  const [celebrate, setCelebrate] = useState(0);
   const [result, setResult] = useState<{ label: string; pages: number; printer: string; t: Timings; report: PrintReport; source: string; silent: boolean } | null>(null);
 
   // True when printing now goes straight to the printer: always on Windows and Linux, and on Android when a
@@ -136,6 +139,7 @@ export default function PrintPage() {
     try {
       const { timings, report, templateSource } = await printLabels({ label: labelId, printer, paper, orientation, rotate, margins, dpi, pages });
       setResult({ label: label.name, pages, printer, t: timings, report, source: templateSource, silent });
+      setCelebrate(n => n + 1);
     } catch (e) {
       setError(errMsg(e));
     } finally {
@@ -144,17 +148,22 @@ export default function PrintPage() {
   };
 
   return (
-    <main className="min-h-full bg-slate-100 p-6">
-      <div className="mx-auto grid max-w-md grid-cols-1 gap-x-8 gap-y-5 rounded-2xl bg-white p-6 shadow-lg ring-1 ring-slate-200 md:max-w-4xl md:grid-cols-2">
+    <main className="min-h-full p-6">
+      <div className="card-in stagger mx-auto grid max-w-md grid-cols-1 gap-x-8 gap-y-5 rounded-[2rem] bg-white/85 p-6 shadow-xl shadow-pink-200/60 ring-2 ring-white backdrop-blur-sm md:max-w-4xl md:grid-cols-2">
         <header className="md:col-span-2">
-          <h1 className="text-xl font-semibold text-slate-900">Silent print test</h1>
-          <p className="text-sm text-slate-500">
-            {silent
-              ? `Generate random ${sizeText} labels and print without a dialog.`
-              : `Generate random ${sizeText} labels and print them through the system print dialog.`}
-          </p>
+          <div className="flex items-center gap-3">
+            <Mascot busy={busy} />
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900">Silent print test</h1>
+              <p className="text-sm text-slate-500">
+                {silent
+                  ? `Generate random ${sizeText} labels and print without a dialog.`
+                  : `Generate random ${sizeText} labels and print them through the system print dialog.`}
+              </p>
+            </div>
+          </div>
           {!silent && caps.platform === 'android' && (
-            <p className="mt-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-900 ring-1 ring-amber-200">
+            <p className="mt-3 rounded-2xl bg-amber-50 p-2.5 text-xs text-amber-900 ring-1 ring-amber-200">
               The system print service always opens its preview, where you pick the printer and tap Print.
               To print with no dialog, add your printer under "Add a printer" below and select it.
             </p>
@@ -283,25 +292,28 @@ export default function PrintPage() {
         </Field>
 
         <button onClick={onPrint} disabled={!printer || busy}
-                className="flex w-full md:col-span-2 cursor-pointer items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-300">
+                className="btn-cute flex w-full md:col-span-2 cursor-pointer items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-4 py-3 text-base font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300">
           {busy && (
             <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
               <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25" />
               <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
             </svg>
           )}
-          {busy ? (silent ? 'Printing…' : 'Opening…') : (silent ? 'Print' : 'Print…')}
+          {busy ? (silent ? 'Printing…' : 'Opening…') : (silent ? 'Print ✨' : 'Print… ✨')}
         </button>
 
         {error && (
-          <div role="alert" className="md:col-span-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 break-words">
+          // keyed on the message so a new error shakes again
+          <div key={error} role="alert" className="alert-shake md:col-span-2 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 break-words">
             {error}
           </div>
         )}
 
         {result && (
-          <section className="md:col-span-2 space-y-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+          <section className="result-in md:col-span-2 space-y-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+            <Confetti key={celebrate} />
             <p className="text-sm text-emerald-800">
+              <span className="mr-1" aria-hidden="true">🎉</span>
               {result.silent ? 'Sent' : 'Opened the print dialog for'} {result.pages} page(s) {result.silent ? 'to' : 'via'} <span className="font-medium">{result.printer}</span>
               {' '}using the <span className="font-medium">{result.label}</span> ({result.source} template)
             </p>

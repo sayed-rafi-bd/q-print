@@ -20,9 +20,9 @@ function readSize(t: Template): { w: number; h: number } | null {
 }
 
 const numCls =
-  'w-20 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200';
+  'w-20 rounded-xl border border-slate-300 bg-white px-2 py-1 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200';
 const btnCls =
-  'cursor-pointer rounded-md px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50';
+  'cursor-pointer rounded-full px-4 py-1.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50';
 
 export default function DesignerPage() {
   const container = useRef<HTMLDivElement>(null);
@@ -167,13 +167,13 @@ export default function DesignerPage() {
   };
 
   return (
-    <div className="flex h-full flex-col bg-white">
+    <div className="flex h-full flex-col bg-white/90">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-slate-200 px-4 py-2">
         <div className="flex items-center gap-2 text-sm text-slate-700">
           <label htmlFor="designer-label" className="font-medium">Label</label>
           <select id="designer-label" value={labelId} disabled={!ready}
             onChange={e => onPickLabel(e.target.value as LabelId)}
-            className="cursor-pointer rounded-md border border-slate-300 bg-white px-2 py-1 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:cursor-not-allowed disabled:bg-slate-100">
+            className="cursor-pointer rounded-xl border border-slate-300 bg-white px-2 py-1 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:cursor-not-allowed disabled:bg-slate-100">
             {LABELS.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
           </select>
         </div>
@@ -195,7 +195,7 @@ export default function DesignerPage() {
         <div className="ml-auto flex items-center gap-3">
           <span className="text-xs text-slate-500">
             Template in use: <span className="font-medium text-slate-700">{source}</span>
-            {dirty && <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-800">unsaved changes</span>}
+            {dirty && <span className="ml-2 animate-pulse rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-800">✏️ unsaved changes</span>}
           </span>
           {confirmReset ? (
             <>
@@ -214,7 +214,7 @@ export default function DesignerPage() {
       </div>
 
       {pendingLabel && (
-        <div className="flex flex-wrap items-center gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">
+        <div className="tab-enter flex flex-wrap items-center gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">
           <span>Discard unsaved changes to “{getLabel(labelId).name}” and open “{getLabel(pendingLabel).name}”?</span>
           <button onClick={() => switchLabel(pendingLabel)} className={btnCls + ' bg-red-600 text-white hover:bg-red-500'}>Discard and switch</button>
           <button onClick={() => setPendingLabel(null)}
@@ -223,7 +223,7 @@ export default function DesignerPage() {
       )}
 
       {(error || message) && (
-        <div className={'border-b px-4 py-2 text-sm break-words ' +
+        <div key={error || message} className={(error ? 'alert-shake ' : 'tab-enter ') + 'border-b px-4 py-2 text-sm break-words ' +
           (error ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-800')}>
           {error || message}
         </div>
@@ -254,7 +254,8 @@ export default function DesignerPage() {
       <div className="relative min-h-0 flex-1">
         <div ref={container} className="absolute inset-0" />
         {!ready && !error && (
-          <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-500">
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-sm text-slate-500">
+            <span className="text-4xl" style={{ animation: 'mascot-bounce 1.2s ease-in-out infinite' }} aria-hidden="true">🎨</span>
             Loading designer…
           </div>
         )}

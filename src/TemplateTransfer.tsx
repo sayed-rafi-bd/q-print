@@ -6,7 +6,7 @@ import type { LabelId } from './labels';
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 const btnBase =
-  'cursor-pointer rounded-md border px-3 py-1.5 text-sm font-medium transition ' +
+  'cursor-pointer rounded-full border px-3 py-1.5 text-sm font-medium transition ' +
   'disabled:cursor-not-allowed disabled:opacity-50';
 // Colours are in separate variants so no element carries two conflicting colour utilities.
 const btnCls = btnBase + ' border-slate-300 text-slate-700 hover:bg-slate-50';
@@ -112,7 +112,7 @@ export default function TemplateTransfer({ label, onImported }: { label: LabelId
       </div>
 
       {mode && (
-        <div className="space-y-2">
+        <div className="tab-enter space-y-2">
           {mode === 'import' && (
             <input type="file" accept=".json,application/json" className="block w-full text-sm text-slate-700"
               onChange={e => { onFile(e.target.files?.[0]); e.target.value = ''; }} />
@@ -120,7 +120,7 @@ export default function TemplateTransfer({ label, onImported }: { label: LabelId
           <textarea value={text} readOnly={mode === 'export'} rows={8} spellCheck={false}
             placeholder={mode === 'import' ? 'Choose a .json file above or paste the template JSON here' : ''}
             onChange={e => setText(e.target.value)}
-            className="w-full rounded-lg border border-slate-300 bg-white p-2 font-mono text-xs text-slate-800" />
+            className="w-full rounded-xl border border-slate-300 bg-white p-2 font-mono text-xs text-slate-800" />
           <div className="flex flex-wrap gap-2">
             {mode === 'export' ? (
               <>

@@ -7,7 +7,7 @@ import {
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 const fieldCls =
-  'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm ' +
+  'w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm transition ' +
   'focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:bg-slate-100';
 
 const EMPTY: SavedPrinter = { name: '', kind: 'ipp', host: '', port: 631, path: '/ipp/print', language: 'auto', dpi: 203 };
@@ -157,9 +157,9 @@ export default function PrintersPanel({ onChanged, disabled }: { onChanged: (sel
       </p>
 
       {saved.length > 0 && (
-        <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200">
+        <ul className="divide-y divide-slate-200 rounded-xl border border-slate-200">
           {saved.map(p => (
-            <li key={p.name} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
+            <li key={p.name} className="rise-row flex items-center justify-between gap-2 px-3 py-2 text-sm">
               <button type="button" className="min-w-0 flex-1 cursor-pointer text-left" disabled={off}
                       onClick={() => { setForm(p); setDevices(null); setMsg(null); }}>
                 <span className="block truncate font-medium text-slate-900">{p.name}</span>
@@ -176,15 +176,15 @@ export default function PrintersPanel({ onChanged, disabled }: { onChanged: (sel
         </ul>
       )}
 
-      <div className="space-y-2 rounded-lg border border-slate-200 p-3">
+      <div className="space-y-2 rounded-xl border border-slate-200 p-3">
         <button type="button" onClick={onSearch} disabled={off}
-                className="w-full cursor-pointer rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50">
-          {busy && found === null ? 'Searching…' : 'Find Wi-Fi printers'}
+                className="w-full cursor-pointer rounded-xl border border-indigo-300 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50">
+          {busy && found === null ? 'Searching… 🔍' : '📡 Find Wi-Fi printers'}
         </button>
         {found && found.length > 0 && (
-          <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
+          <ul className="divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white">
             {found.map(d => (
-              <li key={`${d.kind}-${d.name}-${d.host}`}>
+              <li key={`${d.kind}-${d.name}-${d.host}`} className="rise-row">
                 <button type="button" disabled={off} onClick={() => pickFound(d)}
                         className="block w-full cursor-pointer px-3 py-2 text-left text-sm hover:bg-slate-50">
                   <span className="block truncate font-medium text-slate-900">{d.name}</span>
@@ -225,7 +225,7 @@ export default function PrintersPanel({ onChanged, disabled }: { onChanged: (sel
                 {hasTarget && !devices?.some(d => d.id === form.host) && <option value={form.host}>{form.host}</option>}
               </select>
               <button type="button" onClick={onLoadDevices} disabled={off}
-                      className="shrink-0 cursor-pointer rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">
+                      className="shrink-0 cursor-pointer rounded-xl border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">
                 Refresh
               </button>
             </div>
@@ -282,19 +282,19 @@ export default function PrintersPanel({ onChanged, disabled }: { onChanged: (sel
 
         <div className="grid grid-cols-2 gap-2">
           <button type="button" onClick={onTest} disabled={off || !hasTarget}
-                  className="cursor-pointer rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">
+                  className="cursor-pointer rounded-xl border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">
             Test
           </button>
           <button type="button" onClick={onSave} disabled={off || !hasTarget || !form.name.trim()}
-                  className="cursor-pointer rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-300">
+                  className="cursor-pointer rounded-xl bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-300">
             Save printer
           </button>
         </div>
       </div>
 
       {msg && (
-        <p role={msg.ok ? 'status' : 'alert'}
-           className={'rounded-lg border p-2 text-xs break-words ' +
+        <p key={msg.text} role={msg.ok ? 'status' : 'alert'}
+           className={(msg.ok ? 'result-in ' : 'alert-shake ') + 'rounded-xl border p-2 text-xs break-words ' +
              (msg.ok ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-700')}>
           {msg.text}
         </p>
