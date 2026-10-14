@@ -17,9 +17,9 @@ pub const LANG_CPCL: &str = "cpcl";
 pub const LANG_PWG: &str = "pwg";
 
 /// Languages that are a plain command stream for a label/receipt printer (not PDF, not IPP raster).
-pub fn is_command_language(l: &str) -> bool {
-    matches!(l, LANG_ZPL | LANG_TSPL | LANG_ESCPOS | LANG_CPCL)
-}
+// pub fn is_command_language(l: &str) -> bool {
+//     matches!(l, LANG_ZPL | LANG_TSPL | LANG_ESCPOS | LANG_CPCL)
+// }
 
 /// One page as a 1-bit image: rows are packed MSB first, a set bit is a black dot.
 #[derive(Clone, Debug, PartialEq)]
