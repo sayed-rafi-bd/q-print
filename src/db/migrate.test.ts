@@ -1,23 +1,12 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createClient, type Client } from '@libsql/client';
-import { readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 
 import { createUser, findById, verifyPassword, type User } from './users';
 import { importAlreadyDone, shouldOfferImport } from './migrate';
 import { setDb } from './client';
-import type { Db } from './types';
+import { createTestDb, type TestDb } from './testDb';
 
-const DB_FILE = join(tmpdir(), `q-print-auth-${process.pid}.db`);
-let client: Client;
-
-const db = (): Db => ({
-  execute: async stmt => {
-    const rs = await client.execute(stmt);
-    return { rows: rs.rows as Record<string, string | number | null>[] };
-  },
-});
+let test: TestDb;
+const db = () => test.db;
 
 /** Stands in for the Rust command that reads label files from the previous version. */
 const legacyFiles: { slug: string; name: string; json: string }[] = [];
@@ -28,31 +17,21 @@ vi.mock('@tauri-apps/api/core', () => ({
   },
 }));
 
-beforeAll(async () => {
-  rmSync(DB_FILE, { force: true });
-  client = createClient({ url: `file:${DB_FILE}` });
-  const schema = readFileSync(new URL('../../db/schema.sql', import.meta.url), 'utf8');
-  for (const statement of schema.split(';').map(s => s.trim()).filter(Boolean)) {
-    await client.execute(statement);
-  }
-});
+beforeAll(async () => { test = await createTestDb('migrate'); });
 
-afterAll(() => {
-  client.close();
-  rmSync(DB_FILE, { force: true });
-});
+afterAll(() => test.close());
 
 beforeEach(() => {
   legacyFiles.length = 0;
   localStorage.clear();
   // The code above src/db/client.ts reaches for the connection itself, so point it at the test file.
-  setDb(db());
+  setDb(test.db);
 });
 
 afterEach(async () => {
   setDb(null);
-  await client.execute('DELETE FROM labels');
-  await client.execute('DELETE FROM users');
+  await test.client.execute('DELETE FROM labels');
+  await test.client.execute('DELETE FROM users');
 });
 
 const signUp = async (name = 'ann') => createUser(db(), name, 'hunter2');

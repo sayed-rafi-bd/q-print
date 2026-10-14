@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { dbErrorMessage, getDb, isDbConfigured } from '../db/client';
+import { getDb, isDbConfigured, migrateDb } from '../db/client';
+import { friendlyError } from '../db/schema';
 import { createUser, findById, InvalidCredentialsError, UsernameTakenError, verifyPassword, type User } from '../db/users';
 
 const SESSION_KEY = 'q-print.userId';
@@ -18,6 +19,9 @@ export type AuthContextValue = {
   user: User | null;
   /** False when the build has no database credentials. */
   configured: boolean;
+  /** Set when the database could not be brought up to date, so nothing can be trusted after it. */
+  startupError: string;
+  retry: () => void;
   signIn: (username: string, password: string) => Promise<void>;
   signUp: (username: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -29,24 +33,44 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 function authErrorMessage(e: unknown): string {
   if (e instanceof UsernameTakenError) return e.message;
   if (e instanceof InvalidCredentialsError) return e.message;
-  return dbErrorMessage(e);
+  return friendlyError(e);
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>('loading');
   const [user, setUser] = useState<User | null>(null);
+  const [startupError, setStartupError] = useState('');
+  const [attempt, setAttempt] = useState(0);
 
-  // Restore the previous sign-in, if the account is still there.
+  // Bring the database up to date, then restore the previous sign-in if there is one.
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      setStatus('loading');
+      setStartupError('');
+      if (!isDbConfigured()) {
+        if (!cancelled) setStatus('signed-out');
+        return;
+      }
+      try {
+        // Anything generated since this database was last used is applied here, so a new column
+        // cannot be missing on someone else's machine.
+        await migrateDb();
+      } catch (e) {
+        if (!cancelled) {
+          setStartupError(`Could not update the database. ${friendlyError(e)}`);
+          setStatus('signed-out');
+        }
+        return;
+      }
+
       let id: string | null = null;
       try {
         id = localStorage.getItem(SESSION_KEY);
       } catch {
         id = null; // storage unavailable: ask again next time
       }
-      if (!id || !isDbConfigured()) {
+      if (!id) {
         if (!cancelled) setStatus('signed-out');
         return;
       }
@@ -66,7 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [attempt]);
 
   const adopt = useCallback((next: User) => {
     setUser(next);
@@ -91,8 +115,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ status, user, configured: isDbConfigured(), signIn, signUp, signOut }),
-    [status, user, signIn, signUp, signOut],
+    () => ({
+      status, user, signIn, signUp, signOut,
+      configured: isDbConfigured(),
+      startupError,
+      retry: () => setAttempt(n => n + 1),
+    }),
+    [status, user, signIn, signUp, signOut, startupError],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

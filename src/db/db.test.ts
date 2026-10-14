@@ -1,46 +1,23 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { createClient, type Client } from '@libsql/client';
-import { readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 
 import { createUser, findById, findByUsername, InvalidCredentialsError, verifyPassword, UsernameTakenError } from './users';
 import { countLabels, createLabel, deleteLabel, getLabel, listLabels, listSlugs, updateLabel } from './labels';
-import type { Db } from './types';
+import { isUniqueViolation } from './schema';
+import { createTestDb, type TestDb } from './testDb';
 
-const DB_FILE = join(tmpdir(), `q-print-test-${process.pid}.db`);
-let client: Client;
+let test: TestDb;
 
-/**
- * The real driver against a real SQLite file, so the SQL in these modules is actually run rather
- * than pattern-matched by a stub. The schema is the same file the app is set up with.
- */
-const db = (): Db => ({
-  execute: async stmt => {
-    const rs = await client.execute(stmt);
-    return { rows: rs.rows as Record<string, string | number | null>[] };
-  },
-});
+/** The real driver against a real SQLite file, built with the app's own migrations. */
+const db = () => test.db;
 
-beforeAll(async () => {
-  rmSync(DB_FILE, { force: true });
-  client = createClient({ url: `file:${DB_FILE}` });
-  const schema = readFileSync(new URL('../../db/schema.sql', import.meta.url), 'utf8');
-  // The client runs one statement per execute, which is how Turso's HTTP interface behaves too.
-  for (const statement of schema.split(';').map(s => s.trim()).filter(Boolean)) {
-    await client.execute(statement);
-  }
-});
+beforeAll(async () => { test = await createTestDb('db'); });
 
-afterAll(() => {
-  client.close();
-  rmSync(DB_FILE, { force: true });
-});
+afterAll(() => test.close());
 
 /** Each test starts from a clean pair of tables. */
 afterEach(async () => {
-  await client.execute('DELETE FROM labels');
-  await client.execute('DELETE FROM users');
+  await test.client.execute('DELETE FROM labels');
+  await test.client.execute('DELETE FROM users');
 });
 
 const signUp = async (name = 'ann', password = 'hunter2') => createUser(db(), name, password);
@@ -79,7 +56,7 @@ describe('createUser', () => {
 
   it('never stores the password, only a hash and a salt', async () => {
     await signUp('ann', 'hunter2');
-    const { rows } = await client.execute('SELECT password_hash, salt FROM users WHERE username = ?', ['ann']);
+    const { rows } = await test.client.execute('SELECT password_hash, salt FROM users WHERE username = ?', ['ann']);
     const stored = rows[0] as Record<string, string>;
     expect(stored.password_hash).not.toContain('hunter2');
     expect(stored.password_hash).toMatch(/^[0-9a-f]{64}$/);
@@ -89,9 +66,19 @@ describe('createUser', () => {
   it('gives every account a different salt, so identical passwords differ', async () => {
     await signUp('ann', 'same');
     await signUp('bob', 'same');
-    const { rows } = await client.execute('SELECT password_hash FROM users ORDER BY username');
+    const { rows } = await test.client.execute('SELECT password_hash FROM users ORDER BY username');
     const [a, b] = rows.map(r => (r as Record<string, string>).password_hash);
     expect(a).not.toBe(b);
+  });
+
+  it('reports a name taken by a concurrent sign-up as taken, not as a crash', async () => {
+    // Two sign-ups that race: the friendly lookup passes for both, and only the unique index
+    // stops the second. This is the path that has to work when the lookup cannot help.
+    await test.client.execute({
+      sql: `INSERT INTO users (id, username, username_key, password_hash, salt, created_at)
+            VALUES ('race', 'taken', 'taken', 'h', 's', '2026-01-01')`,
+    });
+    await expect(signUp('taken')).rejects.toThrow(UsernameTakenError);
   });
 
   it('refuses a name or password it will not store', async () => {
@@ -176,7 +163,16 @@ describe('labels', () => {
     const user = await signUp();
     await createLabel(db(), user.id, 'a', { name: 'A', template: labelJson(100), generator: '{}' });
     await expect(createLabel(db(), user.id, 'a', { name: 'B', template: labelJson(100), generator: '{}' }))
-      .rejects.toThrow(/UNIQUE/i);
+      .rejects.toThrow();
+  });
+
+  it('reports a duplicate slug as a unique violation, not some wrapped driver error', async () => {
+    const user = await signUp();
+    await createLabel(db(), user.id, 'a', { name: 'A', template: labelJson(100), generator: '{}' });
+    const error = await createLabel(db(), user.id, 'a', { name: 'B', template: labelJson(100), generator: '{}' })
+      .catch(e => e as unknown);
+    // Drizzle puts the real reason in `cause`, two levels down, so a shallow match finds nothing.
+    expect(isUniqueViolation(error)).toBe(true);
   });
 
   it('lets two accounts have a label with the same slug', async () => {

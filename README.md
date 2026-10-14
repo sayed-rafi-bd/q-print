@@ -233,9 +233,29 @@ To set this up:
 
 1. Create a database at turso.app and create a **write** token.
 2. Copy `.env.example` to `.env` and fill in `VITE_TURSO_URL` and `VITE_TURSO_TOKEN`.
-3. Apply the schema once, by pasting `db/schema.sql` into the Turso console, or:
-   `turso db execute <your-db> < db/schema.sql`
-4. Restart the dev server — the URL and token are read at build time.
+3. Restart the dev server — the URL and token are read at build time.
+
+Nothing else is needed: **the app applies any outstanding migration itself at start-up**, before it
+shows the login screen, so a database always matches the code. To apply it by hand instead, or to
+see what it did, use `pnpm db:migrate`.
+
+### Changing the schema
+
+The schema lives in `src/db/schema.ts` and nowhere else. To change it:
+
+```bash
+# 1. edit src/db/schema.ts
+pnpm db:generate     # writes db/migrations/000N_name.sql, plus the snapshot for the next diff
+pnpm db:migrate      # applies it to the database named in .env
+```
+
+Commit the generated files under `db/migrations/`. `pnpm test` builds its own schema by running
+those migrations, so a broken one fails the tests rather than the app.
+
+`pnpm db:studio` opens a browser UI for looking at the database while you work on this.
+
+`db/adopt-drizzle.sql` is a one-time script, already applied to the shared database, that moved it
+from the hand-written schema to the migrated one. It is kept for the record.
 
 Each account sees only its own labels. A built-in label's layout is still a file on the device
 (`label-template-product.json`) and its generator is still in the app; everything a user creates is
@@ -254,7 +274,9 @@ in — once, and never again if the user deletes what was imported.
 | Command | Does |
 | ------- | ---- |
 | `pnpm test` | Unit tests, including the SQL run against a local SQLite file. No credentials needed. |
-| `pnpm test:db` | The same flows against the **real** Turso database. Needs `.env`; creates and removes a throwaway account. |
+| `pnpm test:db` | The same flows against the **real** database. Needs `.env`; creates and removes a throwaway account. |
+| `pnpm db:generate` | Writes a migration from `src/db/schema.ts`. |
+| `pnpm db:migrate` | Applies outstanding migrations (the app also does this at start-up). |
 
 ## Labels
 
