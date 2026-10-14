@@ -3,14 +3,14 @@ import type { Template } from '@pdfme/common';
 import { bundleJson, isBundle, isTemplate, makeBundle, parseBundle, parseTemplate, templateSizeMm } from './bundle';
 import { isValidId, slugify } from './labelId';
 import { builtinSpec } from './generator/builtins';
-import shipping from './templates/label.json';
+import product from './templates/product-label.json';
 
-const template = shipping as unknown as Template;
+const template = product as unknown as Template;
 
 describe('slugify', () => {
   it('makes a usable id out of a name', () => {
     expect(slugify('My Parcel Label')).toBe('my-parcel-label');
-    expect(slugify('Shipping label (Sagawa)')).toBe('shipping-label-sagawa');
+    expect(slugify('Product label (Chiba)')).toBe('product-label-chiba');
     expect(slugify('A4 stickers')).toBe('a4-stickers');
   });
 
@@ -63,7 +63,7 @@ describe('parseTemplate', () => {
 });
 
 describe('bundles', () => {
-  const bundle = makeBundle('My parcel', template, builtinSpec('shipping'));
+  const bundle = makeBundle('My parcel', template, builtinSpec('product'));
 
   it('round-trips through text', () => {
     const back = parseBundle(bundleJson(bundle));
@@ -77,7 +77,7 @@ describe('bundles', () => {
     // What list_custom_labels parses when it only wants the name and the size.
     const text = JSON.stringify(bundle);
     expect(JSON.parse(text).name).toBe('My parcel');
-    expect(JSON.parse(text).template.basePdf.width).toBe(110);
+    expect(JSON.parse(text).template.basePdf.width).toBe(190);
   });
 
   it('is recognised as a bundle, and a bare template is not', () => {
@@ -111,7 +111,7 @@ describe('bundles', () => {
 
 describe('templateSizeMm', () => {
   it('reads the page size pdfme stores, in millimetres', () => {
-    expect(templateSizeMm(template)).toEqual({ widthMm: 110, heightMm: 86 });
+    expect(templateSizeMm(template)).toEqual({ widthMm: 190, heightMm: 160 });
   });
 
   it('returns null for something that is not a sized template', () => {

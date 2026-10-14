@@ -246,7 +246,7 @@ async fn print_pdf_raw(app: tauri::AppHandle, request: tauri::ipc::Request<'_>) 
 /// Labels the app ships with. Keep in sync with `BUILTINS` in src/builtinLabels.ts. The first one
 /// is the default. These keep their own `label-template*.json` override files; user-created labels
 /// live in `labels/` and are handled by `mod labels`.
-const BUILTIN_IDS: [&str; 2] = ["shipping", "product"];
+const BUILTIN_IDS: [&str; 1] = ["product"];
 
 /// Validates the built-in label id coming from the UI. Only the built-ins have a template override
 /// file, so anything else is rejected here; custom labels go through `labels::validate_id`.
@@ -255,17 +255,13 @@ fn builtin_id(label: &Option<String>) -> Result<&str, String> {
     BUILTIN_IDS.iter().copied().find(|l| *l == id).ok_or_else(|| format!("unknown label \"{id}\""))
 }
 
-/// One template file per label. The first (default) label keeps the original file name, so a
-/// template saved before labels existed is still picked up.
+/// One template file per label. The legacy `label-template.json` belonged to the removed shipping
+/// label, so it is deliberately never read: every built-in uses `label-template-{id}.json`.
 fn template_path(app: &tauri::AppHandle, label: &Option<String>) -> Result<std::path::PathBuf, String> {
     let id = builtin_id(label)?;
     let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    Ok(dir.join(if id == BUILTIN_IDS[0] {
-        "label-template.json".to_string()
-    } else {
-        format!("label-template-{id}.json")
-    }))
+    Ok(dir.join(format!("label-template-{id}.json")))
 }
 
 /// Saved pdfme template (JSON text), or None if the designer has never saved one.

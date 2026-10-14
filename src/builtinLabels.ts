@@ -4,7 +4,6 @@
  */
 
 import type { Template } from '@pdfme/common';
-import shippingTemplate from './templates/label.json';
 import productTemplate from './templates/product-label.json';
 
 export type BuiltinLabel = {
@@ -17,7 +16,6 @@ export type BuiltinLabel = {
 
 /** Keep in sync with `BUILTIN_IDS` in src-tauri/src/lib.rs. */
 export const BUILTINS: BuiltinLabel[] = [
-  { id: 'shipping', name: 'Shipping label (Sagawa)', defaultTemplate: shippingTemplate as Template },
   { id: 'product', name: 'Product label', defaultTemplate: productTemplate as Template },
 ];
 

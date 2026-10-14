@@ -3,7 +3,6 @@ import { generateRows, validateSpec } from './engine';
 import { builtinSpec } from './builtins';
 import { barcodeProblem } from './barcodeCheck';
 import { dataFields } from './scaffold';
-import shipping from '../templates/label.json';
 import product from '../templates/product-label.json';
 import type { Template } from '@pdfme/common';
 
@@ -21,29 +20,6 @@ const NOW = new Date(2026, 9, 14); // 2026-10-14
  * The shape each field had when the data was generated in Rust. If a rule changes what a field
  * prints, one of these fails and the change is a deliberate one.
  */
-const SHIPPING_SHAPES: Record<string, RegExp> = {
-  zip: /^〒\d{3}-\d{4}$/,
-  zipBarcode: /^\d{7}$/, // the same postcode, with the dash removed
-  address: /^東京都|^大阪府|^愛知県/,
-  sortMain: /^\d{4}$/,
-  sortSub: /^\d{3}$/,
-  tel: /^TEL:0\d{10}$/,
-  recipient: /^(トントンタン|山田 太郎|佐藤 花子|鈴木 一郎)様$/,
-  inquiryNo: /^A\d{12}A$/,
-  count: /^[1-5]$/,
-  carrierName: /^佐川代引（LC）$/,
-  shipDate: /^\d{4}\/\d{2}\/\d{2}$/,
-  deliveryDate: /^\d{4}\/\d{2}\/\d{2}$/,
-  timeSlot: /^(午前中|14時〜16時|16時〜18時|18時〜20時)$/,
-  amount: /^¥[\d,]+$/,
-  requestNo: /^\d{9}$/,
-  senderName: /^FMHテスト用\(テスト環境00\)$/,
-  senderZip: /^〒150-0021$/,
-  senderAddress: /^東京都渋谷区恵比寿西1-13-7$/,
-  senderBuilding: /^ＫＢＳアーチビル$/,
-  senderTel: /^TEL: 0357840340$/,
-};
-
 const PRODUCT_SHAPES: Record<string, RegExp> = {
   itemBarcode: /^100\d{4}$/,
   itemCodeText: /^100\d{4}$/, // the same code as the barcode above
@@ -71,39 +47,6 @@ const runParity = (id: string, shapes: Record<string, RegExp>, now = NOW) => {
   }
   return rows;
 };
-
-describe('built-in shipping generator', () => {
-  it('produces the same shape of value the Rust generator did', () => runParity('shipping', SHIPPING_SHAPES));
-
-  it('covers exactly the fields the Rust generator filled', () => {
-    expect(Object.keys(builtinSpec('shipping').fields).sort()).toEqual(Object.keys(SHIPPING_SHAPES).sort());
-  });
-
-  it('keeps the postcode, its barcode and the address on the same destination', () => {
-    const byZip: Record<string, string> = {
-      '150-0021': '東京都渋谷区恵比寿西1-13-7',
-      '100-0005': '東京都千代田区丸の内1-9-1',
-      '530-0001': '大阪府大阪市北区梅田3-1-1',
-      '460-0008': '愛知県名古屋市中区栄3-4-5',
-    };
-    for (const row of runParity('shipping', SHIPPING_SHAPES)) {
-      const zip = row.zip.slice(1);
-      expect(row.zipBarcode).toBe(zip.replace('-', ''));
-      expect(row.address).toBe(byZip[zip]);
-    }
-  });
-
-  it('dates the shipment today and the delivery two days later, whenever today is', () => {
-    for (const now of [new Date(2026, 0, 1), new Date(2026, 5, 15), new Date(2027, 11, 30)]) {
-      const [row] = generateRows(builtinSpec('shipping'), 1, { now, rng: seededRng() });
-      const iso = (v: string) => v.replace(/\//g, '-');
-      const ship = new Date(`${iso(row.shipDate)}T00:00:00`);
-      const delivery = new Date(`${iso(row.deliveryDate)}T00:00:00`);
-      expect(ship.getFullYear()).toBe(now.getFullYear());
-      expect(Math.round((delivery.getTime() - ship.getTime()) / 86_400_000)).toBe(2);
-    }
-  });
-});
 
 describe('built-in product generator', () => {
   it('produces the same shape of value the Rust generator did', () => runParity('product', PRODUCT_SHAPES));
@@ -146,7 +89,6 @@ describe('built-in product generator', () => {
 
 describe('built-in barcodes', () => {
   const cases: { id: string; template: unknown }[] = [
-    { id: 'shipping', template: shipping },
     { id: 'product', template: product },
   ];
 
@@ -169,9 +111,9 @@ describe('built-in barcodes', () => {
 
 describe('built-in specs', () => {
   it('hands out a copy, so editing one cannot change the built-in', () => {
-    const a = builtinSpec('shipping');
-    a.fields.zip = { kind: 'fixed', value: 'changed' };
-    expect(builtinSpec('shipping').fields.zip).not.toEqual({ kind: 'fixed', value: 'changed' });
+    const a = builtinSpec('product');
+    a.fields.brandName = { kind: 'fixed', value: 'changed' };
+    expect(builtinSpec('product').fields.brandName).not.toEqual({ kind: 'fixed', value: 'changed' });
   });
 
   it('falls back to an empty spec for an unknown id', () => {

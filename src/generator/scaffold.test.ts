@@ -5,7 +5,6 @@ import { barcodeHint, barcodeProblem } from './barcodeCheck';
 import { generateRows, validateSpec } from './engine';
 import type { GeneratorSpec } from './spec';
 import { builtinSpec } from './builtins';
-import shipping from '../templates/label.json';
 import product from '../templates/product-label.json';
 
 const blank = (schemas: unknown[]): Template =>
@@ -13,10 +12,10 @@ const blank = (schemas: unknown[]): Template =>
 
 describe('templateFields', () => {
   it('lists every field once, in layout order', () => {
-    const names = templateFields(shipping as unknown as Template).map(f => f.name);
-    expect(names[0]).toBe('lblDest');
+    const names = templateFields(product as unknown as Template).map(f => f.name);
+    expect(names[0]).toBe('itemBarcode');
     expect(new Set(names).size).toBe(names.length);
-    expect(names).toContain('zipBarcode');
+    expect(names).toContain('trackingBarcode');
   });
 
   it('tells text, barcode, QR and image fields apart', () => {
@@ -42,12 +41,13 @@ describe('templateFields', () => {
 
 describe('dataFields', () => {
   it('skips read-only fields, which print their own text', () => {
-    // label.json has plenty of "lbl*" read-only fields; none of them should get a rule.
-    const names = dataFields(shipping as unknown as Template).map(f => f.name);
-    expect(names).not.toContain('lblDest');
-    expect(names).not.toContain('lblInquiry');
-    expect(names).toContain('zip');
-    expect(names).toContain('inquiryNo');
+    // A caption that prints its own text should never get a rule.
+    const names = dataFields(blank([
+      { name: 'lblCaption', type: 'text', readOnly: true },
+      { name: 'value', type: 'text' },
+    ])).map(f => f.name);
+    expect(names).not.toContain('lblCaption');
+    expect(names).toContain('value');
   });
 
   it('skips decoration such as rectangles and images, which have no content to fill', () => {
@@ -60,15 +60,8 @@ describe('dataFields', () => {
     expect(fields.map(f => f.name)).toEqual(['a']);
   });
 
-  it('can fill every field a built-in generator fills', () => {
-    // The other way round is not required: a template may hold fields that print their own text.
-    const fillable = new Set(dataFields(shipping as unknown as Template).map(f => f.name));
-    for (const name of Object.keys(builtinSpec('shipping').fields)) {
-      expect(fillable.has(name), `${name} has a rule but cannot take data`).toBe(true);
-    }
-  });
-
   it('can fill every field the product generator fills', () => {
+    // The other way round is not required: a template may hold fields that print their own text.
     const fillable = new Set(dataFields(product as unknown as Template).map(f => f.name));
     for (const name of Object.keys(builtinSpec('product').fields)) {
       expect(fillable.has(name), `${name} has a rule but cannot take data`).toBe(true);
@@ -134,7 +127,7 @@ describe('scaffoldSpec', () => {
     expect(scaffoldSpec(blank([{ name: 'a', type: 'text' }]), base).tables).toBe(base.tables);
   });
 
-  it('generates rows for a freshly scaffolded shipping label', () => {
+  it('generates rows for a freshly scaffolded product label', () => {
     const spec = scaffoldSpec(product as unknown as Template);
     expect(validateSpec(spec)).toEqual([]);
     expect(() => generateRows(spec, 3)).not.toThrow();

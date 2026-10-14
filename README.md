@@ -216,8 +216,8 @@ a debug APK build.
 ## Designer
 The **Designer** tab is the pdfme designer. Edit the layout, set the page size, and press *Save template*.
 The template is saved to the app data folder (on Windows
-`%APPDATA%\com.example.print-test\label-template.json`) and the Print tab uses it from then on.
-*Reset to default* deletes it and returns to `src/templates/label.json`.
+`%APPDATA%\com.example.print-test\label-template-product.json`) and the Print tab uses it from then on.
+*Reset to default* deletes it and returns to `src/templates/product-label.json`.
 Fields named like the keys listed in the Designer ("Fields filled with random data") get random data per page;
 any other field prints its own text.
 
@@ -225,15 +225,14 @@ On Android phones the Designer tab is hidden because the editor needs a large sc
 
 ## Labels
 
-The app ships with two labels and lets you add your own, all chosen with the **Label** `<select>`:
+The app ships with one label and lets you add your own, all chosen with the **Label** `<select>`:
 
 | Label                  | id         | Page size    | Default layout                       |
 | ---------------------- | ---------- | ------------ | ------------------------------------ |
-| Shipping label (Sagawa) | `shipping` | 110 x 86 mm | `src/templates/label.json`           |
 | Product label          | `product`  | 190 x 160 mm | `src/templates/product-label.json`   |
 
-A built-in keeps its saved template next to the bundled one (`label-template.json` for `shipping`,
-`label-template-product.json` for `product`) and has its own *Reset to default*. A label you create
+A built-in keeps its saved template next to the bundled one (`label-template-product.json` for `product`)
+and has its own *Reset to default*. A label you create
 yourself is a single file in `app_data_dir()/labels/<id>.json` holding its layout **and** the rule
 that fills it, so the two can never drift apart. The page size comes from the template, so a label
 resized in the Designer reports the size it will actually print at. The last label used is

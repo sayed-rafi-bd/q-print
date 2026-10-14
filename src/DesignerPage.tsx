@@ -3,6 +3,7 @@ import { Designer } from '@pdfme/ui';
 import { text, rectangle, barcodes } from '@pdfme/schemas';
 import type { Template } from '@pdfme/common';
 import { loadFont } from './printApi';
+import { DEFAULT_LABEL } from './builtinLabels';
 import TemplateTransfer from './TemplateTransfer';
 import LabelToolbar from './designer/LabelToolbar';
 import DataEditor from './designer/DataEditor';
@@ -95,7 +96,7 @@ export default function DesignerPage() {
           domContainer: container.current,
           // A placeholder so the designer has something to show before the registry has been read;
           // openLabel replaces it as soon as the real label is loaded.
-          template: defaultLabelTemplate('shipping'),
+          template: defaultLabelTemplate(DEFAULT_LABEL),
           plugins: { text, rectangle, ...barcodes },
           options: { font: { NotoSansJP: { data: font, fallback: true } }, lang: 'en' },
         });
@@ -256,7 +257,7 @@ export default function DesignerPage() {
   };
 
   /** The layout as the designer holds it right now, for the Data tab and the preview. */
-  const currentTemplate = designer.current?.getTemplate() ?? defaultLabelTemplate(labelId || 'shipping');
+  const currentTemplate = designer.current?.getTemplate() ?? defaultLabelTemplate(labelId || DEFAULT_LABEL);
   const generatorProblems = validateSpec(generator);
 
   return (
