@@ -1,4 +1,5 @@
-//! Fallback for desktop platforms other than Windows (Linux, macOS). Printing is not implemented there.
+//! Fallback for platforms without a backend of their own (macOS and anything else that is not Windows,
+//! Linux or Android). Printing is not implemented there.
 
 use crate::{PrintOptions, PrintReport};
 use tauri::AppHandle;

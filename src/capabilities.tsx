@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import { invoke } from '@tauri-apps/api/core';
 
 export type Capabilities = {
-  platform: 'windows' | 'android' | 'other';
+  platform: 'windows' | 'linux' | 'android' | 'other';
   transport: string;
   /** prints without showing a dialog */
   silent: boolean;

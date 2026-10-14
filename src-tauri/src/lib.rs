@@ -14,7 +14,10 @@ mod platform;
 #[cfg(target_os = "android")]
 #[path = "print_android.rs"]
 mod platform;
-#[cfg(not(any(target_os = "windows", target_os = "android")))]
+#[cfg(target_os = "linux")]
+#[path = "print_linux.rs"]
+mod platform;
+#[cfg(not(any(target_os = "windows", target_os = "android", target_os = "linux")))]
 #[path = "print_other.rs"]
 mod platform;
 
@@ -175,7 +178,7 @@ fn generate_shipping_data(count: usize) -> Vec<LabelData> {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PrintReport {
-    /// "sumatra" | "android-dialog" (later: "ipp" | "vendor")
+    /// "sumatra" | "cups" | "android-dialog" (later: "ipp" | "vendor")
     pub transport: String,
     pub tool: String,
     pub command: String,
@@ -201,10 +204,10 @@ pub struct PrintOptions {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Capabilities {
-    platform: &'static str, // "windows" | "android" | "other"
+    platform: &'static str, // "windows" | "linux" | "android" | "other"
     transport: &'static str,
     silent: bool,             // prints without a dialog
-    paper_select: bool,       // SumatraPDF named sizes / IPP media
+    paper_select: bool,       // SumatraPDF named sizes / CUPS media / IPP media
     orientation_select: bool,
     dpi_select: bool,
     printer_list: bool,       // false => show an "Add printer" UI
@@ -216,6 +219,12 @@ fn capabilities() -> Capabilities {
     if cfg!(target_os = "windows") {
         Capabilities {
             platform: "windows", transport: "sumatra", silent: true,
+            paper_select: true, orientation_select: true, dpi_select: true, printer_list: true,
+            direct_printers: false,
+        }
+    } else if cfg!(target_os = "linux") {
+        Capabilities {
+            platform: "linux", transport: "cups", silent: true,
             paper_select: true, orientation_select: true, dpi_select: true, printer_list: true,
             direct_printers: false,
         }

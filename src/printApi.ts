@@ -13,7 +13,7 @@ export type Orientation = 'auto' | 'portrait' | 'landscape';
 export type Rotation = 0 | 90 | 180 | 270;
 
 export type PrintReport = {
-  /** 'sumatra' | 'android-dialog' | 'ipp' | 'raw' | 'vendor' */
+  /** 'sumatra' | 'cups' | 'android-dialog' | 'ipp' | 'raw' | 'vendor' */
   transport: string;
   tool: string;
   command: string;

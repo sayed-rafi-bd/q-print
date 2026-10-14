@@ -236,3 +236,57 @@ pub fn print_pdf(app: &AppHandle, opts: &PrintOptions, bytes: Vec<u8>) -> Result
         dpi_note: "Resolution is chosen in the system print dialog.".into(),
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn opts(paper: &str, orientation: &str, dpi: &str) -> PrintOptions {
+        PrintOptions { printer: "Labels".into(), paper: paper.into(), orientation: orientation.into(), dpi: dpi.into() }
+    }
+
+    #[test]
+    fn nothing_is_ignored_when_no_option_is_set() {
+        assert_eq!(ignored_settings(&opts("", "auto", "")), "");
+    }
+
+    #[test]
+    fn each_option_that_is_set_is_named() {
+        assert_eq!(ignored_settings(&opts("A4", "auto", "")), " Ignored app settings: paper.");
+        assert_eq!(ignored_settings(&opts("", "portrait", "")), " Ignored app settings: orientation.");
+        assert_eq!(ignored_settings(&opts("", "auto", "300x300")), " Ignored app settings: resolution.");
+    }
+
+    #[test]
+    fn all_ignored_options_are_listed_in_a_fixed_order() {
+        assert_eq!(
+            ignored_settings(&opts("letter", "landscape", "600x600")),
+            " Ignored app settings: paper, orientation, resolution."
+        );
+    }
+
+    #[test]
+    fn blank_paper_and_resolution_do_not_count() {
+        assert_eq!(ignored_settings(&opts("   ", "auto", "  ")), "");
+    }
+
+    #[test]
+    fn report_for_a_saved_printer_says_nothing_was_applied() {
+        let r = report("ipp", "IPP", "IPP http://10.0.0.5:631/ipp/print".into(), &opts("", "auto", ""), "Sent straight to the printer, no dialog.");
+        assert_eq!(r.transport, "ipp");
+        assert_eq!(r.tool, "IPP");
+        assert_eq!(r.command, "IPP http://10.0.0.5:631/ipp/print");
+        assert!(!r.paper_applied && !r.dpi_applied);
+        assert!(r.paper_requested.is_empty() && r.dpi_requested.is_empty());
+        assert_eq!(r.orientation, "from the PDF");
+        assert!(r.paper_note.starts_with("Sent straight to the printer, no dialog. The paper size is the PDF's own page size"));
+        assert!(!r.paper_note.contains("Ignored app settings"));
+    }
+
+    #[test]
+    fn report_mentions_the_settings_it_ignored() {
+        let r = report("raw", "Raw socket", String::new(), &opts("A4", "portrait", "300x300"), "Lead.");
+        assert!(r.paper_note.starts_with("Lead. "));
+        assert!(r.paper_note.ends_with(" Ignored app settings: paper, orientation, resolution."));
+    }
+}

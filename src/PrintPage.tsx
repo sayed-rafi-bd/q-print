@@ -103,7 +103,7 @@ export default function PrintPage() {
   const [error, setError] = useState('');
   const [result, setResult] = useState<{ label: string; pages: number; printer: string; t: Timings; report: PrintReport; source: string; silent: boolean } | null>(null);
 
-  // True when printing now goes straight to the printer: always on Windows, and on Android when a
+  // True when printing now goes straight to the printer: always on Windows and Linux, and on Android when a
   // saved network printer (not the "System print dialog" entry) is selected.
   const silent = caps.silent || (caps.directPrinters && directNames.includes(printer));
 
@@ -186,7 +186,9 @@ export default function PrintPage() {
 
         {caps.paperSelect && (
           <Field label="Paper size" htmlFor="paper"
-                 hint={`SumatraPDF can only set named sizes. A custom size such as ${sizeText} must be the printer driver's default paper.`}>
+                 hint={caps.platform === 'linux'
+                   ? `CUPS only applies sizes the printer lists; an unlisted size is skipped and the printer's default paper is used. A custom size such as ${sizeText} must be the printer's default paper.`
+                   : `SumatraPDF can only set named sizes. A custom size such as ${sizeText} must be the printer driver's default paper.`}>
             <select id="paper" className={inputCls + ' cursor-pointer disabled:cursor-not-allowed'} value={paper}
                     disabled={busy} onChange={e => setPaper(e.target.value)}>
               <option value="">{`Printer driver default (set this to ${sizeText})`}</option>
