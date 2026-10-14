@@ -13,13 +13,13 @@ frontend, and prints it.
 The UI asks the Rust side what the platform can do (`capabilities` command) and hides the options that
 don't apply, instead of showing controls that would silently do nothing.
 
-|                                                | Windows            | Android                                                              |
-|------------------------------------------------|--------------------|----------------------------------------------------------------------|
+|                                                | Windows            | Android                                                                    |
+|------------------------------------------------|--------------------|----------------------------------------------------------------------------|
 | Print path                                     | SumatraPDF, silent | Added printer (LAN / Bluetooth / USB): silent. Otherwise the system dialog |
-| Printer list                                   | installed printers | printers you added, plus "System print dialog"                       |
-| Paper size, orientation, resolution            | set by the app     | chosen in the system dialog (controls hidden)                        |
-| Rotate label content, margins, number of pages | yes                | yes (done inside the PDF)                                            |
-| Designer tab                                   | yes                | tablets only (width >= 768 px); use template export/import on phones |
+| Printer list                                   | installed printers | printers you added, plus "System print dialog"                             |
+| Paper size, orientation, resolution            | set by the app     | chosen in the system dialog (controls hidden)                              |
+| Rotate label content, margins, number of pages | yes                | yes (done inside the PDF)                                                  |
+| Designer tab                                   | yes                | tablets only (width >= 768 px); use template export/import on phones       |
 
 ## Setup (Windows)
 1. Install Rust, Node 20+, pnpm, and the Tauri v2 prerequisites for Windows (WebView2, MSVC build tools).
