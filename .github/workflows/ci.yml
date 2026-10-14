@@ -97,9 +97,13 @@ jobs:
       - name: Generate the Android project if it is not committed
         run: |
           if [ ! -d src-tauri/gen/android ]; then pnpm tauri android init --ci; fi
+      # A project committed from Windows has no executable bit on gradlew, which makes Gradle fail on Linux.
+      - name: Make gradlew executable
+        run: chmod +x src-tauri/gen/android/gradlew
       - name: Build debug APK
-        run: pnpm tauri android build --debug --apk --target aarch64
+        run: pnpm build:android:debug
       - uses: actions/upload-artifact@v4
         with:
           name: android-debug-apk
           path: src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+          if-no-files-found: error

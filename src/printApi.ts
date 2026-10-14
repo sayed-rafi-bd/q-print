@@ -3,6 +3,7 @@ import { generate } from '@pdfme/generator';
 import { PDFDocument, degrees } from 'pdf-lib';
 import { text, rectangle, barcodes } from '@pdfme/schemas';
 import { getTemplate, type TemplateSource } from './templateStore';
+import type { LabelId } from './labels';
 
 const FONT_URL = '/fonts/NotoSansJP-Regular.ttf';
 let fontCache: ArrayBuffer | null = null;
@@ -12,7 +13,7 @@ export type Orientation = 'auto' | 'portrait' | 'landscape';
 export type Rotation = 0 | 90 | 180 | 270;
 
 export type PrintReport = {
-  /** 'sumatra' | 'android-dialog' | 'ipp' | 'vendor' */
+  /** 'sumatra' | 'android-dialog' | 'ipp' | 'raw' | 'vendor' */
   transport: string;
   tool: string;
   command: string;
@@ -31,6 +32,37 @@ const RAW_THRESHOLD_PAGES = 50;
 export type Timings = { data: number; pdf: number; print: number; total: number };
 
 export const listPrinters = () => invoke<string[]>('list_printers');
+
+export type PrinterKind = 'ipp' | 'raw' | 'bluetooth' | 'usb';
+/** What is sent. ipp: auto | pdf | pwg. raw: pdf | zpl | tspl | escpos | cpcl. bluetooth/usb: zpl | tspl | escpos | cpcl. */
+export type PrinterLanguage = 'auto' | 'pdf' | 'pwg' | 'zpl' | 'tspl' | 'escpos' | 'cpcl';
+
+/** A printer the user added (network, Bluetooth or USB). Prints without any dialog. */
+export type SavedPrinter = {
+  name: string;
+  kind: PrinterKind;
+  /** IP / host name (ipp, raw), Bluetooth MAC address, or USB "vendorId:productId" */
+  host: string;
+  /** TCP port (ipp, raw) */
+  port: number;
+  /** IPP resource path, e.g. /ipp/print (ipp only) */
+  path: string;
+  language: PrinterLanguage;
+  /** resolution the page is rendered at when sent as a bitmap */
+  dpi: number;
+};
+/** A printer found on the network (mDNS), ready to fill the form. */
+export type DiscoveredPrinter = { name: string; kind: 'ipp' | 'raw'; host: string; port: number; path: string };
+/** A paired Bluetooth device or a connected USB printer. `id` is the MAC address / "vid:pid". */
+export type PickableDevice = { name: string; id: string };
+export type PrinterTest = { summary: string; supportsPdf: boolean | null };
+
+export const listSavedPrinters = () => invoke<SavedPrinter[]>('list_saved_printers');
+export const savePrinter = (printer: SavedPrinter) => invoke<void>('save_printer', { printer });
+export const deletePrinter = (name: string) => invoke<void>('delete_printer', { name });
+export const discoverPrinters = () => invoke<DiscoveredPrinter[]>('discover_printers');
+export const listDevices = (kind: 'bluetooth' | 'usb') => invoke<PickableDevice[]>('list_devices', { kind });
+export const testPrinter = (printer: SavedPrinter) => invoke<PrinterTest>('test_printer', { printer });
 export const printerResolutions = (printer: string) => invoke<string[]>('printer_resolutions', { printer });
 
 export type Margins = { top: number; right: number; bottom: number; left: number };
@@ -86,14 +118,14 @@ export async function loadFont(): Promise<ArrayBuffer> {
   return buf;
 }
 
-export async function printLabels(opts: { printer: string; paper: string; orientation: Orientation; rotate: Rotation; margins: Margins; dpi: string; pages: number },
+export async function printLabels(opts: { label: LabelId; printer: string; paper: string; orientation: Orientation; rotate: Rotation; margins: Margins; dpi: string; pages: number },
 ): Promise<{ timings: Timings; report: PrintReport; templateSource: TemplateSource }> {
   const t0 = performance.now();
 
   // 1. random data, one row per page
   const [rows, { template, source }] = await Promise.all([
-    invoke<Record<string, string>[]>('generate_random_data', { count: opts.pages }),
-    getTemplate(),
+    invoke<Record<string, string>[]>('generate_random_data', { count: opts.pages, label: opts.label }),
+    getTemplate(opts.label),
   ]);
   const t1 = performance.now();
 

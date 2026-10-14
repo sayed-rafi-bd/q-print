@@ -11,6 +11,8 @@ export type Capabilities = {
   dpiSelect: boolean;
   /** false => the backend can't enumerate printers (an "Add printer" UI would be needed) */
   printerList: boolean;
+  /** the user can add network printers (IPP / raw socket) that print without a dialog */
+  directPrinters: boolean;
 };
 
 const CapabilitiesContext = createContext<Capabilities | null>(null);

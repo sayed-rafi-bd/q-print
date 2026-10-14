@@ -1,0 +1,186 @@
+{
+  "schemas": [
+    [
+      {
+        "name": "itemBarcode",
+        "type": "code128",
+        "position": {
+          "x": 10,
+          "y": 10
+        },
+        "width": 50,
+        "height": 10,
+        "includetext": false,
+        "content": ""
+      },
+      {
+        "name": "itemCodeText",
+        "type": "text",
+        "position": {
+          "x": 10,
+          "y": 20.74
+        },
+        "width": 60,
+        "height": 8.25,
+        "fontSize": 18,
+        "verticalAlignment": "middle",
+        "fontName": "NotoSansJP",
+        "content": ""
+      },
+      {
+        "name": "issueDate",
+        "type": "text",
+        "position": {
+          "x": 110,
+          "y": 11.74
+        },
+        "width": 70,
+        "height": 8.25,
+        "fontSize": 18,
+        "verticalAlignment": "middle",
+        "alignment": "right",
+        "fontName": "NotoSansJP",
+        "content": ""
+      },
+      {
+        "name": "brandName",
+        "type": "text",
+        "position": {
+          "x": 110,
+          "y": 20.74
+        },
+        "width": 70,
+        "height": 8.25,
+        "fontSize": 18,
+        "verticalAlignment": "middle",
+        "alignment": "right",
+        "fontName": "NotoSansJP",
+        "content": ""
+      },
+      {
+        "name": "productCode",
+        "type": "text",
+        "position": {
+          "x": 10,
+          "y": 29.74
+        },
+        "width": 80,
+        "height": 8.25,
+        "fontSize": 18,
+        "verticalAlignment": "middle",
+        "fontName": "NotoSansJP",
+        "content": ""
+      },
+      {
+        "name": "productName",
+        "type": "text",
+        "position": {
+          "x": 10,
+          "y": 37.97
+        },
+        "width": 170,
+        "height": 9.17,
+        "fontSize": 20,
+        "verticalAlignment": "middle",
+        "fontName": "NotoSansJP",
+        "content": ""
+      },
+      {
+        "name": "locZone",
+        "type": "text",
+        "position": {
+          "x": 10,
+          "y": 55.83
+        },
+        "width": 34,
+        "height": 22.01,
+        "fontSize": 48,
+        "verticalAlignment": "middle",
+        "fontName": "NotoSansJP",
+        "content": ""
+      },
+      {
+        "name": "locCode",
+        "type": "text",
+        "position": {
+          "x": 44,
+          "y": 49.42
+        },
+        "width": 136,
+        "height": 30.69,
+        "fontSize": 78,
+        "verticalAlignment": "middle",
+        "fontName": "NotoSansJP",
+        "content": ""
+      },
+      {
+        "name": "trackingBarcode",
+        "type": "code128",
+        "position": {
+          "x": 10,
+          "y": 82.72
+        },
+        "width": 170,
+        "height": 38,
+        "includetext": false,
+        "content": ""
+      },
+      {
+        "name": "trackingText",
+        "type": "text",
+        "position": {
+          "x": 10,
+          "y": 125.2
+        },
+        "width": 170.66,
+        "height": 14.55,
+        "fontSize": 32,
+        "verticalAlignment": "middle",
+        "characterSpacing": 20.92,
+        "fontName": "NotoSansJP",
+        "content": ""
+      },
+      {
+        "name": "warehouse",
+        "type": "text",
+        "position": {
+          "x": 10,
+          "y": 143.95
+        },
+        "width": 80,
+        "height": 7.34,
+        "fontSize": 16,
+        "verticalAlignment": "middle",
+        "characterSpacing": 6,
+        "fontName": "NotoSansJP",
+        "content": ""
+      },
+      {
+        "name": "operator",
+        "type": "text",
+        "position": {
+          "x": 90,
+          "y": 143.95
+        },
+        "width": 90,
+        "height": 7.34,
+        "fontSize": 16,
+        "verticalAlignment": "middle",
+        "alignment": "right",
+        "fontName": "NotoSansJP",
+        "content": ""
+      }
+    ]
+  ],
+  "basePdf": {
+    "width": 190,
+    "height": 160,
+    "padding": [
+      0,
+      0,
+      0,
+      0
+    ]
+  },
+  "pdfmeVersion": "5.5.10"
+}
