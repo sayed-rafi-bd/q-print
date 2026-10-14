@@ -1,7 +1,11 @@
 import { useState } from 'react';
 import type { Template } from '@pdfme/common';
-import { getTemplate, saveTemplate } from './templateStore';
-import type { LabelId } from './labels';
+import { bundleJson, makeBundle, parseBundle } from './bundle';
+import { isBuiltin } from './builtinLabels';
+import { saveBuiltinTemplate } from './templateStore';
+import { scaffoldSpec } from './generator/scaffold';
+import { createLabel, loadLabel, saveLabel, type LabelId } from './labels';
+import { useAuth } from './auth/AuthProvider';
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -12,28 +16,23 @@ const btnBase =
 const btnCls = btnBase + ' border-slate-300 text-slate-700 hover:bg-slate-50';
 const btnPrimaryCls = btnBase + ' border-indigo-600 bg-indigo-600 text-white hover:bg-indigo-500';
 
-/** Throws unless `value` looks like a pdfme template. */
-function parseTemplate(text: string): Template {
-  let value: unknown;
-  try {
-    value = JSON.parse(text);
-  } catch (e) {
-    throw new Error(`Not valid JSON: ${errMsg(e)}`);
-  }
-  const t = value as Partial<Template> | null;
-  if (!t || typeof t !== 'object' || !Array.isArray(t.schemas) || t.basePdf == null) {
-    throw new Error('This does not look like a pdfme template (needs "basePdf" and "schemas").');
-  }
-  return t as Template;
-}
-
 /**
- * Moves the saved template between devices as JSON, so a layout designed on desktop can be used on
- * Android. Works with a file picker or copy/paste (a download link is not reliable in every WebView).
+ * Moves a label between devices as JSON, so one designed on desktop can be used on Android.
+ *
+ * Export writes the whole label — layout *and* the data generator — so the receiving device
+ * produces the same data, not just the same picture. Import also accepts a bare pdfme template,
+ * which is what older versions exported: that replaces the layout and leaves the generator alone.
+ *
+ * Works with a file picker or copy/paste (a download link is not reliable in every WebView).
  */
-export default function TemplateTransfer({ label, onImported }: { label: LabelId; onImported?: (t: Template) => void }) {
+export default function TemplateTransfer({ label, onImported }: {
+  label: LabelId;
+  onImported?: (t: Template) => void;
+}) {
+  const { user } = useAuth();
   const [mode, setMode] = useState<'export' | 'import' | null>(null);
   const [text, setText] = useState('');
+  const [fileName, setFileName] = useState(`label-${label}.json`);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -43,10 +42,13 @@ export default function TemplateTransfer({ label, onImported }: { label: LabelId
   const openExport = async () => {
     reset(); setBusy(true);
     try {
-      const { template, source } = await getTemplate(label);
-      setText(JSON.stringify(template, null, 2));
+      if (!user) throw new Error('You are not signed in.');
+      const { template, source, generator } = await loadLabel(user, label);
+      // Export what is saved, not unsaved Designer edits.
+      setText(bundleJson(makeBundle(label, template, generator)));
+      setFileName(`label-${label}.json`);
       setMode('export');
-      setMessage(`Exporting the ${source} template (the saved one, not unsaved Designer edits).`);
+      setMessage(`Exporting the ${source} label, with its data generator.`);
     } catch (e) {
       setError(errMsg(e));
     } finally {
@@ -71,7 +73,7 @@ export default function TemplateTransfer({ label, onImported }: { label: LabelId
     const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
     const a = document.createElement('a');
     a.href = url;
-    a.download = `label-template-${label}.json`;
+    a.download = fileName;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -84,6 +86,7 @@ export default function TemplateTransfer({ label, onImported }: { label: LabelId
     reset();
     try {
       setText(await file.text());
+      setFileName(file.name);
     } catch (e) {
       setError(errMsg(e));
     }
@@ -92,10 +95,42 @@ export default function TemplateTransfer({ label, onImported }: { label: LabelId
   const apply = async () => {
     reset(); setBusy(true);
     try {
-      const t = parseTemplate(text);
-      await saveTemplate(label, t);
-      onImported?.(t);
-      setMessage('Imported and saved. Printing now uses this template.');
+      const parsed = parseBundle(text);
+
+      if (parsed.bundle) {
+        // A whole label. Imported as a new label of its own, so it cannot overwrite one by mistake.
+        const name = parsed.bundle.name.trim() || 'Imported label';
+        const template = parsed.bundle.template as Template;
+        const generator = scaffoldSpec(template, parsed.bundle.generator);
+        const size = (template.basePdf as { width?: number; height?: number }) ?? {};
+        if (!user) throw new Error('You are not signed in.');
+        const created = await createLabel(user, {
+          name,
+          widthMm: Number(size.width) || 100,
+          heightMm: Number(size.height) || 50,
+          from: { kind: 'blank' },
+        });
+        // createLabel starts from blank, so write the imported layout and rules over the top.
+        await saveLabel(user, created.id, name, template, generator);
+        setMode(null);
+        setMessage(`Imported as a new label, “${name}”. Find it in the label list above.`);
+        onImported?.(template);
+        return;
+      }
+
+      // A bare template from an older version: replace the selected label's layout and keep its
+      // generator, so the fields it already fills still do.
+      if (!user) throw new Error('You are not signed in.');
+      const template = parsed.template!;
+      if (isBuiltin(label)) {
+        await saveBuiltinTemplate(label, template);
+      } else {
+        const { generator } = await loadLabel(user, label);
+        await saveLabel(user, label, label, template, scaffoldSpec(template, generator));
+      }
+      setMode(null);
+      setMessage('Imported the template. Printing now uses this layout, with the label’s existing data.');
+      onImported?.(template);
     } catch (e) {
       setError(errMsg(e));
     } finally {
@@ -106,8 +141,8 @@ export default function TemplateTransfer({ label, onImported }: { label: LabelId
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-2">
-        <button className={btnCls} disabled={busy} onClick={openExport}>Export template</button>
-        <button className={btnCls} disabled={busy} onClick={openImport}>Import template</button>
+        <button className={btnCls} disabled={busy || !label} onClick={openExport}>Export label</button>
+        <button className={btnCls} disabled={busy} onClick={openImport}>Import label</button>
         {mode && <button className={btnCls} onClick={() => { setMode(null); reset(); }}>Close</button>}
       </div>
 
@@ -118,7 +153,7 @@ export default function TemplateTransfer({ label, onImported }: { label: LabelId
               onChange={e => { onFile(e.target.files?.[0]); e.target.value = ''; }} />
           )}
           <textarea value={text} readOnly={mode === 'export'} rows={8} spellCheck={false}
-            placeholder={mode === 'import' ? 'Choose a .json file above or paste the template JSON here' : ''}
+            placeholder={mode === 'import' ? 'Choose a .json file above or paste the label JSON here' : ''}
             onChange={e => setText(e.target.value)}
             className="w-full rounded-xl border border-slate-300 bg-white p-2 font-mono text-xs text-slate-800" />
           <div className="flex flex-wrap gap-2">
@@ -129,9 +164,15 @@ export default function TemplateTransfer({ label, onImported }: { label: LabelId
               </>
             ) : (
               <button className={btnPrimaryCls}
-                disabled={busy || !text.trim()} onClick={apply}>Save as my template</button>
+                disabled={busy || !text.trim()} onClick={apply}>Import it</button>
             )}
           </div>
+          {mode === 'import' && (
+            <p className="text-xs text-slate-500">
+              A full label file becomes a new label. A bare pdfme template replaces the layout of
+              “{label}” and keeps its data generator.
+            </p>
+          )}
         </div>
       )}
 

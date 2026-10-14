@@ -5,7 +5,8 @@ import {
 } from './printApi';
 import { useCapabilities } from './capabilities';
 import TemplateTransfer from './TemplateTransfer';
-import { LABELS, getLabel, loadLastLabel, rememberLabel, type LabelId } from './labels';
+import { listLabels, loadLastLabel, rememberLabel, resolveLabel, type LabelId, type LabelMeta } from './labels';
+import { useAuth } from './auth/AuthProvider';
 import PrintersPanel from './PrintersPanel';
 import { Confetti, Mascot } from './Mascot';
 
@@ -83,11 +84,20 @@ function GroupTitle({ title, hint }: { title: string; hint: React.ReactNode }) {
   );
 }
 
-export default function PrintPage() {
+export default function PrintPage({ active = true }: { active?: boolean }) {
+  const { user } = useAuth();
   const caps = useCapabilities();
-  const [labelId, setLabelId] = useState<LabelId>(loadLastLabel);
-  const label = getLabel(labelId);
-  const sizeText = `${label.widthMm} × ${label.heightMm} mm`;
+  const [labels, setLabels] = useState<LabelMeta[]>([]);
+  const [labelsError, setLabelsError] = useState('');
+  const [labelsReady, setLabelsReady] = useState(false);
+  const [labelId, setLabelId] = useState<LabelId>('');
+  const label = labels.find(l => l.id === labelId) ?? labels[0] ?? null;
+  // The registry is read on mount, so there is no label for the first render, and none at all if
+  // the folder could not be read. Every hint below derives from these rather than from `label`, so
+  // a page that is still loading, or that has no labels, never dereferences nothing.
+  const widthMm = label?.widthMm ?? 0;
+  const heightMm = label?.heightMm ?? 0;
+  const sizeText = label ? `${widthMm} × ${heightMm} mm` : '';
   const [printers, setPrinters] = useState<string[]>([]);
   const [printer, setPrinter] = useState('');
   // names of the network printers the user added; selecting one prints without a dialog
@@ -123,6 +133,34 @@ export default function PrintPage() {
 
   useEffect(() => { reloadPrinters(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Labels are added, renamed and deleted in the Designer, which stays mounted beside this page, so
+  // the list is read again every time this tab is opened. Reading it only once left a deleted label
+  // in the dropdown (and a new one missing) until the app was restarted.
+  useEffect(() => {
+    if (!user || !active) return;
+    let stale = false;
+    (async () => {
+      try {
+        const registry = await listLabels(user);
+        if (stale) return;
+        setLabels(registry);
+        // Keep the label that is selected if it still exists; otherwise the one remembered last
+        // time, unless that has been deleted too.
+        const wanted = loadLastLabel(user);
+        const target = registry.find(l => l.id === wanted) ?? await resolveLabel(user, wanted ?? '');
+        if (stale) return;
+        setLabelId(cur => (registry.some(l => l.id === cur) ? cur : target?.id ?? cur));
+        if (target) rememberLabel(user, target.id);
+        setLabelsError('');
+      } catch (e) {
+        if (!stale) setLabelsError(`Could not read your labels: ${errMsg(e)}`);
+      } finally {
+        if (!stale) setLabelsReady(true);
+      }
+    })();
+    return () => { stale = true; };
+  }, [user, active]);
+
   // Ask the driver which resolutions it supports whenever the printer changes.
   useEffect(() => {
     setDpi(''); setResolutions([]); setDpiNote('');
@@ -135,9 +173,10 @@ export default function PrintPage() {
   }, [printer, caps.dpiSelect]);
 
   const onPrint = async () => {
+    if (!label || !user) return; // nothing selected yet; the button is disabled until there is one
     setBusy(true); setError(''); setResult(null);
     try {
-      const { timings, report, templateSource } = await printLabels({ label: labelId, printer, paper, orientation, rotate, margins, dpi, pages });
+      const { timings, report, templateSource } = await printLabels({ user, label: label.id, printer, paper, orientation, rotate, margins, dpi, pages });
       setResult({ label: label.name, pages, printer, t: timings, report, source: templateSource, silent });
       setCelebrate(n => n + 1);
     } catch (e) {
@@ -157,8 +196,8 @@ export default function PrintPage() {
               <h1 className="text-2xl font-bold text-slate-900">Silent print test</h1>
               <p className="text-sm text-slate-500">
                 {silent
-                  ? `Generate random ${sizeText} labels and print without a dialog.`
-                  : `Generate random ${sizeText} labels and print them through the system print dialog.`}
+                  ? `Generate random ${sizeText || 'label'}s and print without a dialog.`
+                  : `Generate random ${sizeText || 'label'}s and print them through the system print dialog.`}
               </p>
             </div>
           </div>
@@ -170,11 +209,28 @@ export default function PrintPage() {
           )}
         </header>
 
+        {/* No label to print: say so plainly rather than rendering a form that cannot work. */}
+        {labelsReady && !label && (
+          <p role="alert" className="rounded-2xl bg-amber-50 p-3 text-sm text-amber-900 ring-1 ring-amber-200 md:col-span-2">
+            {labelsError || 'No labels were found.'} Open the Designer tab and press **New** to make one.
+          </p>
+        )}
+        {labelsError && label && (
+          <p className="rounded-2xl bg-amber-50 p-3 text-xs text-amber-900 ring-1 ring-amber-200 md:col-span-2">
+            {labelsError}
+          </p>
+        )}
+
         <Field label="Label" htmlFor="label" hint={`Page size ${sizeText}. Each label keeps its own saved template.`}>
           <select id="label" className={inputCls + ' cursor-pointer disabled:cursor-not-allowed'} value={labelId}
-                  disabled={busy}
-                  onChange={e => { const id = e.target.value as LabelId; setLabelId(id); rememberLabel(id); setResult(null); }}>
-            {LABELS.map(l => <option key={l.id} value={l.id}>{l.name} — {l.widthMm} × {l.heightMm} mm</option>)}
+                  disabled={busy || labels.length === 0}
+                  onChange={e => {
+                    const id = e.target.value as LabelId;
+                    setLabelId(id);
+                    if (user) rememberLabel(user, id);
+                    setResult(null);
+                  }}>
+            {labels.map(l => <option key={l.id} value={l.id}>{l.name} — {l.widthMm} × {l.heightMm} mm</option>)}
           </select>
         </Field>
 
@@ -209,7 +265,7 @@ export default function PrintPage() {
         {caps.orientationSelect && (
           <fieldset className="space-y-1" disabled={busy}>
             <GroupTitle title="Orientation"
-                        hint={<>The label itself is {label.widthMm >= label.heightMm ? 'landscape' : 'portrait'} ({sizeText}). Auto leaves the choice to the printer driver.</>} />
+                        hint={<>The label itself is {label ? (widthMm >= heightMm ? 'landscape' : 'portrait') : 'of an unknown size'} ({sizeText}). Auto leaves the choice to the printer driver.</>} />
             <div className="grid grid-cols-3 gap-2">
               {ORIENTATIONS.map(o => {
                 const selected = orientation === o.value;
@@ -234,8 +290,8 @@ export default function PrintPage() {
 
         <fieldset className="space-y-1" disabled={busy}>
           <GroupTitle title="Rotate label content"
-                      hint={<>Rotates the label inside the PDF, so it works with any driver. On stock turned the other way (e.g. {label.heightMm} × {label.widthMm} mm)
-                        use 90° or 270° so the {sizeText} label fills the paper at full size. If it prints upside-down, use the other one.</>} />
+                      hint={<>Rotates the label inside the PDF, so it works with any driver.{label && <> On stock turned the other way (e.g. {heightMm} × {widthMm} mm)
+                        use 90° or 270° so the {sizeText} label fills the paper at full size.</>} If it prints upside-down, use the other one.</>} />
           <div className="grid grid-cols-4 gap-2">
             {ROTATIONS.map(r => {
               const selected = rotate === r;
@@ -291,7 +347,7 @@ export default function PrintPage() {
                  onChange={e => setPages(Math.max(1, Math.floor(+e.target.value) || 1))} />
         </Field>
 
-        <button onClick={onPrint} disabled={!printer || busy}
+        <button onClick={onPrint} disabled={!printer || busy || !label}
                 className="btn-cute flex w-full md:col-span-2 cursor-pointer items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-4 py-3 text-base font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300">
           {busy && (
             <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">

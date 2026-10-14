@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import PrintPage from './PrintPage';
 import DesignerPage from './DesignerPage';
 import { useCapabilities } from './capabilities';
+import { AuthProvider, useAuth } from './auth/AuthProvider';
+import LoginPage from './auth/LoginPage';
 
 type Tab = 'print' | 'designer';
 
@@ -18,18 +20,34 @@ function useViewportWidth() {
   return w;
 }
 
-export default function App() {
+function Workspace() {
+  const { status, user, signOut } = useAuth();
   const { platform } = useCapabilities();
   const width = useViewportWidth();
-  const designerAvailable = platform !== 'android' || width >= DESIGNER_MIN_WIDTH;
+  // The web build is Designer-only: printing needs the Rust side, which a browser does not have.
+  const web = platform === 'web';
+  const designerAvailable = web || platform !== 'android' || width >= DESIGNER_MIN_WIDTH;
+  const printAvailable = !web;
 
-  const [chosen, setChosen] = useState<Tab>('print');
-  const tab: Tab = designerAvailable ? chosen : 'print';
+  const [chosen, setChosen] = useState<Tab>(web ? 'designer' : 'print');
+  const tab: Tab = web ? 'designer' : designerAvailable ? chosen : 'print';
   const tabCls = (t: Tab) =>
     'cursor-pointer rounded-full px-5 py-1.5 text-sm font-semibold transition ' +
     (tab === t
       ? 'bg-indigo-500 text-white shadow-md shadow-indigo-300/60'
       : 'text-slate-500 hover:bg-indigo-100 hover:text-indigo-700');
+
+  // Restoring the previous sign-in is the one thing that happens before there is a user to show.
+  if (status === 'loading') {
+    return (
+      <div className="flex h-dvh items-center justify-center text-sm text-slate-500">
+        <span className="text-4xl" style={{ animation: 'mascot-bounce 1.2s ease-in-out infinite' }} aria-hidden="true">🔐</span>
+        Signing in…
+      </div>
+    );
+  }
+
+  if (status === 'signed-out' || !user) return <LoginPage />;
 
   return (
     // h-dvh (not h-screen) so the bottom is not clipped by Android's browser/navigation bars;
@@ -44,16 +62,27 @@ export default function App() {
       </div>
 
       <nav className="relative z-10 flex items-center gap-2 border-b border-slate-200/70 bg-white/60 px-4 py-2 backdrop-blur-md">
-        <button className={tabCls('print')} onClick={() => setChosen('print')}>🖨️ Print</button>
+        {printAvailable && (
+          <button className={tabCls('print')} onClick={() => setChosen('print')}>🖨️ Print</button>
+        )}
         {designerAvailable && (
           <button className={tabCls('designer')} onClick={() => setChosen('designer')}>🎨 Designer</button>
         )}
+        <span className="ml-auto text-xs text-slate-500">
+          Signed in as <span className="font-semibold text-slate-700">{user.username}</span>
+        </span>
+        <button onClick={() => { void signOut(); }}
+          className="cursor-pointer rounded-full border border-slate-300 px-3 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-50">
+          Sign out
+        </button>
       </nav>
       {/* Both pages stay mounted so unsaved designer edits survive switching tabs. */}
       <div className="relative z-10 min-h-0 flex-1">
-        <section className={'absolute inset-0 overflow-auto ' + (tab === 'print' ? 'tab-enter' : 'tab-hidden')}>
-          <PrintPage />
-        </section>
+        {printAvailable && (
+          <section className={'absolute inset-0 overflow-auto ' + (tab === 'print' ? 'tab-enter' : 'tab-hidden')}>
+            <PrintPage active={tab === 'print'} />
+          </section>
+        )}
         {designerAvailable && (
           <section className={'absolute inset-0 ' + (tab === 'designer' ? 'tab-enter' : 'tab-hidden')}>
             <DesignerPage />
@@ -61,5 +90,13 @@ export default function App() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <Workspace />
+    </AuthProvider>
   );
 }

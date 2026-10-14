@@ -1,7 +1,7 @@
 # Tauri label printing app (Windows + Android)
 
-Lists printers, generates random label data in Rust, builds a multi-page pdfme PDF in the
-frontend, and prints it.
+Lists printers, generates random label data from a per-label rule set, builds a multi-page
+pdfme PDF in the frontend, and prints it.
 
 - **Windows:** silent printing with SumatraPDF (`-print-to ... -silent`, scale-to-fit).
 - **Android:** two ways to print.
@@ -20,6 +20,24 @@ don't apply, instead of showing controls that would silently do nothing.
 | Paper size, orientation, resolution            | set by the app     | chosen in the system dialog (controls hidden)                              |
 | Rotate label content, margins, number of pages | yes                | yes (done inside the PDF)                                                  |
 | Designer tab                                   | yes                | tablets only (width >= 768 px); use template export/import on phones       |
+
+## Web build (Designer only)
+
+The same frontend also runs as a plain web page. After signing in, the user gets the **Designer** tab
+only: printing and printers need the Rust side, which a browser doesn't have, so the Print tab is hidden.
+
+```bash
+pnpm build        # static site in dist/, host it anywhere (fonts are served from /fonts/)
+pnpm dev          # or try it locally at http://localhost:1420 in a normal browser
+```
+
+- Detected at run time (`src/platform.ts`): inside Tauri nothing changes; in a browser the app skips every `invoke()` call.
+- Labels are stored in the Turso database per account, so they are the same on the web and on devices.
+- A built-in label's saved layout override is a file on desktop/Android; on the web it is kept in the browser's `localStorage`.
+- **Security:** `VITE_TURSO_URL` / `VITE_TURSO_TOKEN` are compiled into the bundle, so anyone who can open the
+  site can read the token and query the whole database, password hashes included, and the sign-in is only a gate
+  in the UI (see `AUTH_AND_DATABASE_PLAN.md` §7). Fine for a private test deployment. Before a public site, put a
+  small server in front of the database.
 
 ## Setup (Windows)
 1. Install Rust, Node 20+, pnpm, and the Tauri v2 prerequisites for Windows (WebView2, MSVC build tools).
@@ -187,8 +205,9 @@ git push origin main        # wait for CI to pass
 git push origin v0.2.0      # starts the release build
 ```
 See `RELEASE.md` for the full checklist.
-`.github/workflows/ci.yml` runs on every push to `main` and on pull requests: frontend build, Rust checks for Windows,
-Linux and Android, and a debug APK build.
+`.github/workflows/ci.yml` runs on every push to `main` and on pull requests: `pnpm test` and
+`pnpm typecheck`, `cargo test`, the frontend build, Rust checks for Windows, Linux and Android, and
+a debug APK build.
 
 ## Troubleshooting (Android on Windows)
 | Symptom                                                                      | Cause and fix                                                                                                                                                                                                                                                                                                                            |
@@ -215,36 +234,167 @@ Linux and Android, and a debug APK build.
 ## Designer
 The **Designer** tab is the pdfme designer. Edit the layout, set the page size, and press *Save template*.
 The template is saved to the app data folder (on Windows
-`%APPDATA%\com.example.print-test\label-template.json`) and the Print tab uses it from then on.
-*Reset to default* deletes it and returns to `src/templates/label.json`.
+`%APPDATA%\com.example.print-test\label-template-product.json`) and the Print tab uses it from then on.
+*Reset to default* deletes it and returns to `src/templates/product-label.json`.
 Fields named like the keys listed in the Designer ("Fields filled with random data") get random data per page;
 any other field prints its own text.
 
 On Android phones the Designer tab is hidden because the editor needs a large screen; tablets show it.
 
+## Signing in, and where labels live
+
+The app asks for a username and password before it shows anything. There is no server: accounts and
+labels live in a [Turso](https://turso.app) database, reached over HTTPS from the app, so there is
+nothing to host or keep running.
+
+To set this up:
+
+1. Create a database at turso.app and create a **write** token.
+2. Copy `.env.example` to `.env` and fill in `VITE_TURSO_URL` and `VITE_TURSO_TOKEN`.
+3. Restart the dev server — the URL and token are read at build time.
+
+Nothing else is needed: **the app applies any outstanding migration itself at start-up**, before it
+shows the login screen, so a database always matches the code. To apply it by hand instead, or to
+see what it did, use `pnpm db:migrate`.
+
+### Changing the schema
+
+The schema lives in `src/db/schema.ts` and nowhere else. To change it:
+
+```bash
+# 1. edit src/db/schema.ts
+pnpm db:generate     # writes db/migrations/000N_name.sql, plus the snapshot for the next diff
+pnpm db:migrate      # applies it to the database named in .env
+```
+
+Commit the generated files under `db/migrations/`. `pnpm test` builds its own schema by running
+those migrations, so a broken one fails the tests rather than the app.
+
+`pnpm db:studio` opens a browser UI for looking at the database while you work on this.
+
+`db/adopt-drizzle.sql` is a one-time script, already applied to the shared database, that moved it
+from the hand-written schema to the migrated one. It is kept for the record.
+
+Each account sees only its own labels. A built-in label's layout is still a file on the device
+(`label-template-product.json`) and its generator is still in the app; everything a user creates is
+one row in the database, scoped to their account. Labels saved by an earlier version, as files in
+`app_data_dir()/labels`, are offered for copying onto the account the first time that account signs
+in — once, and never again if the user deletes what was imported.
+
+> **This is a test build.** The database token is compiled into the frontend bundle, so anyone who
+> opens the app can read it and query the whole database. The sign-in screen decides which labels
+> the app *shows*; it is not a security boundary. Passwords are salted and hashed so they are not
+> stored in the clear, and that is the whole of the protection. Before this goes anywhere real, put
+> a server in front of it. See `AUTH_AND_DATABASE_PLAN.md` §7.
+
+### Commands
+
+| Command | Does |
+| ------- | ---- |
+| `pnpm test` | Unit tests, including the SQL run against a local SQLite file. No credentials needed. |
+| `pnpm test:db` | The same flows against the **real** database. Needs `.env`; creates and removes a throwaway account. |
+| `pnpm db:generate` | Writes a migration from `src/db/schema.ts`. |
+| `pnpm db:migrate` | Applies outstanding migrations (the app also does this at start-up). |
+
 ## Labels
 
-The app maintains two labels, chosen with the **Label** `<select>` on the Print tab (and on the Designer tab):
+The app ships with one label and lets you add your own, all chosen with the **Label** `<select>`:
 
 | Label                  | id         | Page size    | Default layout                       |
 | ---------------------- | ---------- | ------------ | ------------------------------------ |
-| Shipping label (Sagawa) | `shipping` | 110 x 86 mm | `src/templates/label.json`           |
 | Product label          | `product`  | 190 x 160 mm | `src/templates/product-label.json`   |
 
-Each label has its own saved template (`label-template.json` for `shipping`, `label-template-product.json`
-for `product`), its own *Reset to default*, and its own random test data. The last label used is remembered.
+A built-in keeps its saved template next to the bundled one (`label-template-product.json` for `product`)
+and has its own *Reset to default*. A label you create yourself is one row in the database, holding
+its layout **and** the rule that fills it, so the two can never drift apart. The page size comes from
+the template, so a label resized in the Designer reports the size it will actually print at. The last
+label used is remembered per account, so two people on one device do not fight over it.
 
-To add another label: add a template under `src/templates/`, register it in `src/labels.ts`, and add its id
-to `LABEL_IDS` and a data generator to `generate_random_data` in `src-tauri/src/lib.rs`.
 Set the printer driver's default paper to the label's page size (see the hint under *Paper size*).
 
-## Moving a template between devices
-The saved template lives on each device. To use a layout designed on desktop on Android:
+### Making your own label
 
-1. On the desktop, open *Export / import template* (Print tab, or the Designer tab) and press **Export template**.
-   Use **Copy** or **Download .json**. This exports the saved template, not unsaved Designer edits.
-2. On the phone, open the Print tab, *Template: export / import*, press **Import template**, choose the
-   `.json` file or paste the JSON, and press **Save as my template**.
+On the Designer tab, next to the label picker: **New**, **Duplicate**, **Rename**, **Delete**.
+**New** asks for a name, a size (with presets, or any size in mm) and what to start from:
+
+- **The sample label** — a small ready-made label that prints as-is, so there is something to try
+  before building one field by field. Its fields show off fixed text, a date that follows today, a
+  table, per-page numbering, a pattern and one field built from another's value. It becomes an
+  ordinary label of yours, which you can rename, edit and delete.
+- **Copy of …** — an existing label's layout and its data rules, which you can then change.
+- **A blank label** — an empty page. Add fields in the Layout tab.
+
+Built-in labels cannot be renamed or deleted, only reset.
+
+The Designer has two tabs:
+
+- **Layout** — where things sit on the page (today's pdfme designer).
+- **Data** — what each field prints on every page.
+
+One **Save** writes both.
+
+### The data tab
+
+Each field that can take data gets one row: its name, its type, a rule, and a live sample of what
+it will print. A field you add in the Layout appears here with a sensible default rule. A field you
+rename or delete leaves its rule behind in an "unused rules" list, where you can move it to another
+field or delete it, rather than losing the work.
+
+The rules are a fixed, small set — there is no scripting:
+| Rule | What it does |
+| ---- | ------------ |
+| Fixed text | Always the same text. |
+| Random digits | N digits, e.g. a 13-digit tracking number. |
+| Whole number | A number in a range, optionally stepped, as `1234`, `1,234` or `¥1,234`. |
+| Pick from a list | One of the values you type. |
+| From a table | One cell of a table. All fields reading the same table share a row for the whole page, so a postcode and its address always match. |
+| A date | Relative to today, formatted with `YYYY MM DD HH mm ss`. |
+| Pattern | Text with `{d3}` digits, `{D2}` A–Z or `{L2}` a–z mixed in, e.g. `A{d12}A`. |
+| Numbering | Counts up per page, restarting on every print job. |
+| Copy another field | Another field's value on the same page, optionally rebuilt with a pattern where `{from}` is the copied value. |
+
+Every rule can also add text before and after the value, and run it through *digits only*,
+*upper* or *lower*. Problems (a range the wrong way round, a rule pointing at a table that is not
+there, a copy that loops) are listed at the top and stop Save until they are fixed. Barcode fields
+show what their format accepts and flag a sample it could not encode, so a bad value is caught
+before it reaches a print job. **Preview label** renders the real page with pdfme.
+
+A built-in label's rules ship with the app, so the Data tab is read-only for them; **Duplicate**
+gives you an editable copy with the same layout and the same rules.
+
+### Label files and moving one between devices
+
+A label file is JSON:
+
+```jsonc
+{
+  "format": "q-print-label",
+  "version": 1,
+  "name": "My parcel label",
+  "template": { /* a pdfme template */ },
+  "generator": { "version": 1, "tables": { }, "fields": { "zip": { "kind": "digits", "length": 7 } } }
+}
+```
+
+Export writes this whole file, so the receiving device produces the same data, not just the same
+picture. Import accepts it (creating a new label) and still accepts a bare pdfme template, which
+replaces the selected label's layout and keeps its data rules.
+
+To add a label to the app itself rather than to your own copy: put its template under
+`src/templates/`, add it to `BUILTINS` in `src/builtinLabels.ts` and `BUILTIN_IDS` in
+`src-tauri/src/lib.rs`, and add a spec to `BUILTIN_SPECS` in `src/generator/builtins.ts`.
+The generator engine itself is in `src/generator/engine.ts` and is a pure function, so it is
+covered by `pnpm test`.
+
+## Moving a label between devices
+The label lives on each device. To use one designed on desktop on Android:
+
+1. On the desktop, open *Export / import label* (Print tab, or the Designer tab) and press **Export label**.
+   Use **Copy** or **Download .json**. This exports the saved label, not unsaved Designer edits.
+2. On the phone, open the Print tab, *Label: export / import*, press **Import label**, choose the
+   `.json` file or paste the JSON, and press **Import it**. The label shows up in the label list.
+
+Phones cannot use the Designer, but they can print anything imported this way.
 
 ## Rotation, margins and resolution
 - **Rotate label content** turns the label inside the PDF (0/90/180/270), independent of the driver or platform.

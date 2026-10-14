@@ -1,8 +1,9 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { isTauri } from './platform';
 
 export type Capabilities = {
-  platform: 'windows' | 'linux' | 'android' | 'other';
+  platform: 'windows' | 'linux' | 'android' | 'web' | 'other';
   transport: string;
   /** prints without showing a dialog */
   silent: boolean;
@@ -17,12 +18,26 @@ export type Capabilities = {
 
 const CapabilitiesContext = createContext<Capabilities | null>(null);
 
+/** In a browser there is no Rust side: nothing prints and no printers can be listed. */
+const WEB_CAPABILITIES: Capabilities = {
+  platform: 'web',
+  transport: 'none',
+  silent: false,
+  paperSelect: false,
+  orientationSelect: false,
+  dpiSelect: false,
+  printerList: false,
+  directPrinters: false,
+};
+
 /** Asks the Rust side once what the current platform's print backend can do. */
 export function CapabilitiesProvider({ children }: { children: ReactNode }) {
-  const [caps, setCaps] = useState<Capabilities | null>(null);
+  // A browser answers immediately; only the Tauri shell has anything to ask.
+  const [caps, setCaps] = useState<Capabilities | null>(() => (isTauri() ? null : WEB_CAPABILITIES));
   const [error, setError] = useState('');
 
   useEffect(() => {
+    if (!isTauri()) return;
     invoke<Capabilities>('capabilities').then(setCaps).catch(e => setError(e instanceof Error ? e.message : String(e)));
   }, []);
 
