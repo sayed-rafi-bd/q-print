@@ -41,7 +41,7 @@ don't apply, instead of showing controls that would silently do nothing.
 4. Do the Windows setup steps 2-4 above (dependencies, icons, font). SumatraPDF is Windows-only and is not used on Android.
 5. **Turn on Windows Developer Mode** (once per PC): Settings -> System -> For developers -> **Developer Mode: On**
    (on older Windows 10: Settings -> Update & Security -> For developers). Then close and reopen your terminal.
-   Tauri links the built `libprint_test_lib.so` into the Android project with a symbolic link, and Windows only lets
+   Tauri links the built `libq_print_lib.so` into the Android project with a symbolic link, and Windows only lets
    regular users create those when Developer Mode is on. Without it the build stops with
    `Creation symbolic link is not allowed for this system`.
 6. Connect a device. For printing, use a real phone or tablet (emulators don't reach your network printers):
@@ -132,7 +132,7 @@ pnpm tauri build
 Output:
 - `src-tauri\target\release\bundle\nsis\*.exe`: setup installer
 - `src-tauri\target\release\bundle\msi\*.msi`
-- `src-tauri\target\release\print-test.exe`: the bare app, with `SumatraPDF.exe` next to it
+- `src-tauri\target\release\q-print.exe`: the bare app, with `SumatraPDF.exe` next to it
 
 ### Android
 Debug APK (signed with the debug key, installs straight away). `--target aarch64` builds only 64-bit phones, which is

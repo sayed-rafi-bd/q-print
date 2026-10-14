@@ -1,10 +1,10 @@
 [package]
-name = "print-test"
+name = "q-print"
 version = "0.1.0"
 edition = "2021"
 
 [lib]
-name = "print_test_lib"
+name = "q_print_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

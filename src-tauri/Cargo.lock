@@ -2305,21 +2305,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "925383efa346730478fb4838dbe9137d2a47675ad789c546d150a6e1dd4ab31c"
 
 [[package]]
-name = "print-test"
-version = "0.1.0"
-dependencies = [
- "base64 0.22.1",
- "printers",
- "rand",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-android-print",
- "ureq",
-]
-
-[[package]]
 name = "printers"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2388,6 +2373,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "985e7ec9bb745e6ce6535b544d84d6cd6f7ad8bd711c398938ae983b91a766d9"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "q-print"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "printers",
+ "rand",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-android-print",
+ "ureq",
 ]
 
 [[package]]
