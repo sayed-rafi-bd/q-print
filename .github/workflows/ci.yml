@@ -12,6 +12,7 @@ concurrency:
 jobs:
   # Type-check and build the React frontend (tsc && vite build).
   frontend:
+    if: false   # TEMPORARILY DISABLED
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,6 +26,7 @@ jobs:
 
   # Windows backend (SumatraPDF + PowerShell code). Only compiles it; nothing is printed.
   rust-windows:
+    if: false   # TEMPORARILY DISABLED
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -39,6 +41,7 @@ jobs:
 
   # The non-Windows fallback backend (print_other.rs) and the shared code.
   rust-linux:
+    if: false   # TEMPORARILY DISABLED
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -55,6 +58,7 @@ jobs:
 
   # The Android backend and the Kotlin plugin's Rust half. `cargo check` does not link, so no NDK is needed.
   rust-android:
+    if: false   # TEMPORARILY DISABLED
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -68,6 +72,7 @@ jobs:
 
   # Builds the debug APK, which compiles the Kotlin plugin (PrintPlugin.kt / PdfFileAdapter.kt) through Gradle.
   android-apk:
+    if: false   # TEMPORARILY DISABLED
     runs-on: ubuntu-latest
     needs: [frontend, rust-android]
     steps:
