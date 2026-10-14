@@ -1,0 +1,243 @@
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { createClient, type Client } from '@libsql/client';
+import { readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import { createUser, findById, findByUsername, InvalidCredentialsError, verifyPassword, UsernameTakenError } from './users';
+import { createLabel, deleteLabel, getLabel, getLabelBySlug, listLabels, updateLabel } from './labels';
+import type { Db } from './types';
+
+const DB_FILE = join(tmpdir(), `q-print-test-${process.pid}.db`);
+let client: Client;
+
+/**
+ * The real driver against a real SQLite file, so the SQL in these modules is actually run rather
+ * than pattern-matched by a stub. The schema is the same file the app is set up with.
+ */
+const db = (): Db => ({
+  execute: async stmt => {
+    const rs = await client.execute(stmt);
+    return { rows: rs.rows as Record<string, string | number | null>[] };
+  },
+});
+
+beforeAll(async () => {
+  rmSync(DB_FILE, { force: true });
+  client = createClient({ url: `file:${DB_FILE}` });
+  const schema = readFileSync(new URL('../../db/schema.sql', import.meta.url), 'utf8');
+  // The client runs one statement per execute, which is how Turso's HTTP interface behaves too.
+  for (const statement of schema.split(';').map(s => s.trim()).filter(Boolean)) {
+    await client.execute(statement);
+  }
+});
+
+afterAll(() => {
+  client.close();
+  rmSync(DB_FILE, { force: true });
+});
+
+/** Each test starts from a clean pair of tables. */
+afterEach(async () => {
+  await client.execute('DELETE FROM labels');
+  await client.execute('DELETE FROM users');
+});
+
+const signUp = async (name = 'ann', password = 'hunter2') => createUser(db(), name, password);
+const labelJson = (width: number) => JSON.stringify({ basePdf: { width, height: 50 }, schemas: [[]] });
+
+describe('createUser', () => {
+  it('registers an account and returns it without the hash or the salt', async () => {
+    const user = await signUp();
+    expect(user.username).toBe('ann');
+    expect(user.id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(Object.keys(user).sort()).toEqual(['createdAt', 'id', 'username']);
+  });
+
+  it('trims the name, so " ann " is the same account as "ann"', async () => {
+    await signUp('ann');
+    await expect(signUp('  ann  ')).rejects.toThrow(UsernameTakenError);
+  });
+
+  it('is case-insensitive, so "Ann" cannot be registered after "ann"', async () => {
+    await signUp('ann');
+    await expect(signUp('ANN')).rejects.toThrow(/already taken/);
+  });
+
+  it('refuses a name that is taken, which is what the sign-up screen shows', async () => {
+    await signUp();
+    await expect(signUp()).rejects.toThrow(UsernameTakenError);
+  });
+
+  it('names the account in the error, so the screen can point at it', async () => {
+    await signUp('ann');
+    const error = await signUp('ann').catch(e => e as UsernameTakenError);
+    expect(error).toBeInstanceOf(UsernameTakenError);
+    expect((error as UsernameTakenError).username).toBe('ann');
+    expect((error as UsernameTakenError).message).toContain('already taken');
+  });
+
+  it('never stores the password, only a hash and a salt', async () => {
+    await signUp('ann', 'hunter2');
+    const { rows } = await client.execute('SELECT password_hash, salt FROM users WHERE username = ?', ['ann']);
+    const stored = rows[0] as Record<string, string>;
+    expect(stored.password_hash).not.toContain('hunter2');
+    expect(stored.password_hash).toMatch(/^[0-9a-f]{64}$/);
+    expect(stored.salt).toMatch(/^[0-9a-f]{32}$/);
+  });
+
+  it('gives every account a different salt, so identical passwords differ', async () => {
+    await signUp('ann', 'same');
+    await signUp('bob', 'same');
+    const { rows } = await client.execute('SELECT password_hash FROM users ORDER BY username');
+    const [a, b] = rows.map(r => (r as Record<string, string>).password_hash);
+    expect(a).not.toBe(b);
+  });
+
+  it('refuses a name or password it will not store', async () => {
+    await expect(signUp('')).rejects.toThrow(InvalidCredentialsError);
+    await expect(signUp('   ')).rejects.toThrow(/username/i);
+    await expect(signUp('x'.repeat(33))).rejects.toThrow(/at most 32/);
+    await expect(signUp('ann', 'abc')).rejects.toThrow(/at least 4/);
+    await expect(signUp('badname')).rejects.toThrow(InvalidCredentialsError);
+  });
+});
+
+describe('verifyPassword', () => {
+  it('returns the account for the right password', async () => {
+    const created = await signUp('ann', 'hunter2');
+    const found = await verifyPassword(db(), 'ann', 'hunter2');
+    expect(found?.id).toBe(created.id);
+  });
+
+  it('refuses a wrong password', async () => {
+    await signUp('ann', 'hunter2');
+    expect(await verifyPassword(db(), 'ann', 'hunter3')).toBeNull();
+  });
+
+  it('refuses a name that does not exist', async () => {
+    await expect(verifyPassword(db(), 'nobody', 'hunter2')).resolves.toBeNull();
+  });
+
+  it('gives the same answer for a wrong name and a wrong password', async () => {
+    await signUp('ann', 'hunter2');
+    expect(await verifyPassword(db(), 'nobody', 'hunter2')).toBeNull();
+    expect(await verifyPassword(db(), 'ann', 'wrong')).toBeNull();
+  });
+
+  it('ignores surrounding whitespace in the name', async () => {
+    await signUp('ann', 'hunter2');
+    expect(await verifyPassword(db(), ' ann ', 'hunter2')).not.toBeNull();
+  });
+});
+
+describe('lookups', () => {
+  it('finds an account by name and by id', async () => {
+    const user = await signUp();
+    expect((await findByUsername(db(), 'ann'))?.id).toBe(user.id);
+    expect((await findById(db(), user.id))?.username).toBe('ann');
+  });
+
+  it('returns null rather than throwing for someone who is not there', async () => {
+    expect(await findByUsername(db(), 'nobody')).toBeNull();
+    expect(await findById(db(), 'no-such-id')).toBeNull();
+  });
+});
+
+describe('labels', () => {
+  it('stores a label and reads it back whole', async () => {
+    const user = await signUp();
+    const created = await createLabel(db(), user.id, {
+      name: 'My parcel', slug: 'my-parcel', template: labelJson(100), generator: '{"version":1,"fields":{}}',
+    });
+    const fetched = await getLabel(db(), user.id, created.id);
+    expect(fetched?.name).toBe('My parcel');
+    expect(fetched?.slug).toBe('my-parcel');
+    expect(fetched?.generator).toBe('{"version":1,"fields":{}}');
+  });
+
+  it('reports the page size from the template, so it cannot go stale', async () => {
+    const user = await signUp();
+    await createLabel(db(), user.id, { name: 'A', slug: 'a', template: labelJson(110), generator: '{}' });
+    const [summary] = await listLabels(db(), user.id);
+    expect(summary.widthMm).toBe(110);
+    expect(summary.heightMm).toBe(50);
+  });
+
+  it('still lists a label whose template cannot be read', async () => {
+    const user = await signUp();
+    await createLabel(db(), user.id, { name: 'Broken', slug: 'broken', template: 'not json', generator: '{}' });
+    const [summary] = await listLabels(db(), user.id);
+    expect(summary.name).toBe('Broken');
+    expect(summary.widthMm).toBe(100);
+  });
+
+  it('refuses two labels with the same slug for one account', async () => {
+    const user = await signUp();
+    await createLabel(db(), user.id, { name: 'A', slug: 'a', template: labelJson(100), generator: '{}' });
+    await expect(createLabel(db(), user.id, { name: 'B', slug: 'a', template: labelJson(100), generator: '{}' }))
+      .rejects.toThrow(/UNIQUE/i);
+  });
+
+  it('lets two accounts have a label with the same slug', async () => {
+    const ann = await signUp('ann');
+    const bob = await signUp('bob', 'hunter3');
+    await createLabel(db(), ann.id, { name: 'A', slug: 'a', template: labelJson(100), generator: '{}' });
+    await createLabel(db(), bob.id, { name: 'A', slug: 'a', template: labelJson(100), generator: '{}' });
+    expect(await listLabels(db(), ann.id)).toHaveLength(1);
+    expect(await listLabels(db(), bob.id)).toHaveLength(1);
+  });
+
+  it('updates a label in place', async () => {
+    const user = await signUp();
+    const created = await createLabel(db(), user.id, { name: 'A', slug: 'a', template: labelJson(100), generator: '{}' });
+    expect(await updateLabel(db(), user.id, created.id, { name: 'Renamed' })).toBe(true);
+    expect((await getLabel(db(), user.id, created.id))?.name).toBe('Renamed');
+  });
+
+  it('deletes a label', async () => {
+    const user = await signUp();
+    const created = await createLabel(db(), user.id, { name: 'A', slug: 'a', template: labelJson(100), generator: '{}' });
+    expect(await deleteLabel(db(), user.id, created.id)).toBe(true);
+    expect(await getLabel(db(), user.id, created.id)).toBeNull();
+  });
+
+  it('finds a label by its slug', async () => {
+    const user = await signUp();
+    await createLabel(db(), user.id, { name: 'My parcel', slug: 'my-parcel', template: labelJson(100), generator: '{}' });
+    expect((await getLabelBySlug(db(), user.id, 'my-parcel'))?.name).toBe('My parcel');
+    expect(await getLabelBySlug(db(), user.id, 'nope')).toBeNull();
+  });
+});
+
+describe('one account cannot reach another', () => {
+  it('does not list another account’s labels', async () => {
+    const ann = await signUp('ann');
+    const bob = await signUp('bob', 'hunter3');
+    await createLabel(db(), ann.id, { name: 'Ann private', slug: 'anns', template: labelJson(100), generator: '{}' });
+    expect(await listLabels(db(), bob.id)).toEqual([]);
+  });
+
+  it('does not read another account’s label by id', async () => {
+    const ann = await signUp('ann');
+    const bob = await signUp('bob', 'hunter3');
+    const anns = await createLabel(db(), ann.id, { name: 'Ann private', slug: 'anns', template: labelJson(100), generator: '{}' });
+    expect(await getLabel(db(), bob.id, anns.id)).toBeNull();
+  });
+
+  it('does not change another account’s label', async () => {
+    const ann = await signUp('ann');
+    const bob = await signUp('bob', 'hunter3');
+    const anns = await createLabel(db(), ann.id, { name: 'Ann private', slug: 'anns', template: labelJson(100), generator: '{}' });
+    expect(await updateLabel(db(), bob.id, anns.id, { name: 'Hijacked' })).toBe(false);
+    expect((await getLabel(db(), ann.id, anns.id))?.name).toBe('Ann private');
+  });
+
+  it('does not delete another account’s label', async () => {
+    const ann = await signUp('ann');
+    const bob = await signUp('bob', 'hunter3');
+    const anns = await createLabel(db(), ann.id, { name: 'Ann private', slug: 'anns', template: labelJson(100), generator: '{}' });
+    expect(await deleteLabel(db(), bob.id, anns.id)).toBe(false);
+    expect(await getLabel(db(), ann.id, anns.id)).not.toBeNull();
+  });
+});

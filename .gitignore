@@ -14,3 +14,8 @@ src-tauri/gen/android/**/.tauri
 # signing secrets, never commit
 src-tauri/gen/android/keystore.properties
 *.jks
+
+# database credentials, never commit
+.env
+.env.*
+!.env.example

@@ -27,6 +27,7 @@
     "version:set": "node scripts/bump-version.mjs"
   },
   "dependencies": {
+    "@libsql/client": "^0.18.0",
     "@pdfme/common": "^5.2.0",
     "@pdfme/generator": "^5.2.0",
     "@pdfme/schemas": "^5.2.0",
