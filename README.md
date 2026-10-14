@@ -244,9 +244,16 @@ Set the printer driver's default paper to the label's page size (see the hint un
 ### Making your own label
 
 On the Designer tab, next to the label picker: **New**, **Duplicate**, **Rename**, **Delete**.
-**New** asks for a name, a size (with presets, or any size in mm) and whether to start blank or as
-a copy of an existing label — a copy brings both the layout and the data rules. Built-in labels
-cannot be renamed or deleted, only reset.
+**New** asks for a name, a size (with presets, or any size in mm) and what to start from:
+
+- **The sample label** — a small ready-made label that prints as-is, so there is something to try
+  before building one field by field. Its fields show off fixed text, a date that follows today, a
+  table, per-page numbering, a pattern and one field built from another's value. It becomes an
+  ordinary label of yours, which you can rename, edit and delete.
+- **Copy of …** — an existing label's layout and its data rules, which you can then change.
+- **A blank label** — an empty page. Add fields in the Layout tab.
+
+Built-in labels cannot be renamed or deleted, only reset.
 
 The Designer has two tabs:
 

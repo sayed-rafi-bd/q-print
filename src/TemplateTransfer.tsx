@@ -100,10 +100,11 @@ export default function TemplateTransfer({ label, onImported }: {
         const template = parsed.bundle.template as Template;
         const generator = scaffoldSpec(template, parsed.bundle.generator);
         const size = (template.basePdf as { width?: number; height?: number }) ?? {};
-        const created: LabelMeta = await createLabel({
+        const created = await createLabel({
           name,
           widthMm: Number(size.width) || 100,
           heightMm: Number(size.height) || 50,
+          from: { kind: 'blank' },
         });
         await saveBundle(created.id, name, template, generator);
         setMode(null);

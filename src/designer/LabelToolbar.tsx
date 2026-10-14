@@ -64,7 +64,7 @@ export default function LabelToolbar({ labels, broken, value, disabled, onPick, 
         name: `${current!.name} copy`,
         widthMm: current!.widthMm,
         heightMm: current!.heightMm,
-        from: current!.id,
+        from: { kind: 'copy', id: current!.id },
       });
       onChanged(copy.id);
     });

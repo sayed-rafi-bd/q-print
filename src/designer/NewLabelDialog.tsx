@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import type { LabelMeta, NewLabel } from '../labels';
+import type { LabelId, LabelMeta, NewLabel } from '../labels';
+import { SAMPLE_LABEL_NAME, SAMPLE_SIZE } from '../sampleLabel';
 
 /** Common label sizes, so most labels are one click rather than two typed numbers. */
 const PRESETS: { label: string; widthMm: number; heightMm: number }[] = [
@@ -31,12 +32,12 @@ type Props = {
   onClose: () => void;
 };
 
-/** "New label" dialog: a name, a size, and whether to start blank or copy an existing one. */
+/** "New label" dialog: a name, a size, and what to start from. */
 export default function NewLabelDialog({ labels, onCreate, onClose }: Props) {
   const [name, setName] = useState('');
-  const [widthMm, setWidthMm] = useState(100);
-  const [heightMm, setHeightMm] = useState(50);
-  const [from, setFrom] = useState<string>('');
+  const [widthMm, setWidthMm] = useState(SAMPLE_SIZE.widthMm);
+  const [heightMm, setHeightMm] = useState(SAMPLE_SIZE.heightMm);
+  const [from, setFrom] = useState<LabelId | 'sample' | ''>('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -47,7 +48,12 @@ export default function NewLabelDialog({ labels, onCreate, onClose }: Props) {
     if (!sizeOk || busy) return;
     setBusy(true); setError('');
     try {
-      await onCreate({ name: name.trim(), widthMm, heightMm, from: from || null });
+      await onCreate({
+        name: name.trim(),
+        widthMm,
+        heightMm,
+        from: from === 'sample' ? { kind: 'sample' } : from ? { kind: 'copy', id: from } : { kind: 'blank' },
+      });
       onClose();
     } catch (err) {
       setError(errMsg(err));
@@ -55,6 +61,23 @@ export default function NewLabelDialog({ labels, onCreate, onClose }: Props) {
       setBusy(false);
     }
   };
+
+  const options: { value: LabelId | 'sample' | ''; label: string; hint: string; onPick?: () => void }[] = [
+    {
+      value: '', label: 'A blank label', hint: 'An empty page. Add fields in the Layout tab.',
+      onPick: () => { setName(''); setWidthMm(100); setHeightMm(50); },
+    },
+    {
+      value: 'sample', label: 'The sample label',
+      hint: 'A small ready-made label, so there is something to print straight away.',
+      onPick: () => { setName(SAMPLE_LABEL_NAME); setWidthMm(SAMPLE_SIZE.widthMm); setHeightMm(SAMPLE_SIZE.heightMm); },
+    },
+    ...labels.map(l => ({
+      value: l.id, label: `Copy of “${l.name}”`,
+      hint: 'Its layout and its data rules, which you can then change.',
+      onPick: () => { setWidthMm(l.widthMm); setHeightMm(l.heightMm); },
+    })),
+  ];
 
   return (
     <form onSubmit={submit} className="tab-enter space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -89,15 +112,19 @@ export default function NewLabelDialog({ labels, onCreate, onClose }: Props) {
         {!sizeOk && <p className="text-xs text-red-700">A label must be between {MIN_MM} and {MAX_MM} mm.</p>}
       </fieldset>
 
-      <fieldset className="space-y-1">
+      <fieldset className="space-y-1.5">
         <legend className="text-sm font-medium text-slate-700">Start from</legend>
-        <select value={from} onChange={e => setFrom(e.target.value)}
-          className={inputCls + ' w-full cursor-pointer'}>
-          <option value="">A blank label</option>
-          {labels.map(l => (
-            <option key={l.id} value={l.id}>Copy of “{l.name}” (layout and data)</option>
-          ))}
-        </select>
+        {options.map(o => (
+          <label key={o.value || 'blank'} className="flex cursor-pointer items-start gap-2 text-sm text-slate-700">
+            <input type="radio" name="start-from" value={o.value} checked={from === o.value}
+              onChange={() => { setFrom(o.value); o.onPick?.(); }}
+              className="mt-1" />
+            <span>
+              <span className="block">{o.label}</span>
+              <span className="block text-xs text-slate-500">{o.hint}</span>
+            </span>
+          </label>
+        ))}
       </fieldset>
 
       {error && <p role="alert" className="break-words text-xs text-red-700">{error}</p>}

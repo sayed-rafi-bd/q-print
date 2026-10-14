@@ -5,6 +5,7 @@ import { templateSizeMm } from './bundle';
 import { scaffoldSpec } from './generator/scaffold';
 import { builtinSpec } from './generator/builtins';
 import { isValidId, slugify } from './labelId';
+import { sampleSpec, sampleTemplate } from './sampleLabel';
 import { loadBundle, saveBundle } from './templateStore';
 import type { GeneratorSpec } from './generator/spec';
 
@@ -89,16 +90,24 @@ export async function resolveLabel(id: LabelId): Promise<LabelMeta | null> {
 /** Checks an id against the rule the backend enforces, so the UI can fail before writing. */
 export { isValidId, slugify };
 
+/** Where a new label's layout and rules come from. */
+export type LabelSource =
+  /** An empty page of the requested size. */
+  | { kind: 'blank' }
+  /** The bundled sample, so there is something printable to start from. */
+  | { kind: 'sample' }
+  /** A copy of an existing label: its layout and its rules. */
+  | { kind: 'copy'; id: LabelId };
+
 export type NewLabel = {
   /** Shown in the picker. */
   name: string;
   widthMm: number;
   heightMm: number;
-  /** Copy this label's template and generator instead of starting blank. */
-  from?: LabelId | null;
+  from: LabelSource;
 };
 
-/** Creates a label from scratch or as a copy of an existing one, and saves it. */
+/** Creates a label and saves it, ready to open in the Designer. */
 export async function createLabel({ name, widthMm, heightMm, from }: NewLabel): Promise<LabelMeta> {
   const { labels } = await listLabels();
   const id = slugify(name, labels.map(l => l.id));
@@ -106,26 +115,38 @@ export async function createLabel({ name, widthMm, heightMm, from }: NewLabel): 
 
   let template: Template;
   let generator: GeneratorSpec;
-  if (from && (builtin(from) || labels.some(l => l.id === from))) {
-    const source = builtin(from);
-    if (source) {
-      template = structuredClone(source.defaultTemplate);
-      generator = builtinSpec(from);
-    } else {
-      const bundle = await loadBundle(from);
-      template = structuredClone(bundle.template as Template);
-      generator = structuredClone(bundle.generator);
+  switch (from.kind) {
+    case 'sample':
+      template = sampleTemplate();
+      generator = sampleSpec();
+      break;
+
+    case 'copy': {
+      const source = builtin(from.id);
+      if (source) {
+        template = structuredClone(source.defaultTemplate);
+        generator = builtinSpec(from.id);
+      } else if (labels.some(l => l.id === from.id)) {
+        const bundle = await loadBundle(from.id);
+        template = structuredClone(bundle.template as Template);
+        generator = structuredClone(bundle.generator);
+      } else {
+        throw new Error(`There is no label called “${from.id}” to copy.`);
+      }
+      break;
     }
-    // The copy gets the size the user asked for, not the one it was copied from.
-    template.basePdf = { width: widthMm, height: heightMm } as Template['basePdf'];
-  } else {
-    template = {
-      basePdf: { width: widthMm, height: heightMm, padding: [0, 0, 0, 0] },
-      schemas: [[]],
-    } as unknown as Template;
-    generator = { version: 1, fields: {} };
+
+    default:
+      template = {
+        basePdf: { width: widthMm, height: heightMm, padding: [0, 0, 0, 0] },
+        schemas: [[]],
+      } as unknown as Template;
+      generator = { version: 1, fields: {} };
+      break;
   }
 
+  // The copy gets the size the user asked for, not the one it was copied from.
+  template.basePdf = { width: widthMm, height: heightMm } as Template['basePdf'];
   generator = scaffoldSpec(template, generator);
   await saveBundle(id, name.trim() || id, template, generator);
   return metaFrom(id, name.trim() || id, { widthMm, heightMm });
