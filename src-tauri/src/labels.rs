@@ -29,12 +29,17 @@ pub fn validate_id(id: &str) -> Result<&str, String> {
     }
 }
 
-/// One label file, reduced to what the registry needs to show it in a picker.
+/// One label file, reduced to what the registry needs to show it in a picker. The page size is
+/// read here so the picker does not have to load every label's template.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LabelFileSummary {
     pub id: String,
     pub name: String,
+    /// Page width in mm, or None when the template does not say.
+    pub width_mm: Option<f64>,
+    /// Page height in mm, or None when the template does not say.
+    pub height_mm: Option<f64>,
 }
 
 /// A file in `labels/` that is not a usable label. Listed separately so one bad file cannot hide
@@ -58,6 +63,28 @@ pub struct CustomLabelListing {
 #[derive(Deserialize)]
 struct LabelBundleHead {
     name: Option<String>,
+    template: Option<LabelBundleTemplate>,
+}
+
+#[derive(Deserialize)]
+struct LabelBundleTemplate {
+    #[serde(default)]
+    base_pdf: Option<LabelBundleBasePdf>,
+}
+
+#[derive(Deserialize)]
+struct LabelBundleBasePdf {
+    width: Option<f64>,
+    height: Option<f64>,
+}
+
+/// The page size a bundle declares, as (width_mm, height_mm). pdfme stores it in millimetres.
+fn summary(head: &LabelBundleHead) -> (Option<f64>, Option<f64>) {
+    let size = head.template.as_ref().and_then(|t| t.base_pdf.as_ref());
+    match size {
+        Some(s) => (s.width, s.height),
+        None => (None, None),
+    }
 }
 
 pub fn labels_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -98,10 +125,18 @@ pub fn list_custom_labels(app: tauri::AppHandle) -> Result<CustomLabelListing, S
 
         match read_bundle_text(&entry.path()) {
             Ok(text) => match serde_json::from_str::<LabelBundleHead>(&text) {
-                Ok(head) => labels.push(LabelFileSummary {
-                    id: id.to_string(),
-                    name: head.name.filter(|n| !n.trim().is_empty()).unwrap_or_else(|| id.to_string()),
-                }),
+                Ok(head) => {
+                    let (width_mm, height_mm) = summary(&head);
+                    labels.push(LabelFileSummary {
+                        id: id.to_string(),
+                        name: head
+                            .name
+                            .filter(|n| !n.trim().is_empty())
+                            .unwrap_or_else(|| id.to_string()),
+                        width_mm,
+                        height_mm,
+                    })
+                }
                 Err(e) => broken.push(BrokenLabel { id: id.to_string(), reason: e.to_string() }),
             },
             Err(e) => broken.push(BrokenLabel { id: id.to_string(), reason: e }),

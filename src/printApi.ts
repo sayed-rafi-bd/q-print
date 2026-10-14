@@ -2,8 +2,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { generate } from '@pdfme/generator';
 import { PDFDocument, degrees } from 'pdf-lib';
 import { text, rectangle, barcodes } from '@pdfme/schemas';
-import { getTemplate, type TemplateSource } from './templateStore';
-import type { LabelId } from './labels';
+import { getTemplate, loadLabel, type LabelId, type TemplateSource } from './templateStore';
+import { generateRows } from './generator/engine';
 
 const FONT_URL = '/fonts/NotoSansJP-Regular.ttf';
 let fontCache: ArrayBuffer | null = null;
@@ -122,11 +122,10 @@ export async function printLabels(opts: { label: LabelId; printer: string; paper
 ): Promise<{ timings: Timings; report: PrintReport; templateSource: TemplateSource }> {
   const t0 = performance.now();
 
-  // 1. random data, one row per page
-  const [rows, { template, source }] = await Promise.all([
-    invoke<Record<string, string>[]>('generate_random_data', { count: opts.pages, label: opts.label }),
-    getTemplate(opts.label),
-  ]);
+  // 1. the label's template and generator. The rows are built here too, so nothing has to cross
+  //    the IPC boundary just to be randomised.
+  const { template, source, generator } = await loadLabel(opts.label);
+  const rows = generateRows(generator, opts.pages);
   const t1 = performance.now();
 
   // 2. one multi-page PDF: pdfme makes one page per input row

@@ -1,12 +1,22 @@
-import { useEffect, useRef, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Designer } from '@pdfme/ui';
 import { text, rectangle, barcodes } from '@pdfme/schemas';
 import type { Template } from '@pdfme/common';
 import { loadFont } from './printApi';
 import TemplateTransfer from './TemplateTransfer';
-import { LABELS, getLabel, loadLastLabel, type LabelId } from './labels';
-import { defaultLabelTemplate, getTemplate, resetTemplate, saveTemplate, type TemplateSource } from './templateStore';
+import LabelToolbar from './designer/LabelToolbar';
+import {
+  listLabels, loadLastLabel, rememberLabel, resolveLabel,
+  type BrokenLabelFile, type LabelId, type LabelMeta,
+} from './labels';
+import {
+  loadLabel, defaultLabelTemplate, resetBuiltinTemplate, saveBuiltinTemplate, saveBundle,
+  type TemplateSource,
+} from './templateStore';
+import { scaffoldSpec } from './generator/scaffold';
+import { generateRows, validateSpec } from './generator/engine';
+import type { GeneratorSpec } from './generator/spec';
+import { dataFields } from './generator/scaffold';
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -27,12 +37,16 @@ const btnCls =
 export default function DesignerPage() {
   const container = useRef<HTMLDivElement>(null);
   const designer = useRef<Designer | null>(null);
-  const savedSnapshot = useRef('');
-  // Which label's template the designer is showing. The ref mirrors the state so the async
-  // handlers below always read the current one.
-  const [labelId, setLabelId] = useState<LabelId>(loadLastLabel);
-  const labelRef = useRef<LabelId>(labelId);
+  const savedSnapshot = useRef<string>('');
+  // The label whose layout is on screen. The ref mirrors the state so the async handlers below
+  // always read the current one.
+  const [labelId, setLabelId] = useState<LabelId>('');
+  const labelRef = useRef<LabelId>('');
   const [pendingLabel, setPendingLabel] = useState<LabelId | null>(null);
+
+  const [labels, setLabels] = useState<LabelMeta[]>([]);
+  const [broken, setBroken] = useState<BrokenLabelFile[]>([]);
+  const [meta, setMeta] = useState<LabelMeta | null>(null);
 
   const [ready, setReady] = useState(false);
   const [error, setError] = useState('');
@@ -40,34 +54,68 @@ export default function DesignerPage() {
   const [dirty, setDirty] = useState(false);
   const [source, setSource] = useState<TemplateSource>('default');
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
-  const [keys, setKeys] = useState<string[]>([]);
+  const [generator, setGenerator] = useState<GeneratorSpec>({ version: 1, fields: {} });
   const [confirmReset, setConfirmReset] = useState(false);
+
+  /** Puts a label's template and generator into the designer. */
+  const openLabel = useCallback(async (target: LabelMeta) => {
+    const d = designer.current;
+    if (!d) return;
+    const { template, source: from, generator: gen } = await loadLabel(target.id);
+    d.updateTemplate(template);
+    savedSnapshot.current = JSON.stringify(d.getTemplate());
+    labelRef.current = target.id;
+    setLabelId(target.id);
+    setMeta(target);
+    setDirty(false);
+    setSource(from);
+    setSize(readSize(template));
+    setGenerator(gen);
+    setError('');
+    setConfirmReset(false);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     let d: Designer | undefined;
     (async () => {
       try {
-        const [{ template, source }, font, rows] = await Promise.all([
-          getTemplate(labelRef.current),
-          loadFont(),
-          invoke<Record<string, string>[]>('generate_random_data', { count: 1, label: labelRef.current }),
-        ]);
+        const font = await loadFont();
         if (cancelled || !container.current) return;
         d = new Designer({
           domContainer: container.current,
-          template,
+          // A placeholder so the designer has something to show before the registry has been read;
+          // openLabel replaces it as soon as the real label is loaded.
+          template: defaultLabelTemplate('shipping'),
           plugins: { text, rectangle, ...barcodes },
           options: { font: { NotoSansJP: { data: font, fallback: true } }, lang: 'en' },
         });
-        savedSnapshot.current = JSON.stringify(template);
+        designer.current = d;
         d.onChangeTemplate(() => {
           setDirty(JSON.stringify(d!.getTemplate()) !== savedSnapshot.current);
         });
-        designer.current = d;
+        const registry = await listLabels();
+        if (cancelled) return;
+        setLabels(registry.labels);
+        setBroken(registry.broken);
+        // The label remembered last time, unless it has since been deleted.
+        const wanted = loadLastLabel() ?? '';
+        const target = registry.labels.find(l => l.id === wanted) ?? await resolveLabel(wanted);
+        if (!target) {
+          setError('No labels were found.');
+          return;
+        }
+        const { template, source: from, generator: gen } = await loadLabel(target.id);
+        if (cancelled) return;
+        d.updateTemplate(template);
+        savedSnapshot.current = JSON.stringify(d.getTemplate());
+        labelRef.current = target.id;
+        setLabelId(target.id);
+        setMeta(target);
+        setSource(from);
         setSize(readSize(template));
-        setSource(source);
-        setKeys(Object.keys(rows[0] ?? {}));
+        setGenerator(gen);
+        rememberLabel(target.id);
         setReady(true);
       } catch (e) {
         if (!cancelled) setError(errMsg(e));
@@ -90,16 +138,27 @@ export default function DesignerPage() {
     setMessage(`Page size set to ${size.w} × ${size.h} mm (not saved yet).`);
   };
 
+  /** Saves layout and data together, which is what keeps them from drifting apart. */
   const onSave = async () => {
     const d = designer.current;
-    if (!d) return;
+    if (!d || !meta) return;
     setError(''); setMessage('');
     try {
-      const t = d.getTemplate();
-      const path = await saveTemplate(labelRef.current, t);
-      savedSnapshot.current = JSON.stringify(t);
+      const template = d.getTemplate();
+      // A field added in the Layout but never given a rule gets a sensible default, so printing
+      // fills it rather than showing the designer's placeholder text.
+      const next = scaffoldSpec(template, generator);
+      const problems = validateSpec(next);
+      if (problems.length > 0) throw new Error(problems[0]);
+
+      const path = meta.builtin
+        ? await saveBuiltinTemplate(meta.id, template)
+        : await saveBundle(meta.id, meta.name, template, next);
+      savedSnapshot.current = JSON.stringify(template);
+      setGenerator(next);
       setDirty(false);
-      setSource('custom');
+      setSource(meta.builtin ? 'custom' : 'custom label');
+      setMeta({ ...meta, widthMm: size?.w ?? meta.widthMm, heightMm: size?.h ?? meta.heightMm });
       setMessage(`Saved. Printing now uses this template. (${path})`);
     } catch (e) {
       setError(errMsg(e));
@@ -108,49 +167,62 @@ export default function DesignerPage() {
 
   const onReset = async () => {
     const d = designer.current;
-    if (!d) return;
+    if (!d || !meta) return;
     setConfirmReset(false); setError(''); setMessage('');
     try {
-      await resetTemplate(labelRef.current);
-      const t = defaultLabelTemplate(labelRef.current);
-      d.updateTemplate(t);
+      if (!meta.builtin) throw new Error('A label of your own has no default to go back to.');
+      await resetBuiltinTemplate(meta.id);
+      const { template, generator: gen } = await loadLabel(meta.id);
+      d.updateTemplate(template);
       savedSnapshot.current = JSON.stringify(d.getTemplate());
       setDirty(false);
       setSource('default');
-      setSize(readSize(t));
+      setSize(readSize(template));
+      setGenerator(gen);
       setMessage('Reset to the built-in default template.');
     } catch (e) {
       setError(errMsg(e));
     }
   };
 
-  // Shows another label's template in the same designer instance.
-  const switchLabel = async (id: LabelId) => {
-    const d = designer.current;
-    if (!d) return;
-    setPendingLabel(null); setConfirmReset(false); setError(''); setMessage('');
+  /** Shows another label in the same designer instance. */
+  const switchLabel = async (id: string) => {
+    setPendingLabel(null); setError(''); setMessage('');
     try {
-      const [{ template, source }, rows] = await Promise.all([
-        getTemplate(id),
-        invoke<Record<string, string>[]>('generate_random_data', { count: 1, label: id }),
-      ]);
-      d.updateTemplate(template);
-      savedSnapshot.current = JSON.stringify(d.getTemplate());
-      labelRef.current = id;
-      setLabelId(id);
-      setDirty(false);
-      setSource(source);
-      setSize(readSize(template));
-      setKeys(Object.keys(rows[0] ?? {}));
+      const target = labels.find(l => l.id === id);
+      if (!target) throw new Error(`There is no label called “${id}”.`);
+      await openLabel(target);
+      rememberLabel(target.id);
     } catch (e) {
       setError(errMsg(e));
     }
   };
 
-  const onPickLabel = (id: LabelId) => {
+  const onPickLabel = (id: string) => {
     if (id === labelId) return;
     if (dirty) setPendingLabel(id); // ask before throwing away unsaved edits
     else switchLabel(id);
+  };
+
+  /** After a create, rename or delete in the toolbar. */
+  const onLabelsChanged = async (select?: string) => {
+    setError(''); setMessage('');
+    try {
+      const registry = await listLabels();
+      setLabels(registry.labels);
+      setBroken(registry.broken);
+      const target = select
+        ? registry.labels.find(l => l.id === select)
+        : registry.labels.find(l => l.id === labelRef.current) ?? registry.labels[0];
+      if (target) {
+        await openLabel(target);
+        rememberLabel(target.id);
+      } else {
+        setError('No labels were found.');
+      }
+    } catch (e) {
+      setError(errMsg(e));
+    }
   };
 
   // A template imported through the transfer panel is already saved; show it in the designer.
@@ -160,23 +232,28 @@ export default function DesignerPage() {
     d.updateTemplate(t);
     savedSnapshot.current = JSON.stringify(d.getTemplate());
     setDirty(false);
-    setSource('custom');
+    setSource(meta?.builtin ? 'custom' : 'custom label');
     setSize(readSize(t));
+    setGenerator(g => scaffoldSpec(t, g));
     setError('');
     setMessage('Imported template saved. Printing now uses it.');
   };
 
+  const fields = dataFields(designer.current?.getTemplate() ?? null);
+  const sample = (() => {
+    try {
+      const rows = generateRows(generator, 1);
+      return rows[0] ?? {};
+    } catch {
+      return {};
+    }
+  })();
+
   return (
     <div className="flex h-full flex-col bg-white/90">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-slate-200 px-4 py-2">
-        <div className="flex items-center gap-2 text-sm text-slate-700">
-          <label htmlFor="designer-label" className="font-medium">Label</label>
-          <select id="designer-label" value={labelId} disabled={!ready}
-            onChange={e => onPickLabel(e.target.value as LabelId)}
-            className="cursor-pointer rounded-xl border border-slate-300 bg-white px-2 py-1 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:cursor-not-allowed disabled:bg-slate-100">
-            {LABELS.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-          </select>
-        </div>
+      <div className="flex flex-wrap items-start gap-x-4 gap-y-2 border-b border-slate-200 px-4 py-2">
+        <LabelToolbar labels={labels} broken={broken} value={labelId} disabled={!ready}
+          onPick={onPickLabel} onChanged={onLabelsChanged} onError={setError} />
 
         {size && (
           <div className="flex items-center gap-2 text-sm text-slate-700">
@@ -205,7 +282,8 @@ export default function DesignerPage() {
                 className={btnCls + ' border border-slate-300 text-slate-700 hover:bg-slate-50'}>Cancel</button>
             </>
           ) : (
-            <button onClick={() => setConfirmReset(true)} disabled={!ready}
+            <button onClick={() => setConfirmReset(true)} disabled={!ready || !meta?.builtin}
+              title={meta?.builtin ? undefined : 'A label of your own has no default to go back to'}
               className={btnCls + ' border border-slate-300 text-slate-700 hover:bg-slate-50'}>Reset to default</button>
           )}
           <button onClick={onSave} disabled={!ready || !dirty}
@@ -215,7 +293,7 @@ export default function DesignerPage() {
 
       {pendingLabel && (
         <div className="tab-enter flex flex-wrap items-center gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">
-          <span>Discard unsaved changes to “{getLabel(labelId).name}” and open “{getLabel(pendingLabel).name}”?</span>
+          <span>Discard unsaved changes to “{meta?.name}” and open “{labels.find(l => l.id === pendingLabel)?.name}”?</span>
           <button onClick={() => switchLabel(pendingLabel)} className={btnCls + ' bg-red-600 text-white hover:bg-red-500'}>Discard and switch</button>
           <button onClick={() => setPendingLabel(null)}
             className={btnCls + ' border border-slate-300 bg-white text-slate-700 hover:bg-slate-50'}>Cancel</button>
@@ -230,26 +308,27 @@ export default function DesignerPage() {
       )}
 
       <details className="border-b border-slate-200 px-4 py-2 text-sm">
-        <summary className="cursor-pointer text-slate-700">Export / import template (move it between devices)</summary>
+        <summary className="cursor-pointer text-slate-700">Export / import label (move it between devices)</summary>
         <div className="mt-2"><TemplateTransfer key={labelId} label={labelId} onImported={onImported} /></div>
       </details>
 
-      {keys.length > 0 && (
-        <details className="border-b border-slate-200 px-4 py-2 text-sm">
-          <summary className="cursor-pointer text-slate-700">
-            Fields filled with random data when printing ({keys.length})
-          </summary>
-          <p className="mt-2 text-xs text-slate-500">
-            Name a field exactly like one of these to get random data on each page. Any other field prints
-            its own text as designed.
-          </p>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {keys.map(k => (
-              <code key={k} className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-800">{k}</code>
-            ))}
-          </div>
-        </details>
-      )}
+      <details className="border-b border-slate-200 px-4 py-2 text-sm">
+        <summary className="cursor-pointer text-slate-700">
+          Fields filled with random data when printing ({Object.keys(generator.fields).length})
+        </summary>
+        <p className="mt-2 text-xs text-slate-500">
+          A field with a rule gets new data on every page. Any other field prints its own text as designed.
+        </p>
+        <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
+          {fields.map(f => (
+            <div key={f.name} className="flex items-baseline gap-2 text-xs">
+              <code className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-800">{f.name}</code>
+              <span className="text-slate-400">{f.type}</span>
+              <span className="ml-auto truncate font-mono text-slate-600">{sample[f.name] ?? '—'}</span>
+            </div>
+          ))}
+        </div>
+      </details>
 
       <div className="relative min-h-0 flex-1">
         <div ref={container} className="absolute inset-0" />

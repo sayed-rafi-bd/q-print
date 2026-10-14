@@ -5,7 +5,7 @@ import {
 } from './printApi';
 import { useCapabilities } from './capabilities';
 import TemplateTransfer from './TemplateTransfer';
-import { LABELS, getLabel, loadLastLabel, rememberLabel, type LabelId } from './labels';
+import { listLabels, loadLastLabel, rememberLabel, resolveLabel, type LabelId, type LabelMeta } from './labels';
 import PrintersPanel from './PrintersPanel';
 import { Confetti, Mascot } from './Mascot';
 
@@ -85,9 +85,10 @@ function GroupTitle({ title, hint }: { title: string; hint: React.ReactNode }) {
 
 export default function PrintPage() {
   const caps = useCapabilities();
-  const [labelId, setLabelId] = useState<LabelId>(loadLastLabel);
-  const label = getLabel(labelId);
-  const sizeText = `${label.widthMm} × ${label.heightMm} mm`;
+  const [labels, setLabels] = useState<LabelMeta[]>([]);
+  const [labelId, setLabelId] = useState<LabelId>('');
+  const label = labels.find(l => l.id === labelId) ?? labels[0] ?? null;
+  const sizeText = label ? `${label.widthMm} × ${label.heightMm} mm` : '';
   const [printers, setPrinters] = useState<string[]>([]);
   const [printer, setPrinter] = useState('');
   // names of the network printers the user added; selecting one prints without a dialog
@@ -122,6 +123,28 @@ export default function PrintPage() {
       .catch(e => setError(errMsg(e)));
 
   useEffect(() => { reloadPrinters(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The label list is read from disk, so it changes when a label is added or removed elsewhere.
+  useEffect(() => {
+    let stale = false;
+    (async () => {
+      try {
+        const registry = await listLabels();
+        if (stale) return;
+        setLabels(registry.labels);
+        if (registry.broken.length > 0) {
+          setError(`${registry.broken.length} label file(s) in the label folder could not be read; open the Designer to remove them.`);
+        }
+        // The label remembered last time, unless it has since been deleted.
+        const wanted = loadLastLabel();
+        const target = registry.labels.find(l => l.id === wanted) ?? await resolveLabel(wanted ?? '');
+        if (target) { setLabelId(target.id); rememberLabel(target.id); }
+      } catch (e) {
+        if (!stale) setError(`Could not read the label list: ${errMsg(e)}`);
+      }
+    })();
+    return () => { stale = true; };
+  }, []);
 
   // Ask the driver which resolutions it supports whenever the printer changes.
   useEffect(() => {
@@ -172,9 +195,9 @@ export default function PrintPage() {
 
         <Field label="Label" htmlFor="label" hint={`Page size ${sizeText}. Each label keeps its own saved template.`}>
           <select id="label" className={inputCls + ' cursor-pointer disabled:cursor-not-allowed'} value={labelId}
-                  disabled={busy}
+                  disabled={busy || labels.length === 0}
                   onChange={e => { const id = e.target.value as LabelId; setLabelId(id); rememberLabel(id); setResult(null); }}>
-            {LABELS.map(l => <option key={l.id} value={l.id}>{l.name} — {l.widthMm} × {l.heightMm} mm</option>)}
+            {labels.map(l => <option key={l.id} value={l.id}>{l.name} — {l.widthMm} × {l.heightMm} mm</option>)}
           </select>
         </Field>
 

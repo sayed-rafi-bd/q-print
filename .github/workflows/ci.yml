@@ -10,6 +10,32 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The pure TypeScript that carries the data generator and the label registry, plus the Rust
+  # side of label storage.
+  tests:
+    if: false   # TEMPORARILY DISABLED
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4          # version comes from "packageManager" in package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - run: pnpm typecheck
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Tauri Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev \
+            libayatana-appindicator3-dev librsvg2-dev
+      - run: cargo test --manifest-path src-tauri/Cargo.toml --lib
+
   # Type-check and build the React frontend (tsc && vite build).
   frontend:
     if: false   # TEMPORARILY DISABLED
