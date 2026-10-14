@@ -14,6 +14,7 @@ import {
   type LabelId, type LabelMeta, type LabelContent,
 } from './labels';
 import { defaultLabelTemplate, resetBuiltinTemplate } from './templateStore';
+import { isTauri } from './platform';
 import { importLegacyLabels, shouldOfferImport } from './db/migrate';
 import { scaffoldSpec } from './generator/scaffold';
 import { validateSpec } from './generator/engine';
@@ -116,17 +117,35 @@ export default function DesignerPage() {
           setError('No labels were found.');
           return;
         }
-        const { template, source: from, generator: gen } = await loadLabel(user, target.id);
-        if (cancelled) return;
-        d.updateTemplate(template);
-        savedSnapshot.current = JSON.stringify(d.getTemplate());
-        labelRef.current = target.id;
-        setLabelId(target.id);
-        setMeta(target);
-        setSource(from);
-        setSize(readSize(template));
-        setGenerator(gen);
-        rememberLabel(user, target.id);
+        // If the remembered label cannot be opened, fall back to a built-in one instead of leaving
+        // the designer stuck on "Loading": otherwise a single bad label locks the user out of
+        // every other label, including the one they would need to delete it.
+        const attempt = async (meta: LabelMeta) => {
+          const { template, source: from, generator: gen } = await loadLabel(user, meta.id);
+          if (cancelled) return false;
+          d!.updateTemplate(template);
+          savedSnapshot.current = JSON.stringify(d!.getTemplate());
+          labelRef.current = meta.id;
+          setLabelId(meta.id);
+          setMeta(meta);
+          setSource(from);
+          setSize(readSize(template));
+          setGenerator(gen);
+          // What was just loaded is, by definition, what is saved. Without these two the page
+          // started out claiming "unsaved changes" and "data not saved" on an untouched label.
+          setGeneratorSaved(gen);
+          setLayoutDirty(false);
+          rememberLabel(user, meta.id);
+          return true;
+        };
+        try {
+          if (!(await attempt(target))) return;
+        } catch (e) {
+          const fallback = registry.find(l => l.builtin);
+          if (!fallback || fallback.id === target.id) throw e;
+          setError(`Could not open “${target.name}”: ${errMsg(e)}`);
+          if (!(await attempt(fallback))) return;
+        }
         setReady(true);
       } catch (e) {
         if (!cancelled) setError(errMsg(e));
@@ -171,7 +190,7 @@ export default function DesignerPage() {
       setSource(meta.builtin ? 'custom' : 'custom label');
       setMeta({ ...meta, widthMm: size?.w ?? meta.widthMm, heightMm: size?.h ?? meta.heightMm });
       setMessage(meta.builtin
-        ? 'Saved. Printing now uses this template.'
+        ? (isTauri() ? 'Saved. Printing now uses this template.' : 'Saved in this browser. Printing on a device uses its own copy.')
         : 'Saved. This label is on your account.');
     } catch (e) {
       setError(errMsg(e));
@@ -379,22 +398,24 @@ export default function DesignerPage() {
         <div className="mt-2"><TemplateTransfer key={labelId} label={labelId} onImported={onImported} /></div>
       </details>
 
-      {tab === 'data' ? (
-        <div className="min-h-0 flex-1">
-          <DataEditor template={currentTemplate} spec={generator} readOnly={meta?.builtin === true}
-            onChange={setGenerator} onPreview={() => setPreviewing(true)} />
-        </div>
-      ) : (
-        <div className="relative min-h-0 flex-1">
-          <div ref={container} className="absolute inset-0" />
-          {!ready && !error && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-sm text-slate-500">
-              <span className="text-4xl" style={{ animation: 'mascot-bounce 1.2s ease-in-out infinite' }} aria-hidden="true">🎨</span>
-              Loading designer…
-            </div>
-          )}
-        </div>
-      )}
+      <div className="relative min-h-0 flex-1">
+        {/* pdfme keeps drawing into this exact element for as long as the page lives, so it must stay
+            mounted while the Data tab is showing. Unmounting it left pdfme painting into a detached
+            node, and the Layout tab came back blank. It is hidden, not removed. */}
+        <div ref={container} data-testid="designer-canvas" className={'absolute inset-0' + (tab === 'layout' ? '' : ' tab-hidden')} />
+        {tab === 'layout' && !ready && !error && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-sm text-slate-500">
+            <span className="text-4xl" style={{ animation: 'mascot-bounce 1.2s ease-in-out infinite' }} aria-hidden="true">🎨</span>
+            Loading designer…
+          </div>
+        )}
+        {tab === 'data' && (
+          <div className="absolute inset-0">
+            <DataEditor template={currentTemplate} spec={generator} readOnly={meta?.builtin === true}
+              onChange={setGenerator} onPreview={() => setPreviewing(true)} />
+          </div>
+        )}
+      </div>
 
       {previewing && (
         <PreviewDialog template={currentTemplate} spec={generator} onClose={() => setPreviewing(false)} />

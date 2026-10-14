@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { isTauri } from '../platform';
 import type { Template } from '@pdfme/common';
 import { isBundle, makeBundle } from '../bundle';
 import { scaffoldSpec } from '../generator/scaffold';
@@ -22,7 +23,9 @@ const markDone = (user: User) => {
   try { localStorage.setItem(doneKey(user), '1'); } catch { /* not critical */ }
 };
 
-const readLegacy = (): Promise<LegacyLabel[]> => invoke<LegacyLabel[]>('read_legacy_labels');
+// Label files only ever existed on a desktop or Android device; a browser has none to rescue.
+const readLegacy = (): Promise<LegacyLabel[]> =>
+  isTauri() ? invoke<LegacyLabel[]>('read_legacy_labels') : Promise.resolve([]);
 
 /**
  * Whether to offer the import: there are files on this device, and the account has nothing yet.

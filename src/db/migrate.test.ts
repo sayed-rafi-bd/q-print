@@ -17,9 +17,16 @@ vi.mock('@tauri-apps/api/core', () => ({
   },
 }));
 
-beforeAll(async () => { test = await createTestDb('migrate'); });
+beforeAll(async () => {
+  // These tests exercise the desktop/Android path, where the Tauri shell is present.
+  vi.stubGlobal('window', { __TAURI_INTERNALS__: {} });
+  test = await createTestDb('migrate');
+});
 
-afterAll(() => test.close());
+afterAll(() => {
+  vi.unstubAllGlobals();
+  return test.close();
+});
 
 beforeEach(() => {
   legacyFiles.length = 0;

@@ -21,6 +21,24 @@ don't apply, instead of showing controls that would silently do nothing.
 | Rotate label content, margins, number of pages | yes                | yes (done inside the PDF)                                                  |
 | Designer tab                                   | yes                | tablets only (width >= 768 px); use template export/import on phones       |
 
+## Web build (Designer only)
+
+The same frontend also runs as a plain web page. After signing in, the user gets the **Designer** tab
+only: printing and printers need the Rust side, which a browser doesn't have, so the Print tab is hidden.
+
+```bash
+pnpm build        # static site in dist/, host it anywhere (fonts are served from /fonts/)
+pnpm dev          # or try it locally at http://localhost:1420 in a normal browser
+```
+
+- Detected at run time (`src/platform.ts`): inside Tauri nothing changes; in a browser the app skips every `invoke()` call.
+- Labels are stored in the Turso database per account, so they are the same on the web and on devices.
+- A built-in label's saved layout override is a file on desktop/Android; on the web it is kept in the browser's `localStorage`.
+- **Security:** `VITE_TURSO_URL` / `VITE_TURSO_TOKEN` are compiled into the bundle, so anyone who can open the
+  site can read the token and query the whole database, password hashes included, and the sign-in is only a gate
+  in the UI (see `AUTH_AND_DATABASE_PLAN.md` §7). Fine for a private test deployment. Before a public site, put a
+  small server in front of the database.
+
 ## Setup (Windows)
 1. Install Rust, Node 20+, pnpm, and the Tauri v2 prerequisites for Windows (WebView2, MSVC build tools).
 2. `pnpm install`

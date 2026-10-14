@@ -1,4 +1,4 @@
-import type { Template } from '@pdfme/common';
+import { checkTemplate, type Template } from '@pdfme/common';
 import { BUILTINS, builtin, isBuiltin } from './builtinLabels';
 import { isBundle, makeBundle, templateSizeMm } from './bundle';
 import { builtinSpec } from './generator/builtins';
@@ -159,7 +159,12 @@ export async function createLabel(user: User, { name, widthMm, heightMm, from }:
   }
 
   // The copy gets the size the user asked for, not the one it was copied from.
-  template.basePdf = { width: widthMm, height: heightMm } as Template['basePdf'];
+  // pdfme needs `padding` on a blank page; leaving it out makes the label impossible to open.
+  const prev = template.basePdf as unknown as { padding?: [number, number, number, number] } | undefined;
+  template.basePdf = {
+    width: widthMm, height: heightMm, padding: prev?.padding ?? [0, 0, 0, 0],
+  } as unknown as Template['basePdf'];
+  checkTemplate(template); // fail here, with pdfme's message, rather than save a label that cannot open
   generator = scaffoldSpec(template, generator);
 
   await store.createLabel(getDb(), user.id, id, {

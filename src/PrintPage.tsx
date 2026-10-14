@@ -84,7 +84,7 @@ function GroupTitle({ title, hint }: { title: string; hint: React.ReactNode }) {
   );
 }
 
-export default function PrintPage() {
+export default function PrintPage({ active = true }: { active?: boolean }) {
   const { user } = useAuth();
   const caps = useCapabilities();
   const [labels, setLabels] = useState<LabelMeta[]>([]);
@@ -133,19 +133,24 @@ export default function PrintPage() {
 
   useEffect(() => { reloadPrinters(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // The label list is read from disk, so it changes when a label is added or removed elsewhere.
+  // Labels are added, renamed and deleted in the Designer, which stays mounted beside this page, so
+  // the list is read again every time this tab is opened. Reading it only once left a deleted label
+  // in the dropdown (and a new one missing) until the app was restarted.
   useEffect(() => {
-    if (!user) return;
+    if (!user || !active) return;
     let stale = false;
     (async () => {
       try {
         const registry = await listLabels(user);
         if (stale) return;
         setLabels(registry);
-        // The label remembered last time, unless it has since been deleted.
+        // Keep the label that is selected if it still exists; otherwise the one remembered last
+        // time, unless that has been deleted too.
         const wanted = loadLastLabel(user);
         const target = registry.find(l => l.id === wanted) ?? await resolveLabel(user, wanted ?? '');
-        if (target) { setLabelId(target.id); rememberLabel(user, target.id); }
+        if (stale) return;
+        setLabelId(cur => (registry.some(l => l.id === cur) ? cur : target?.id ?? cur));
+        if (target) rememberLabel(user, target.id);
         setLabelsError('');
       } catch (e) {
         if (!stale) setLabelsError(`Could not read your labels: ${errMsg(e)}`);
@@ -154,7 +159,7 @@ export default function PrintPage() {
       }
     })();
     return () => { stale = true; };
-  }, [user]);
+  }, [user, active]);
 
   // Ask the driver which resolutions it supports whenever the printer changes.
   useEffect(() => {
