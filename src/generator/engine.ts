@@ -388,6 +388,32 @@ export function assertValidSpec(spec: GeneratorSpec): void {
 }
 
 /**
+ * One value for one field, for the editor's live samples.
+ *
+ * Falls back to generating that rule on its own, so a field still shows a sample while some other
+ * field is half-finished.
+ */
+export function sampleField(
+  spec: GeneratorSpec,
+  field: string,
+  opts: GenerateOptions = {},
+): string {
+  const { now = new Date(), rng = Math.random } = opts;
+  try {
+    return generateRows(spec, 1, { now, rng })[0]?.[field] ?? '';
+  } catch {
+    const rule = asFieldRule(spec?.fields?.[field]);
+    if (!rule) return '';
+    try {
+      const page: Page = { now, rng, index: 0, values: {}, tableRows: new Map() };
+      return decorate(evaluate(rule, page, spec), rule);
+    } catch {
+      return '';
+    }
+  }
+}
+
+/**
  * One row of data per page, keyed by template field name.
  *
  * Throws if the spec is invalid or `count` is out of range, so a bad generator fails here with a

@@ -5,6 +5,8 @@ import type { Template } from '@pdfme/common';
 import { loadFont } from './printApi';
 import TemplateTransfer from './TemplateTransfer';
 import LabelToolbar from './designer/LabelToolbar';
+import DataEditor from './designer/DataEditor';
+import PreviewDialog from './designer/PreviewDialog';
 import {
   listLabels, loadLastLabel, rememberLabel, resolveLabel,
   type BrokenLabelFile, type LabelId, type LabelMeta,
@@ -14,9 +16,8 @@ import {
   type TemplateSource,
 } from './templateStore';
 import { scaffoldSpec } from './generator/scaffold';
-import { generateRows, validateSpec } from './generator/engine';
+import { validateSpec } from './generator/engine';
 import type { GeneratorSpec } from './generator/spec';
-import { dataFields } from './generator/scaffold';
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -51,11 +52,18 @@ export default function DesignerPage() {
   const [ready, setReady] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const [dirty, setDirty] = useState(false);
   const [source, setSource] = useState<TemplateSource>('default');
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+  const [layoutDirty, setLayoutDirty] = useState(false);
   const [generator, setGenerator] = useState<GeneratorSpec>({ version: 1, fields: {} });
+  const [generatorSaved, setGeneratorSaved] = useState<GeneratorSpec>({ version: 1, fields: {} });
+  const [tab, setTab] = useState<'layout' | 'data'>('layout');
+  const [previewing, setPreviewing] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
+
+  /** True when the layout, the page size or the generator has something unsaved. */
+  const generatorDirty = JSON.stringify(generator) !== JSON.stringify(generatorSaved);
+  const dirty = layoutDirty || generatorDirty;
 
   /** Puts a label's template and generator into the designer. */
   const openLabel = useCallback(async (target: LabelMeta) => {
@@ -67,10 +75,11 @@ export default function DesignerPage() {
     labelRef.current = target.id;
     setLabelId(target.id);
     setMeta(target);
-    setDirty(false);
+    setLayoutDirty(false);
     setSource(from);
     setSize(readSize(template));
     setGenerator(gen);
+    setGeneratorSaved(gen);
     setError('');
     setConfirmReset(false);
   }, []);
@@ -92,7 +101,7 @@ export default function DesignerPage() {
         });
         designer.current = d;
         d.onChangeTemplate(() => {
-          setDirty(JSON.stringify(d!.getTemplate()) !== savedSnapshot.current);
+          setLayoutDirty(JSON.stringify(d!.getTemplate()) !== savedSnapshot.current);
         });
         const registry = await listLabels();
         if (cancelled) return;
@@ -134,7 +143,7 @@ export default function DesignerPage() {
     const t = d.getTemplate();
     const old = t.basePdf as unknown as { padding?: [number, number, number, number] };
     d.updateTemplate({ ...t, basePdf: { width: size.w, height: size.h, padding: old.padding ?? [0, 0, 0, 0] } });
-    setDirty(true);
+    setLayoutDirty(true);
     setMessage(`Page size set to ${size.w} × ${size.h} mm (not saved yet).`);
   };
 
@@ -156,7 +165,8 @@ export default function DesignerPage() {
         : await saveBundle(meta.id, meta.name, template, next);
       savedSnapshot.current = JSON.stringify(template);
       setGenerator(next);
-      setDirty(false);
+      setGeneratorSaved(next);
+      setLayoutDirty(false);
       setSource(meta.builtin ? 'custom' : 'custom label');
       setMeta({ ...meta, widthMm: size?.w ?? meta.widthMm, heightMm: size?.h ?? meta.heightMm });
       setMessage(`Saved. Printing now uses this template. (${path})`);
@@ -175,10 +185,11 @@ export default function DesignerPage() {
       const { template, generator: gen } = await loadLabel(meta.id);
       d.updateTemplate(template);
       savedSnapshot.current = JSON.stringify(d.getTemplate());
-      setDirty(false);
+      setLayoutDirty(false);
       setSource('default');
       setSize(readSize(template));
       setGenerator(gen);
+      setGeneratorSaved(gen);
       setMessage('Reset to the built-in default template.');
     } catch (e) {
       setError(errMsg(e));
@@ -231,26 +242,20 @@ export default function DesignerPage() {
     if (!d) return;
     d.updateTemplate(t);
     savedSnapshot.current = JSON.stringify(d.getTemplate());
-    setDirty(false);
+    setLayoutDirty(false);
     setSource(meta?.builtin ? 'custom' : 'custom label');
     setSize(readSize(t));
-    setGenerator(g => scaffoldSpec(t, g));
+    setGenerator(g => { const next = scaffoldSpec(t, g); setGeneratorSaved(next); return next; });
     setError('');
     setMessage('Imported template saved. Printing now uses it.');
   };
 
-  const fields = dataFields(designer.current?.getTemplate() ?? null);
-  const sample = (() => {
-    try {
-      const rows = generateRows(generator, 1);
-      return rows[0] ?? {};
-    } catch {
-      return {};
-    }
-  })();
+  /** The layout as the designer holds it right now, for the Data tab and the preview. */
+  const currentTemplate = designer.current?.getTemplate() ?? defaultLabelTemplate(labelId || 'shipping');
+  const generatorProblems = validateSpec(generator);
 
   return (
-    <div className="flex h-full flex-col bg-white/90">
+    <div className="relative flex h-full flex-col bg-white/90">
       <div className="flex flex-wrap items-start gap-x-4 gap-y-2 border-b border-slate-200 px-4 py-2">
         <LabelToolbar labels={labels} broken={broken} value={labelId} disabled={!ready}
           onPick={onPickLabel} onChanged={onLabelsChanged} onError={setError} />
@@ -272,6 +277,7 @@ export default function DesignerPage() {
         <div className="ml-auto flex items-center gap-3">
           <span className="text-xs text-slate-500">
             Template in use: <span className="font-medium text-slate-700">{source}</span>
+            {generatorDirty && <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-800">✏️ data not saved</span>}
             {dirty && <span className="ml-2 animate-pulse rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-800">✏️ unsaved changes</span>}
           </span>
           {confirmReset ? (
@@ -286,9 +292,26 @@ export default function DesignerPage() {
               title={meta?.builtin ? undefined : 'A label of your own has no default to go back to'}
               className={btnCls + ' border border-slate-300 text-slate-700 hover:bg-slate-50'}>Reset to default</button>
           )}
-          <button onClick={onSave} disabled={!ready || !dirty}
-            className={btnCls + ' bg-indigo-600 text-white hover:bg-indigo-500'}>Save template</button>
+          <button onClick={onSave} disabled={!ready || !dirty || generatorProblems.length > 0}
+            title={generatorProblems.length > 0 ? 'Fix the data generator first' : undefined}
+            className={btnCls + ' bg-indigo-600 text-white hover:bg-indigo-500'}>Save</button>
         </div>
+      </div>
+
+      <div className="flex items-center gap-1 border-b border-slate-200 px-4 py-1.5">
+        <button onClick={() => setTab('layout')}
+          className={'cursor-pointer rounded-full px-3 py-1 text-xs font-semibold transition '
+            + (tab === 'layout' ? 'bg-indigo-500 text-white' : 'text-slate-500 hover:bg-indigo-100')}>
+          Layout
+        </button>
+        <button onClick={() => setTab('data')}
+          className={'cursor-pointer rounded-full px-3 py-1 text-xs font-semibold transition '
+            + (tab === 'data' ? 'bg-indigo-500 text-white' : 'text-slate-500 hover:bg-indigo-100')}>
+          Data{generatorDirty ? ' •' : ''}
+        </button>
+        <span className="ml-2 text-xs text-slate-400">
+          {tab === 'layout' ? 'Where things sit on the page.' : 'What each field prints on every page.'}
+        </span>
       </div>
 
       {pendingLabel && (
@@ -312,33 +335,26 @@ export default function DesignerPage() {
         <div className="mt-2"><TemplateTransfer key={labelId} label={labelId} onImported={onImported} /></div>
       </details>
 
-      <details className="border-b border-slate-200 px-4 py-2 text-sm">
-        <summary className="cursor-pointer text-slate-700">
-          Fields filled with random data when printing ({Object.keys(generator.fields).length})
-        </summary>
-        <p className="mt-2 text-xs text-slate-500">
-          A field with a rule gets new data on every page. Any other field prints its own text as designed.
-        </p>
-        <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
-          {fields.map(f => (
-            <div key={f.name} className="flex items-baseline gap-2 text-xs">
-              <code className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-800">{f.name}</code>
-              <span className="text-slate-400">{f.type}</span>
-              <span className="ml-auto truncate font-mono text-slate-600">{sample[f.name] ?? '—'}</span>
-            </div>
-          ))}
+      {tab === 'data' ? (
+        <div className="min-h-0 flex-1">
+          <DataEditor template={currentTemplate} spec={generator}
+            onChange={setGenerator} onPreview={() => setPreviewing(true)} />
         </div>
-      </details>
+      ) : (
+        <div className="relative min-h-0 flex-1">
+          <div ref={container} className="absolute inset-0" />
+          {!ready && !error && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-sm text-slate-500">
+              <span className="text-4xl" style={{ animation: 'mascot-bounce 1.2s ease-in-out infinite' }} aria-hidden="true">🎨</span>
+              Loading designer…
+            </div>
+          )}
+        </div>
+      )}
 
-      <div className="relative min-h-0 flex-1">
-        <div ref={container} className="absolute inset-0" />
-        {!ready && !error && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-sm text-slate-500">
-            <span className="text-4xl" style={{ animation: 'mascot-bounce 1.2s ease-in-out infinite' }} aria-hidden="true">🎨</span>
-            Loading designer…
-          </div>
-        )}
-      </div>
+      {previewing && (
+        <PreviewDialog template={currentTemplate} spec={generator} onClose={() => setPreviewing(false)} />
+      )}
     </div>
   );
 }

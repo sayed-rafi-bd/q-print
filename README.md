@@ -1,7 +1,7 @@
 # Tauri label printing app (Windows + Android)
 
-Lists printers, generates random label data in Rust, builds a multi-page pdfme PDF in the
-frontend, and prints it.
+Lists printers, generates random label data from a per-label rule set, builds a multi-page
+pdfme PDF in the frontend, and prints it.
 
 - **Windows:** silent printing with SumatraPDF (`-print-to ... -silent`, scale-to-fit).
 - **Android:** two ways to print.
@@ -187,8 +187,9 @@ git push origin main        # wait for CI to pass
 git push origin v0.2.0      # starts the release build
 ```
 See `RELEASE.md` for the full checklist.
-`.github/workflows/ci.yml` runs on every push to `main` and on pull requests: frontend build, Rust checks for Windows,
-Linux and Android, and a debug APK build.
+`.github/workflows/ci.yml` runs on every push to `main` and on pull requests: `pnpm test` and
+`pnpm typecheck`, `cargo test`, the frontend build, Rust checks for Windows, Linux and Android, and
+a debug APK build.
 
 ## Troubleshooting (Android on Windows)
 | Symptom                                                                      | Cause and fix                                                                                                                                                                                                                                                                                                                            |
@@ -224,27 +225,96 @@ On Android phones the Designer tab is hidden because the editor needs a large sc
 
 ## Labels
 
-The app maintains two labels, chosen with the **Label** `<select>` on the Print tab (and on the Designer tab):
+The app ships with two labels and lets you add your own, all chosen with the **Label** `<select>`:
 
 | Label                  | id         | Page size    | Default layout                       |
 | ---------------------- | ---------- | ------------ | ------------------------------------ |
 | Shipping label (Sagawa) | `shipping` | 110 x 86 mm | `src/templates/label.json`           |
 | Product label          | `product`  | 190 x 160 mm | `src/templates/product-label.json`   |
 
-Each label has its own saved template (`label-template.json` for `shipping`, `label-template-product.json`
-for `product`), its own *Reset to default*, and its own random test data. The last label used is remembered.
+A built-in keeps its saved template next to the bundled one (`label-template.json` for `shipping`,
+`label-template-product.json` for `product`) and has its own *Reset to default*. A label you create
+yourself is a single file in `app_data_dir()/labels/<id>.json` holding its layout **and** the rule
+that fills it, so the two can never drift apart. The page size comes from the template, so a label
+resized in the Designer reports the size it will actually print at. The last label used is
+remembered; if it has since been deleted the app falls back to the default.
 
-To add another label: add a template under `src/templates/`, register it in `src/labels.ts`, and add its id
-to `LABEL_IDS` and a data generator to `generate_random_data` in `src-tauri/src/lib.rs`.
 Set the printer driver's default paper to the label's page size (see the hint under *Paper size*).
 
-## Moving a template between devices
-The saved template lives on each device. To use a layout designed on desktop on Android:
+### Making your own label
 
-1. On the desktop, open *Export / import template* (Print tab, or the Designer tab) and press **Export template**.
-   Use **Copy** or **Download .json**. This exports the saved template, not unsaved Designer edits.
-2. On the phone, open the Print tab, *Template: export / import*, press **Import template**, choose the
-   `.json` file or paste the JSON, and press **Save as my template**.
+On the Designer tab, next to the label picker: **New**, **Duplicate**, **Rename**, **Delete**.
+**New** asks for a name, a size (with presets, or any size in mm) and whether to start blank or as
+a copy of an existing label — a copy brings both the layout and the data rules. Built-in labels
+cannot be renamed or deleted, only reset.
+
+The Designer has two tabs:
+
+- **Layout** — where things sit on the page (today's pdfme designer).
+- **Data** — what each field prints on every page.
+
+One **Save** writes both.
+
+### The data tab
+
+Each field that can take data gets one row: its name, its type, a rule, and a live sample of what
+it will print. A field you add in the Layout appears here with a sensible default rule. A field you
+rename or delete leaves its rule behind in an "unused rules" list, where you can move it to another
+field or delete it, rather than losing the work.
+
+The rules are a fixed, small set — there is no scripting:
+
+| Rule | What it does |
+| ---- | ------------ |
+| Fixed text | Always the same text. |
+| Random digits | N digits, e.g. a 13-digit tracking number. |
+| Whole number | A number in a range, optionally stepped, as `1234`, `1,234` or `¥1,234`. |
+| Pick from a list | One of the values you type. |
+| From a table | One cell of a table. All fields reading the same table share a row for the whole page, so a postcode and its address always match. |
+| A date | Relative to today, formatted with `YYYY MM DD HH mm ss`. |
+| Pattern | Text with `{d3}` digits, `{D2}` A–Z or `{L2}` a–z mixed in, e.g. `A{d12}A`. |
+| Numbering | Counts up per page, restarting on every print job. |
+| Copy another field | Another field's value on the same page, optionally rebuilt with a pattern where `{from}` is the copied value. |
+
+Every rule can also add text before and after the value, and run it through *digits only*,
+*upper* or *lower*. Problems (a range the wrong way round, a rule pointing at a table that is not
+there, a copy that loops) are listed at the top and stop Save until they are fixed. Barcode fields
+show what their format accepts and flag a sample it could not encode, so a bad value is caught
+before it reaches a print job. **Preview label** renders the real page with pdfme.
+
+### Label files and moving one between devices
+
+A label file is JSON:
+
+```jsonc
+{
+  "format": "q-print-label",
+  "version": 1,
+  "name": "My parcel label",
+  "template": { /* a pdfme template */ },
+  "generator": { "version": 1, "tables": { }, "fields": { "zip": { "kind": "digits", "length": 7 } } }
+}
+```
+
+Export writes this whole file, so the receiving device produces the same data, not just the same
+picture. Import accepts it (creating a new label) and still accepts a bare pdfme template, which
+replaces the selected label's layout and keeps its data rules.
+
+To add a label to the app itself rather than to your own copy: put its template under
+`src/templates/`, add it to `BUILTINS` in `src/builtinLabels.ts` and `BUILTIN_IDS` in
+`src-tauri/src/lib.rs`, and add a spec to `BUILTIN_SPECS` in `src/generator/builtins.ts`.
+The generator engine itself is in `src/generator/engine.ts` and is a pure function, so it is
+covered by `pnpm test`.
+
+## Moving a label between devices
+The label lives on each device. To use one designed on desktop on Android:
+
+1. On the desktop, open *Export / import label* (Print tab, or the Designer tab) and press **Export label**.
+   Use **Copy** or **Download .json**. This exports the saved label, not unsaved Designer edits.
+2. On the phone, open the Print tab, *Label: export / import*, press **Import label**, choose the
+   `.json` file or paste the JSON, and press **Import it**. The label shows up in the label list.
+
+Phones cannot use the Designer, but they can print anything imported this way.
 
 ## Rotation, margins and resolution
 - **Rotate label content** turns the label inside the PDF (0/90/180/270), independent of the driver or platform.

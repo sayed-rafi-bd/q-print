@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { generateRows, LIMITS, validateSpec } from './engine';
+import { generateRows, LIMITS, sampleField, validateSpec } from './engine';
 import type { FieldRule, GeneratorSpec } from './spec';
 
 /** A small LCG, so a failing case can be reproduced exactly. */
@@ -263,6 +263,34 @@ describe('determinism', () => {
   it('produces different rows for different seeds', () => {
     const s = spec({ a: { kind: 'digits', length: 12 } });
     expect(generateRows(s, 20, { rng: seededRng(41) })).not.toEqual(generateRows(s, 20, { rng: seededRng(42) }));
+  });
+});
+
+describe('sampleField', () => {
+  it('shows a value for one field without generating the rest', () => {
+    expect(sampleField(spec({ a: { kind: 'digits', length: 4 } }), 'a', { rng: seededRng() })).toMatch(/^\d{4}$/);
+  });
+
+  it('still shows a sample when another field is broken', () => {
+    // The editor updates one rule at a time, so the rest of the spec is often mid-edit.
+    const s = spec({
+      good: { kind: 'digits', length: 5 },
+      broken: { kind: 'copy', from: 'nowhere' },
+    });
+    expect(sampleField(s, 'good', { rng: seededRng() })).toMatch(/^\d{5}$/);
+  });
+
+  it('returns nothing for a field with no rule', () => {
+    expect(sampleField(spec({ a: { kind: 'fixed', value: 'x' } }), 'missing')).toBe('');
+  });
+
+  it('keeps a table-based sample consistent with its sibling fields', () => {
+    const s = spec({
+      zip: { kind: 'table', table: 't', column: 'zip' },
+      city: { kind: 'table', table: 't', column: 'city' },
+    }, { t: { columns: ['zip', 'city'], rows: [['150-0021', 'Tokyo']] } });
+    expect(sampleField(s, 'zip', { rng: seededRng() })).toBe('150-0021');
+    expect(sampleField(s, 'city', { rng: seededRng() })).toBe('Tokyo');
   });
 });
 
