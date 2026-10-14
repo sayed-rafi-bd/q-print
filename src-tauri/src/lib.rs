@@ -2,6 +2,8 @@ use rand::{seq::SliceRandom, Rng};
 use serde::{Deserialize, Serialize};
 use tauri::Manager;
 
+// Storage for user-created labels (template + generator in one file).
+mod labels;
 // Direct network printing (IPP / raw socket) and the saved-printer store. Used by the Android backend.
 mod direct;
 // Bitmap -> ZPL / TSPL / ESC-POS / CPCL / PWG raster encoders, for printers that cannot take a PDF.
@@ -120,13 +122,16 @@ fn generate_product_data(count: usize) -> Vec<ProductLabelData> {
         .collect()
 }
 
-/// Labels the app knows. Keep in sync with `LABELS` in src/labels.ts. The first one is the default.
-const LABEL_IDS: [&str; 2] = ["shipping", "product"];
+/// Labels the app ships with. Keep in sync with `BUILTINS` in src/labels.ts. The first one is the
+/// default. These keep their own `label-template*.json` override files; user-created labels live
+/// in `labels/` and are handled by `mod labels`.
+const BUILTIN_IDS: [&str; 2] = ["shipping", "product"];
 
-/// Validates the label id coming from the UI (it ends up in a file name).
-fn label_id(label: &Option<String>) -> Result<&str, String> {
-    let id = label.as_deref().unwrap_or(LABEL_IDS[0]);
-    LABEL_IDS.iter().copied().find(|l| *l == id).ok_or_else(|| format!("unknown label \"{id}\""))
+/// Validates the built-in label id coming from the UI. Only the built-ins have a template override
+/// file, so anything else is rejected here; custom labels go through `labels::validate_id`.
+fn builtin_id(label: &Option<String>) -> Result<&str, String> {
+    let id = label.as_deref().unwrap_or(BUILTIN_IDS[0]);
+    BUILTIN_IDS.iter().copied().find(|l| *l == id).ok_or_else(|| format!("unknown label \"{id}\""))
 }
 
 fn to_json_rows<T: Serialize>(rows: Vec<T>) -> Result<Vec<serde_json::Value>, String> {
@@ -136,7 +141,7 @@ fn to_json_rows<T: Serialize>(rows: Vec<T>) -> Result<Vec<serde_json::Value>, St
 /// Random data API: one entry per page, shaped for the chosen label.
 #[tauri::command]
 fn generate_random_data(count: usize, label: Option<String>) -> Result<Vec<serde_json::Value>, String> {
-    match label_id(&label)? {
+    match builtin_id(&label)? {
         "product" => to_json_rows(generate_product_data(count)),
         _ => to_json_rows(generate_shipping_data(count)),
     }
@@ -398,10 +403,10 @@ async fn print_pdf_raw(app: tauri::AppHandle, request: tauri::ipc::Request<'_>) 
 /// One template file per label. The first (default) label keeps the original file name, so a
 /// template saved before labels existed is still picked up.
 fn template_path(app: &tauri::AppHandle, label: &Option<String>) -> Result<std::path::PathBuf, String> {
-    let id = label_id(label)?;
+    let id = builtin_id(label)?;
     let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    Ok(dir.join(if id == LABEL_IDS[0] {
+    Ok(dir.join(if id == BUILTIN_IDS[0] {
         "label-template.json".to_string()
     } else {
         format!("label-template-{id}.json")
@@ -456,6 +461,10 @@ pub fn run() {
             discover_printers,
             list_devices,
             generate_random_data,
+            labels::list_custom_labels,
+            labels::load_custom_label,
+            labels::save_custom_label,
+            labels::delete_custom_label,
             printer_resolutions,
             print_pdf,
             print_pdf_raw,
