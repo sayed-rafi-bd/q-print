@@ -6,9 +6,9 @@ const smallBtn =
   'transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50';
 
 const selectCls =
-  'w-full rounded-xl border border-slate-300 bg-white text-sm shadow-sm transition ' +
+  'w-full cursor-pointer rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm transition ' +
   'focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 ' +
-  'disabled:bg-slate-100';
+  'disabled:cursor-not-allowed disabled:bg-slate-100';
 
 type Props = {
   labels: LabelMeta[];
@@ -16,18 +16,20 @@ type Props = {
   disabled?: boolean;
   busy?: boolean;
   onChange: (id: LabelId) => void;
-  /** Reads the labels again. Returns why it failed, or null when it worked. */
-  onReload: () => Promise<string | null>;
+  /** Status line from the last reload, shown under the dropdown. */
+  note?: string;
 };
 
 /**
- * The label picker, with a way to read the list again.
+ * Reads the label list again. Returns the state for the reload button and the status note.
  *
  * The list is loaded when the app starts and again when the tab is opened, but the Print tab is
  * always visible on a phone, so nothing re-reads it after that. The button also covers the case
  * where the first attempt failed: a network problem should not need an app restart to get past.
+ *
+ * `onReload` returns why it failed, or null when it worked.
  */
-export default function LabelPicker({ labels, value, disabled, busy, onChange, onReload }: Props) {
+export function useLabelReload(labels: LabelMeta[], onReload: () => Promise<string | null>) {
   const [reloading, setReloading] = useState(false);
   const [note, setNote] = useState('');
 
@@ -42,22 +44,33 @@ export default function LabelPicker({ labels, value, disabled, busy, onChange, o
     }
   };
 
+  return { reload, reloading, note };
+}
+
+/** Small button for the top-right corner of the Label field's title row. */
+export function ReloadLabelsButton({ onClick, reloading, disabled }: {
+  onClick: () => void; reloading: boolean; disabled?: boolean;
+}) {
+  return (
+    <button type="button" onClick={onClick} disabled={reloading || disabled}
+            aria-label="Reload labels from the database" className={smallBtn + ' whitespace-nowrap'}>
+      {reloading ? 'Reloading…' : 'Reload labels'}
+    </button>
+  );
+}
+
+/** The label picker: a full-width dropdown plus the status note. */
+export default function LabelPicker({ labels, value, disabled, busy, onChange, note }: Props) {
   return (
     <div className="space-y-1">
-      <div className="flex items-center gap-2">
-        <select aria-label="Label" value={value}
-          disabled={disabled || busy || labels.length === 0}
-          onChange={e => onChange(e.target.value as LabelId)}
-          className={selectCls}>
-          {labels.map(l => (
-            <option key={l.id} value={l.id}>{l.name} — {l.widthMm} × {l.heightMm} mm</option>
-          ))}
-        </select>
-        <button type="button" onClick={reload} disabled={reloading || disabled}
-          aria-label="Reload labels from the database" className={smallBtn}>
-          {reloading ? 'Reloading…' : 'Reload labels'}
-        </button>
-      </div>
+      <select aria-label="Label" value={value}
+              disabled={disabled || busy || labels.length === 0}
+              onChange={e => onChange(e.target.value as LabelId)}
+              className={selectCls}>
+        {labels.map(l => (
+          <option key={l.id} value={l.id}>{l.name} — {l.widthMm} × {l.heightMm} mm</option>
+        ))}
+      </select>
       {note && <p className="text-xs text-slate-500">{note}</p>}
     </div>
   );

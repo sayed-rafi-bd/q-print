@@ -6,7 +6,7 @@ import {
 import { useCapabilities } from './capabilities';
 import TemplateTransfer from './TemplateTransfer';
 import { listLabels, loadLastLabel, rememberLabel, type LabelId, type LabelMeta } from './labels';
-import LabelPicker from './LabelPicker';
+import LabelPicker, { ReloadLabelsButton, useLabelReload } from './LabelPicker';
 import { pickLabelAfterReload } from './pickLabel';
 import { useAuth } from './auth/AuthProvider';
 import PrintersPanel from './PrintersPanel';
@@ -167,6 +167,7 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
   }, [user]);
 
   useEffect(() => { readLabels(); }, [readLabels, active]);
+  const { reload: reloadLabels, reloading: reloadingLabels, note: labelsNote } = useLabelReload(labels, readLabels);
 
   // Ask the driver which resolutions it supports whenever the printer changes.
   useEffect(() => {
@@ -207,6 +208,9 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
                   : `Generate random ${sizeText || 'label'}s and print them through the system print dialog.`}
               </p>
             </div>
+            <div className="ml-auto self-start">
+              <ReloadLabelsButton onClick={reloadLabels} reloading={reloadingLabels} disabled={!user} />
+            </div>
           </div>
           {!silent && caps.platform === 'android' && (
             <p className="mt-3 rounded-2xl bg-amber-50 p-2.5 text-xs text-amber-900 ring-1 ring-amber-200">
@@ -239,7 +243,7 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
               if (user) rememberLabel(user, id);
               setResult(null);
             }}
-            onReload={readLabels}
+            note={labelsNote}
           />
         </Field>
 
@@ -300,7 +304,7 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
         <fieldset className="space-y-1" disabled={busy}>
           <GroupTitle title="Rotate label content"
                       hint={<>Rotates the label inside the PDF, so it works with any driver.{label && <> On stock turned the other way (e.g. {heightMm} × {widthMm} mm)
-                        use 90° or 270° so the {sizeText} label fills the paper at full size.</>} If it prints upside-down, use the other one.</>} />
+						            use 90° or 270° so the {sizeText} label fills the paper at full size.</>} If it prints upside-down, use the other one.</>} />
           <div className="grid grid-cols-4 gap-2">
             {ROTATIONS.map(r => {
               const selected = rotate === r;
