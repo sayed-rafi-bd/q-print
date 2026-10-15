@@ -481,9 +481,9 @@ summary:hover {
   *,
   *::before,
   *::after {
-    animation-duration: 0.01ms;
-    animation-iteration-count: 1;
-    transition-duration: 0.01ms;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
 
@@ -497,6 +497,6 @@ summary:hover {
    elements, which would punch through and show its toolbar on the other tab. */
 .tab-hidden,
 .tab-hidden * {
-  visibility: hidden;
-  pointer-events: none;
+  visibility: hidden !important;
+  pointer-events: none !important;
 }

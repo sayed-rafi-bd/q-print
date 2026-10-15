@@ -47,9 +47,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>('loading');
   const [user, setUser] = useState<User | null>(null);
   const [startupError, setStartupError] = useState('');
-  const [_attempt, setAttempt] = useState(0);
+  const [attempt, setAttempt] = useState(0);
 
   // Bring the database up to date, then restore the previous sign-in if there is one.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `attempt` is a retry counter that deliberately re-runs this effect
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -99,7 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [attempt]);
 
   const adopt = useCallback((next: User) => {
     setUser(next);

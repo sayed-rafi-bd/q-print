@@ -103,6 +103,8 @@ export default function NewLabelDialog({ labels, onCreate, onClose }: Props) {
         </label>
         <input
           id="new-label-name"
+          // biome-ignore lint/a11y/noAutofocus: focus the field when this dialog opens
+          autoFocus
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="My parcel label"

@@ -68,9 +68,9 @@ describe('bundles', () => {
   it('round-trips through text', () => {
     const back = parseBundle(bundleJson(bundle));
     expect(back.bundle).toBeDefined();
-    expect(back.bundle?.name).toBe('My parcel');
-    expect(back.bundle?.generator).toEqual(bundle.generator);
-    expect(isTemplate(back.bundle?.template)).toBe(true);
+    expect(back.bundle!.name).toBe('My parcel');
+    expect(back.bundle!.generator).toEqual(bundle.generator);
+    expect(isTemplate(back.bundle!.template)).toBe(true);
   });
 
   it('survives a round trip through the JSON the backend would store', () => {

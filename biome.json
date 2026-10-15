@@ -29,6 +29,12 @@
         "noAutofocus": "warn",
         "noStaticElementInteractions": "warn"
       },
+      "complexity": {
+        "noImportantStyles": "off"
+      },
+      "style": {
+        "noNonNullAssertion": "off"
+      },
       "correctness": {
         "useExhaustiveDependencies": "warn"
       },

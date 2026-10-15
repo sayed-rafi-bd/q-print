@@ -174,18 +174,22 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
 
   // Reloads the printer list; `select` picks a printer (e.g. the one just saved), otherwise the
   // current choice is kept if it still exists.
-  const reloadPrinters = (select?: string) =>
-    Promise.all([listPrinters(), caps.directPrinters ? listSavedPrinters() : Promise.resolve([])])
-      .then(([p, saved]) => {
-        setPrinters(p);
-        setDirectNames(saved.map((s) => s.name));
-        setPrinter((cur) => (select && p.includes(select) ? select : p.includes(cur) ? cur : (p[0] ?? '')));
-      })
-      .catch((e) => setError(errMsg(e)));
+  const directPrinters = caps.directPrinters;
+  const reloadPrinters = useCallback(
+    (select?: string) =>
+      Promise.all([listPrinters(), directPrinters ? listSavedPrinters() : Promise.resolve([])])
+        .then(([p, saved]) => {
+          setPrinters(p);
+          setDirectNames(saved.map((s) => s.name));
+          setPrinter((cur) => (select && p.includes(select) ? select : p.includes(cur) ? cur : (p[0] ?? '')));
+        })
+        .catch((e) => setError(errMsg(e))),
+    [directPrinters],
+  );
 
   useEffect(() => {
     reloadPrinters();
-  }, [reloadPrinters]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [reloadPrinters]);
 
   // Labels are added, renamed and deleted in the Designer, which stays mounted beside this page, so
   // the list is read again every time this tab is opened. Reading it only once left a deleted label
@@ -214,9 +218,10 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
     }
   }, [user]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `active` is a deliberate trigger, re-read whenever this tab is shown
   useEffect(() => {
     readLabels();
-  }, [readLabels]);
+  }, [readLabels, active]);
   const { reload: reloadLabels, reloading: reloadingLabels, note: labelsNote } = useLabelReload(labels, readLabels);
 
   // Ask the driver which resolutions it supports whenever the printer changes.

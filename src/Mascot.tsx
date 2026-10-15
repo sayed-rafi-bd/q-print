@@ -78,28 +78,29 @@ export function Mascot({ busy = false, className = '' }: { busy?: boolean; class
 const PIECES = ['🎀', '✨', '💖', '⭐', '🌸', '💫', '🎉', '💕', '✨', '🌈', '💖', '🎀'];
 
 /** One-shot burst of sparkles; mount it when something succeeds (remount with a new `key` to replay). */
+const CONFETTI = PIECES.map((emoji, i) => {
+  const angle = (i / PIECES.length) * Math.PI * 2;
+  const dist = 70 + (i % 3) * 28;
+  return {
+    id: `piece-${i}`,
+    emoji,
+    style: {
+      ['--x' as string]: `${Math.round(Math.cos(angle) * dist)}px`,
+      ['--y' as string]: `${Math.round(Math.sin(angle) * dist - 30)}px`,
+      ['--r' as string]: `${(i % 2 ? 1 : -1) * (40 + i * 18)}deg`,
+      ['--d' as string]: `${(i % 4) * 0.05}s`,
+    } as React.CSSProperties,
+  };
+});
+
 export function Confetti() {
   return (
     <div className="confetti" aria-hidden="true">
-      {PIECES.map((p, i) => {
-        const angle = (i / PIECES.length) * Math.PI * 2;
-        const dist = 70 + (i % 3) * 28;
-        return (
-          <i
-            key={i}
-            style={
-              {
-                ['--x' as string]: `${Math.round(Math.cos(angle) * dist)}px`,
-                ['--y' as string]: `${Math.round(Math.sin(angle) * dist - 30)}px`,
-                ['--r' as string]: `${(i % 2 ? 1 : -1) * (40 + i * 18)}deg`,
-                ['--d' as string]: `${(i % 4) * 0.05}s`,
-              } as React.CSSProperties
-            }
-          >
-            {p}
-          </i>
-        );
-      })}
+      {CONFETTI.map((piece) => (
+        <i key={piece.id} style={piece.style}>
+          {piece.emoji}
+        </i>
+      ))}
     </div>
   );
 }

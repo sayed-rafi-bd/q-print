@@ -115,7 +115,7 @@ export default function DesignerPage() {
         });
         designer.current = d;
         d.onChangeTemplate(() => {
-          setLayoutDirty(JSON.stringify(d?.getTemplate()) !== savedSnapshot.current);
+          setLayoutDirty(JSON.stringify(d!.getTemplate()) !== savedSnapshot.current);
         });
         const registry = await listLabels(user);
         if (cancelled) return;
@@ -133,8 +133,8 @@ export default function DesignerPage() {
         const attempt = async (meta: LabelMeta) => {
           const { template, source: from, generator: gen } = await loadLabel(user, meta.id);
           if (cancelled) return false;
-          d?.updateTemplate(template);
-          savedSnapshot.current = JSON.stringify(d?.getTemplate());
+          d!.updateTemplate(template);
+          savedSnapshot.current = JSON.stringify(d!.getTemplate());
           labelRef.current = meta.id;
           setLabelId(meta.id);
           setMeta(meta);

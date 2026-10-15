@@ -179,6 +179,7 @@ export default function TableEditor({ spec, onChange, readOnly }: Props) {
                   <thead>
                     <tr>
                       {table.columns.map((c, ci) => (
+                        // biome-ignore lint/suspicious/noArrayIndexKey: cells are plain strings with no id, and columns/rows are positional
                         <th key={ci} className="p-0.5 text-left font-medium text-slate-600">
                           <input
                             aria-label={`Column ${ci + 1} name`}
@@ -196,8 +197,10 @@ export default function TableEditor({ spec, onChange, readOnly }: Props) {
                   </thead>
                   <tbody>
                     {table.rows.map((row, ri) => (
+                      // biome-ignore lint/suspicious/noArrayIndexKey: cells are plain strings with no id, and columns/rows are positional
                       <tr key={ri}>
                         {table.columns.map((_, ci) => (
+                          // biome-ignore lint/suspicious/noArrayIndexKey: cells are plain strings with no id, and columns/rows are positional
                           <td key={ci} className="p-0.5">
                             <input
                               aria-label={`Row ${ri + 1}, ${table.columns[ci] ?? ci + 1}`}
@@ -241,6 +244,8 @@ export default function TableEditor({ spec, onChange, readOnly }: Props) {
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <input
             aria-label="Table name"
+            // biome-ignore lint/a11y/noAutofocus: focus the field when this dialog opens
+            autoFocus
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="destinations"

@@ -38,6 +38,7 @@ export default function Modal({ open, title, onClose, children, footer }: Props)
   if (!open) return null;
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: backdrop click is a mouse convenience; Escape (document listener above) is the keyboard path
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       onMouseDown={(e) => {

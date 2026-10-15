@@ -149,7 +149,7 @@ export async function createLabel(user: User, { name, widthMm, heightMm, from }:
 
     case 'copy': {
       if (isBuiltin(from.id)) {
-        template = structuredClone(builtin(from.id)?.defaultTemplate);
+        template = structuredClone(builtin(from.id)!.defaultTemplate);
         generator = builtinSpec(from.id);
       } else {
         const content = await loadLabel(user, from.id);

@@ -33,7 +33,7 @@ export function defaultRule(kind: FieldRule['kind'], tables: GeneratorSpec['tabl
       return { kind: 'pick', values: ['one', 'two'] };
     case 'table':
       return firstTable
-        ? { kind: 'table', table: firstTable, column: tables?.[firstTable].columns[0] ?? '' }
+        ? { kind: 'table', table: firstTable, column: tables![firstTable].columns[0] ?? '' }
         : { kind: 'pick', values: ['one', 'two'] };
     case 'date':
       return { kind: 'date', offsetDays: [0, 0], format: 'YYYY-MM-DD' };
