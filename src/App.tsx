@@ -1,9 +1,13 @@
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import PrintPage from './PrintPage';
-import DesignerPage from './DesignerPage';
 import { useCapabilities } from './capabilities';
 import { AuthProvider, useAuth } from './auth/AuthProvider';
 import LoginPage from './auth/LoginPage';
+
+// The Designer is the heaviest part of the front end by a wide margin — pdfme's editor and the UI
+// kit behind it are most of the bundle — and an Android phone cannot show it at all. Loading it on
+// demand keeps it out of the initial download on every phone, and only on the tab that needs it.
+const DesignerPage = lazy(() => import('./DesignerPage'));
 
 type Tab = 'print' | 'designer';
 
@@ -76,7 +80,8 @@ function Workspace() {
           Sign out
         </button>
       </nav>
-      {/* Both pages stay mounted so unsaved designer edits survive switching tabs. */}
+      {/* Both pages stay mounted so unsaved designer edits survive switching tabs; once the
+          Designer chunk has been loaded once, `lazy` keeps it. */}
       <div className="relative z-10 min-h-0 flex-1">
         {printAvailable && (
           <section className={'absolute inset-0 overflow-auto ' + (tab === 'print' ? 'tab-enter' : 'tab-hidden')}>
@@ -85,10 +90,22 @@ function Workspace() {
         )}
         {designerAvailable && (
           <section className={'absolute inset-0 ' + (tab === 'designer' ? 'tab-enter' : 'tab-hidden')}>
-            <DesignerPage />
+            <Suspense fallback={<DesignerLoading />}>
+              <DesignerPage />
+            </Suspense>
           </section>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Shown for the moment the Designer chunk is arriving. */
+function DesignerLoading() {
+  return (
+    <div className="flex h-full items-center justify-center gap-2 text-sm text-slate-500">
+      <span className="text-4xl" style={{ animation: 'mascot-bounce 1.2s ease-in-out infinite' }} aria-hidden="true">🎨</span>
+      Loading designer…
     </div>
   );
 }

@@ -417,6 +417,39 @@ Phones cannot use the Designer, but they can print anything imported this way.
 Jobs of more than 50 pages are sent from the frontend to Rust as a raw binary payload (`print_pdf_raw`) instead
 of a JSON number array, which is much faster on a phone.
 
+## Building a smaller APK
+
+The APK is the front end plus the Rust library. Three things decide its size:
+
+**1. The Designer is the heaviest part, and a phone cannot use it.** `@pdfme/ui` and the UI kit
+behind it are about two thirds of the front end. `DesignerPage` is loaded on demand
+(`React.lazy`) and its dependencies are a separate Rollup chunk, so a phone — which cannot show
+the Designer at all — never downloads it: **2.9 MB at start-up instead of 7.8 MB**, with a further
+4.7 MB only when the Designer tab is actually opened. The split is pinned by
+`src/bundleSize.test.ts`, so losing it fails the tests.
+
+**2. The Rust release profile.** `src-tauri/Cargo.toml` sets `lto`, `codegen-units = 1`,
+`opt-level = "s"` and `strip`. Measured on the Linux target, the library goes from **5.5 MB to
+0.9 MB**, and that saving is paid once per architecture.
+
+**3. One architecture per APK.** `pnpm build:android` now passes `--split-per-abi`, so instead of
+a universal APK carrying four copies of the same library, `releases/` gets one APK per
+architecture. The AAB does the same, which is what Play wants.
+
+To see the numbers before building, `pnpm build && npx vitest run src/bundleSize.test.ts`.
+
+### Not done
+
+- **The Japanese font is 5.5 MB** (`public/fonts/NotoSansJP-Regular.ttf`), and printing needs the
+  raw TTF. It deflates to about 3.2 MB inside the APK. Subsetting it to only the glyphs in use would
+  save most of that, but a user can type any Japanese into a field, so that is a correctness risk
+  rather than a free win. Converting to WOFF2 and inflating at runtime would need a decompressor,
+  and would make a font failure fatal to printing.
+- `panic = "abort"` would save a little more of the library, but it turns any panic in the printing
+  worker threads into a hard crash.
+- PDF generation (`@pdfme/generator`, `pdf-lib`, `bwip-js`) is the other 2.5 MB and is needed
+  wherever printing is.
+
 ## Test order
 **Windows:** virtual printer (Microsoft Print to PDF), 1 page -> check PDF -> 5 pages (different data) ->
 real printer -> `pnpm tauri build` and repeat.

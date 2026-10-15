@@ -25,3 +25,15 @@ printers = "2"
 # Kotlin plugin that opens Android's system print dialog (PrintManager).
 [target.'cfg(target_os = "android")'.dependencies]
 tauri-plugin-android-print = { path = "plugins/android-print" }
+
+# The release build ships inside an APK, where every byte of the Rust library is multiplied by the
+# number of architectures it is built for. The defaults here are no LTO, no stripping and sixteen
+# code-generation units, all of which cost size: a debug build is not much smaller. These settings
+# trade build time for a smaller APK, and strip also means no symbols to ship accidentally.
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = "s"
+strip = true
+# `panic = "abort"` would save a little more, but it turns any panic anywhere into a hard crash and
+# the app runs printing work on worker threads, so it is left on the default unwind.
