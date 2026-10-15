@@ -64,10 +64,10 @@ export default function LabelToolbar({ labels, value, disabled, onPick, onChange
     run(async () => {
       if (!user) throw new Error('You are not signed in.');
       const copy = await createLabel(user, {
-        name: `${current!.name} copy`,
-        widthMm: current!.widthMm,
-        heightMm: current!.heightMm,
-        from: { kind: 'copy', id: current!.id },
+        name: `${current?.name} copy`,
+        widthMm: current?.widthMm,
+        heightMm: current?.heightMm,
+        from: { kind: 'copy', id: current?.id },
       });
       onChanged(copy.id);
     });
@@ -87,7 +87,7 @@ export default function LabelToolbar({ labels, value, disabled, onPick, onChange
   const onDelete = () =>
     run(async () => {
       if (!user) throw new Error('You are not signed in.');
-      const id = current!.id;
+      const id = current?.id;
       setConfirmDelete(false);
       await deleteLabel(user, id);
       onChanged();
@@ -185,7 +185,6 @@ export default function LabelToolbar({ labels, value, disabled, onPick, onChange
           </label>
           <input
             id="rename-label"
-            autoFocus
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             className="w-64 rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"

@@ -89,11 +89,11 @@ function InfoTip({ text }: { text: React.ReactNode }) {
 }
 
 function Field({
-                 label,
-                 hint,
-                 htmlFor,
-                 children,
-               }: {
+  label,
+  hint,
+  htmlFor,
+  children,
+}: {
   label: string;
   hint?: React.ReactNode;
   htmlFor: string;
@@ -185,7 +185,7 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
 
   useEffect(() => {
     reloadPrinters();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [reloadPrinters]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Labels are added, renamed and deleted in the Designer, which stays mounted beside this page, so
   // the list is read again every time this tab is opened. Reading it only once left a deleted label
@@ -216,7 +216,7 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
 
   useEffect(() => {
     readLabels();
-  }, [readLabels, active]);
+  }, [readLabels]);
   const { reload: reloadLabels, reloading: reloadingLabels, note: labelsNote } = useLabelReload(labels, readLabels);
 
   // Ask the driver which resolutions it supports whenever the printer changes.
@@ -342,11 +342,7 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
         </Field>
 
         {caps.directPrinters && (
-          <details
-            className="text-sm md:col-span-2"
-            open={addOpen}
-            onToggle={(e) => setAddOpen(e.currentTarget.open)}
-          >
+          <details className="text-sm md:col-span-2" open={addOpen} onToggle={(e) => setAddOpen(e.currentTarget.open)}>
             <summary className="cursor-pointer font-medium text-slate-700">Add a printer (no dialog)</summary>
             <PrintersPanel disabled={busy} onChanged={reloadPrinters} />
           </details>

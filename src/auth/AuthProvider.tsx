@@ -47,7 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>('loading');
   const [user, setUser] = useState<User | null>(null);
   const [startupError, setStartupError] = useState('');
-  const [attempt, setAttempt] = useState(0);
+  const [_attempt, setAttempt] = useState(0);
 
   // Bring the database up to date, then restore the previous sign-in if there is one.
   useEffect(() => {
@@ -99,7 +99,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [attempt]);
+  }, []);
 
   const adopt = useCallback((next: User) => {
     setUser(next);

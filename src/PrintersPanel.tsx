@@ -91,7 +91,7 @@ export default function PrintersPanel({
       .catch((e) => setMsg({ ok: false, text: errMsg(e) }));
   useEffect(() => {
     refresh();
-  }, []);
+  }, [refresh]);
 
   const set = <K extends keyof SavedPrinter>(k: K, v: SavedPrinter[K]) => setForm((f) => ({ ...f, [k]: v }));
 

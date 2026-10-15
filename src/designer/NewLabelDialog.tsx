@@ -103,7 +103,6 @@ export default function NewLabelDialog({ labels, onCreate, onClose }: Props) {
         </label>
         <input
           id="new-label-name"
-          autoFocus
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="My parcel label"

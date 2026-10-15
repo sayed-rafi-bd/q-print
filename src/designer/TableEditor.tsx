@@ -241,7 +241,6 @@ export default function TableEditor({ spec, onChange, readOnly }: Props) {
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <input
             aria-label="Table name"
-            autoFocus
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="destinations"
