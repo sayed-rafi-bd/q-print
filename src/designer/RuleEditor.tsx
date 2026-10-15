@@ -376,6 +376,7 @@ export function RuleRow({
   samplePaths,
   onChange,
   locked,
+  hasApi = true,
 }: {
   rule: FieldRule | null;
   spec: GeneratorSpec;
@@ -384,6 +385,11 @@ export function RuleRow({
   onChange: (next: FieldRule | null) => void;
   /** Show the rule but do not let it be changed. */
   locked?: boolean;
+  /**
+   * Offer the `api` kind. A label can map a field to a record path whether or not anything has been
+   * fetched, because the address is given at print time rather than stored with the label.
+   */
+  hasApi?: boolean;
 }) {
   return (
     <div className="space-y-2">
@@ -401,7 +407,7 @@ export function RuleRow({
           >
             <option value="">— nothing, print the text as designed —</option>
             {/* `api` needs a data source to read from, so it is offered once the label has one (or already uses it). */}
-            {RULE_KINDS.filter((k) => k !== 'api' || spec.source || rule?.kind === 'api').map((k) => (
+            {RULE_KINDS.filter((k) => k !== 'api' || hasApi || rule?.kind === 'api').map((k) => (
               <option key={k} value={k}>
                 {KIND_LABELS[k]}
               </option>

@@ -8,6 +8,7 @@ import { dataFields, orphanRules, type TemplateField, templateFields } from '../
 import type { FieldRule, GeneratorSpec } from '../generator/spec';
 import { RuleRow } from './RuleEditor';
 import TableEditor from './TableEditor';
+import TestApiSection from './TestApiSection';
 
 const btnCls =
   'cursor-pointer rounded-full border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-700 ' +
@@ -27,10 +28,9 @@ type Props = {
    * would be thrown away on save. Duplicate the label to get an editable copy.
    */
   readOnly?: boolean;
-  /** Records fetched from the label's API in the Source pane, kept by the designer. Never saved. */
+  /** Records fetched by the "Test with a real API" section, used to preview. Never saved. */
   sample?: unknown[] | null;
-  /** Switches the designer to its Source tab, where the API address is set. */
-  onOpenSource?: () => void;
+  onSample: (records: unknown[] | null) => void;
   /**
    * Placeholder values typed here to see the label previewed, and how to change them. They are saved
    * with the label and only ever seen on screen: a print job builds its data from the real records.
@@ -52,7 +52,7 @@ export default function DataEditor({
   onPreview,
   readOnly,
   sample = null,
-  onOpenSource,
+  onSample,
   previewValues,
   onPreviewValues,
 }: Props) {
@@ -183,15 +183,7 @@ export default function DataEditor({
 
       {pane === 'fields' && (
         <div className="space-y-2">
-          {!spec.source && onOpenSource && (
-            <p className="rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs text-indigo-900">
-              To fill fields from a web API, set the address in the{' '}
-              <button type="button" className="cursor-pointer font-semibold underline" onClick={onOpenSource}>
-                Source tab
-              </button>{' '}
-              first.
-            </p>
-          )}
+          <TestApiSection sample={sample} onSample={onSample} />
           {fields.length === 0 && (
             <p className="text-sm text-slate-500">
               This template has no fields that can take data. Add text or a barcode field in the Layout tab, and it will

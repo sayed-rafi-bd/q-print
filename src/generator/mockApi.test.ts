@@ -36,10 +36,7 @@ describe('mock API', () => {
   });
 
   it('is reached through fetchRecords without any network transport', async () => {
-    const records = await fetchRecords(
-      { url: MOCK_PRODUCTS_URL, listPath: 'data', variables: { count: { default: '4' } } },
-      { count: '4' },
-    );
+    const records = await fetchRecords({ url: MOCK_PRODUCTS_URL, listPath: 'data' }, { count: '4' });
     expect(records).toHaveLength(4);
   });
 

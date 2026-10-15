@@ -12,7 +12,7 @@ describe('error hints', () => {
     expect(withHint('HTTP 401 Unauthorized', { bearerAuth: true })).toBe(
       'HTTP 401 Unauthorized Check the access token.',
     );
-    expect(withHint('HTTP 403 Forbidden: nope', { bearerAuth: false })).toContain('does not send an access token');
+    expect(withHint('HTTP 403 Forbidden: nope', { bearerAuth: false })).toContain('is not sending an access token');
   });
 
   it('points a 404 at the values', () => {

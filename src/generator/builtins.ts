@@ -1,39 +1,37 @@
 /**
- * The generators the built-in labels ship with. They read the in-app mock API, are not editable in
- * the Designer, and "Duplicate" copies one into a label of your own.
+ * The generators the built-in labels ship with. They are not editable in the Designer, and
+ * "Duplicate" copies one into a label of your own.
  *
  * Every field keeps the shape of value the old Rust generator made; dates are relative to today.
  */
 
-import { MOCK_PRODUCTS_URL } from './mockApi';
 import type { GeneratorSpec } from './spec';
 
 /**
- * The product label reads its data from the in-app mock API (`mockApi.ts`), like a label of your
- * own would read a real one. Each record holds finished values; the rules only pick them out.
+ * The product label is a worked example: it prints with no network and no address typed, so a new
+ * build has something to show that works straight away. Its values are fixed rather than read from
+ * an API, which is what makes it self-contained — a label does not carry an address anyway, so an
+ * `api` field here would need one typed every time before it could print.
+ *
+ * Duplicate it to get a copy you can map to a real API.
  */
 const PRODUCT: GeneratorSpec = {
   version: 1,
-  source: {
-    url: MOCK_PRODUCTS_URL,
-    listPath: 'data',
-    variables: { count: { label: 'Number of labels', default: '1' } },
-  },
   fields: {
-    itemBarcode: { kind: 'api', path: 'barcode' },
+    itemBarcode: { kind: 'digits', length: 13, prefix: '4901234' },
     itemCodeText: { kind: 'copy', from: 'itemBarcode' },
 
-    issueDate: { kind: 'api', path: 'issued', suffix: ' 再' },
+    issueDate: { kind: 'date', offsetDays: [0, 0], format: 'YYYY-MM-DD', suffix: ' 再' },
 
-    brandName: { kind: 'api', path: 'brand' },
-    productName: { kind: 'api', path: 'name' },
-    productCode: { kind: 'api', path: 'productCode' },
+    brandName: { kind: 'fixed', value: 'Acme' },
+    productName: { kind: 'fixed', value: 'Sample product' },
+    productCode: { kind: 'fixed', value: 'SKU-0000' },
 
-    // The zone is one value shared by both fields; the API sends it without the trailing dash.
-    locZone: { kind: 'api', path: 'location.zone', suffix: '-' },
-    locCode: { kind: 'api', path: 'location.code' },
+    // The zone is one value shared by both fields; the copy rule rebuilds it with the dash.
+    locZone: { kind: 'fixed', value: '13' },
+    locCode: { kind: 'fixed', value: '0450' },
 
-    trackingBarcode: { kind: 'api', path: 'tracking' },
+    trackingBarcode: { kind: 'digits', length: 12 },
     trackingText: { kind: 'copy', from: 'trackingBarcode' },
 
     warehouse: { kind: 'fixed', value: 'Chiba・ロジ' },

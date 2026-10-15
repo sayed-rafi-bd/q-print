@@ -13,8 +13,15 @@ import { LIMITS } from './engine';
 
 export const MOCK_HOST = 'mock.q-print.invalid';
 
-/** The address the built-in product label reads. `{count}` is how many records to make. */
+/**
+ * The demo address. Type it into the Print tab or the Designer's test panel to try the API path with
+ * data made inside the app — the request never leaves the device, so it works offline. `{count}` is
+ * how many records to make.
+ */
 export const MOCK_PRODUCTS_URL = `https://${MOCK_HOST}/products?count={count}`;
+
+/** The list sits under this key, so `MOCK_LIST_PATH` has to be given along with the address. */
+export const MOCK_LIST_PATH = 'data';
 
 export type MockOptions = { rng?: () => number; now?: Date };
 

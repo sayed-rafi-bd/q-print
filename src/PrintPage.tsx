@@ -1,18 +1,17 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useAuth } from './auth/AuthProvider';
 import { useCapabilities } from './capabilities';
-import DataSourceCard, { type CheckState } from './DataSourceCard';
-import type { ApiSource } from './generator/spec';
+import DataSourceCard, { type ApiState, type CheckState, emptyApi } from './DataSourceCard';
 import LabelPicker, { ReloadLabelsButton, useLabelReload } from './LabelPicker';
 import {
   type LabelId,
   type LabelMeta,
   listLabels,
+  loadApiValues,
   loadLabel,
   loadLastLabel,
-  loadSourceValues,
+  rememberApiValues,
   rememberLabel,
-  rememberSourceValues,
 } from './labels';
 import { Confetti, Mascot } from './Mascot';
 import PrintersPanel from './PrintersPanel';
@@ -29,7 +28,7 @@ import {
   type Rotation,
   type Timings,
 } from './printApi';
-import { missingInput, startingValues } from './printRows';
+import { type ApiInput, missingInput, usesApi } from './printRows';
 import TemplateTransfer from './TemplateTransfer';
 
 const fmt = (ms: number) => (ms >= 1000 ? `${(ms / 1000).toFixed(2)} s` : `${Math.round(ms)} ms`);
@@ -164,15 +163,17 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
   const [resolutions, setResolutions] = useState<string[]>([]);
   const [dpiNote, setDpiNote] = useState('');
   const [pages, setPages] = useState(3);
-  // The label's API data source, when it has one, and what the person typed for it. The token is
-  // React state only: it is not remembered, not stored and is cleared when the label changes.
-  const [source, setSource] = useState<ApiSource | null>(null);
-  const [sourceValues, setSourceValues] = useState<Record<string, string>>({});
-  const [token, setToken] = useState('');
+  // The address to read records from, the values its variables ask for and the token, all typed
+  // here per print and kept nowhere else. Empty until the person fills them in, and cleared when
+  // the label changes, so nothing leaks into the next print.
+  const [api, setApi] = useState<ApiState>(emptyApi);
+  const [apiValues, setApiValues] = useState<Record<string, string>>({});
+  /** True when the selected label's fields read from a record at all. */
+  const [needsApi, setNeedsApi] = useState(false);
   const [checked, setChecked] = useState<CheckState>(null);
-  // The label whose data source has been read. Printing waits for it, so a label that needs API
-  // values can never be sent off before its Data source card has appeared.
-  const [sourceLoadedFor, setSourceLoadedFor] = useState('');
+  // The label whose generator has been read. Printing waits for it, so a label that needs an address
+  // can never be sent off before its Data source card has appeared.
+  const [apiLoadedFor, setApiLoadedFor] = useState('');
   const [busy, setBusy] = useState(false);
   // The "Add a printer" section stays open until the user closes it, so more than one printer can be added.
   const [addOpen, setAddOpen] = useState(true);
@@ -270,49 +271,59 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
     };
   }, [printer, caps.dpiSelect]);
 
-  // Read the selected label's data source (built-in labels read the in-app mock API). A late answer for a
-  // label that is no longer selected is ignored.
+  // Work out whether the selected label reads from a record, and offer back the values last typed
+  // for it. A late answer for a label that is no longer selected is ignored.
   const selectedId = label?.id ?? '';
   useEffect(() => {
-    setSource(null);
-    setToken('');
+    setApi(emptyApi);
+    setApiValues({});
     setChecked(null);
+    setNeedsApi(false);
     if (!user || !selectedId) return;
     let stale = false;
     loadLabel(user, selectedId)
       .then(({ generator }) => {
         if (stale) return;
-        if (generator.source) {
-          setSource(generator.source);
-          setSourceValues(startingValues(generator.source, loadSourceValues(user, selectedId)));
-        }
-        setSourceLoadedFor(selectedId);
+        setNeedsApi(usesApi(generator));
+        setApiValues(loadApiValues(user, selectedId));
+        setApiLoadedFor(selectedId);
       })
       .catch(() => {
         // Printing reports a label that cannot be read, so it must not stay blocked here.
-        if (!stale) setSourceLoadedFor(selectedId);
+        if (!stale) setApiLoadedFor(selectedId);
       });
     return () => {
       stale = true;
     };
   }, [user, selectedId]);
 
-  const sourceReady = sourceLoadedFor === selectedId;
+  const apiReady = apiLoadedFor === selectedId;
+
+  /** What the person typed, as the shape `buildRows` takes. */
+  const apiInput: ApiInput | undefined = needsApi
+    ? {
+        url: api.url,
+        listPath: api.listPath || undefined,
+        bearerAuth: api.bearerAuth,
+        values: api.values,
+        token: api.token.trim() || undefined,
+      }
+    : undefined;
 
   const onPrint = async () => {
     if (!label || !user) return; // nothing selected yet; the button is disabled until there is one
     setBusy(true);
     setError('');
     setResult(null);
-    if (source) {
+    if (apiInput) {
       // Checked before any request, so a blank field or a missing token costs nothing.
-      const missing = missingInput(source, sourceValues, token);
+      const missing = missingInput(apiInput);
       if (missing) {
         setError(missing);
         setBusy(false);
         return;
       }
-      rememberSourceValues(user, label.id, sourceValues);
+      rememberApiValues(user, label.id, api.values);
     }
     try {
       const { timings, report, templateSource, pageCount, records } = await printLabels({
@@ -325,7 +336,7 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
         margins,
         dpi,
         pages,
-        api: source ? { values: sourceValues, token: token.trim() || undefined } : undefined,
+        api: apiInput,
       });
       setResult({
         label: label.name,
@@ -397,7 +408,8 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
               setLabelId(id);
               if (user) rememberLabel(user, id);
               setResult(null);
-              setToken('');
+              // Nothing typed for one label carries over to the next, token included.
+              setApi(emptyApi);
               setChecked(null);
             }}
             note={labelsNote}
@@ -422,13 +434,11 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
           </select>
         </Field>
 
-        {source && (
+        {needsApi && (
           <DataSourceCard
-            source={source}
-            values={sourceValues}
-            onValues={setSourceValues}
-            token={token}
-            onToken={setToken}
+            api={api}
+            onChange={setApi}
+            remembered={apiValues}
             copies={pages}
             checked={checked}
             onChecked={setChecked}
@@ -615,10 +625,10 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
         )}
 
         <Field
-          label={source ? 'Copies of each record' : 'Number of pages'}
+          label={needsApi ? 'Copies of each record' : 'Number of pages'}
           htmlFor="pages"
           hint={
-            source
+            needsApi
               ? 'Every record is printed this many times, copies together. An object response counts as one record.'
               : 'One label per page, each with different data.'
           }
@@ -637,7 +647,7 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
         <button
           type="button"
           onClick={onPrint}
-          disabled={!printer || busy || !label || !sourceReady}
+          disabled={!printer || busy || !label || !apiReady}
           className="btn-cute flex w-full md:col-span-2 cursor-pointer items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-4 py-3 text-base font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
         >
           {busy && (

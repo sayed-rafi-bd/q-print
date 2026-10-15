@@ -58,7 +58,10 @@ export function parseBundle(text: string): { bundle?: LabelBundle; template?: Te
     // A generator that cannot run is not worth importing; say why instead of failing at print time.
     const problems = validateSpec(bundle.generator);
     if (problems.length > 0) throw new Error(`This label's data generator is not usable. ${problems[0]}`);
-    return { bundle };
+    // A file written when a label still carried its address is imported without it. Nothing reads
+    // an address any more, so keeping a dead one would only mean re-exporting it to the next device.
+    const { source: _address, ...generator } = bundle.generator as GeneratorSpec & { source?: unknown };
+    return { bundle: { ...bundle, generator: generator as GeneratorSpec } };
   }
   return { template: parseTemplate(text) };
 }

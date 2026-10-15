@@ -32,8 +32,10 @@ export default function PreviewDialog({ template, spec, sample = null, previewVa
   // A value the person typed wins over the fetched sample and over what a rule would generate.
   const typed = useMemo(() => usableValues(template, previewValues), [template, previewValues]);
   const typedCount = Object.keys(typed).length;
-  const real = Boolean(spec.source && sample && sample.length > 0);
-  const standIns = Boolean(spec.source) && !real;
+  // A record fetched by the "Test with a real API" section, or null. A label carries no address, so
+  // records only ever come from a test the person just ran.
+  const real = Boolean(sample && sample.length > 0);
+  const standIns = !real;
   const container = useRef<HTMLDivElement>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(true);

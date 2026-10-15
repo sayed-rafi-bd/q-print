@@ -414,18 +414,17 @@ describe('validateSpec', () => {
 });
 
 describe('api rule', () => {
-  const source = { url: 'api.example.com/day/{day}' };
-  const withSource = (fields: Record<string, FieldRule>, extra: Partial<GeneratorSpec> = {}): GeneratorSpec => ({
+  // A label carries no address: the `api` rule is all that says a field reads from a record.
+  const withFields = (fields: Record<string, FieldRule>, extra: Partial<GeneratorSpec> = {}): GeneratorSpec => ({
     version: 1,
-    source,
     fields,
     ...extra,
   });
-  const apiSpec = withSource({ name: { kind: 'api', path: 'user.name' } });
+  const apiSpec = withFields({ name: { kind: 'api', path: 'user.name' } });
   const rec = (name: string) => ({ user: { name } });
 
   it('prints the record’s value, with prefix, suffix and transforms', () => {
-    const s = withSource({
+    const s = withFields({
       name: { kind: 'api', path: 'user.name', transforms: ['upper'], suffix: '様' },
       price: { kind: 'api', path: 'price', prefix: '¥' },
     });
@@ -444,13 +443,13 @@ describe('api rule', () => {
   });
 
   it('keeps `sequence` counting across the whole job', () => {
-    const s = withSource({ n: { kind: 'sequence', start: 1 }, name: { kind: 'api', path: 'user.name' } });
+    const s = withFields({ n: { kind: 'sequence', start: 1 }, name: { kind: 'api', path: 'user.name' } });
     const rows = generateRowsFromRecords(s, [rec('A'), rec('B')], 2);
     expect(rows.map((r) => r.n)).toEqual(['1', '2', '3', '4']);
   });
 
   it('mixes api fields with random, table and copy fields', () => {
-    const s = withSource(
+    const s = withFields(
       {
         name: { kind: 'api', path: 'user.name' },
         code: { kind: 'digits', length: 6 },
@@ -467,7 +466,7 @@ describe('api rule', () => {
   });
 
   it('generates fresh random values for each copy, but shares the record’s api values', () => {
-    const s = withSource({ name: { kind: 'api', path: 'user.name' }, code: { kind: 'digits', length: 12 } });
+    const s = withFields({ name: { kind: 'api', path: 'user.name' }, code: { kind: 'digits', length: 12 } });
     const [a, b] = generateRowsFromRecords(s, [rec('A')], 2, { rng: seededRng(3) });
     expect(a.name).toBe(b.name);
     expect(a.code).not.toBe(b.code);
@@ -501,12 +500,12 @@ describe('api rule', () => {
   });
 
   it('works for a label with no api fields too, repeating the records', () => {
-    const s = withSource({ a: { kind: 'fixed', value: 'x' } });
+    const s = withFields({ a: { kind: 'fixed', value: 'x' } });
     expect(generateRowsFromRecords(s, [{}, {}], 2)).toHaveLength(4);
   });
 
   it('makes generateRows refuse a spec that reads the API', () => {
-    expect(() => generateRows(apiSpec, 1)).toThrow(/needs API data/);
+    expect(() => generateRows(apiSpec, 1)).toThrow(/needs data from an API/);
   });
 
   it('prints ‹path› in placeholder mode, for the editor and the preview', () => {
@@ -515,70 +514,42 @@ describe('api rule', () => {
     expect(sampleField(apiSpec, 'name')).toBe('');
   });
 
-  it('leaves generateRows alone for a label that only has a source', () => {
-    const s = withSource({ a: { kind: 'fixed', value: 'x' } });
+  it('leaves generateRows alone when no record is given', () => {
+    const s = withFields({ a: { kind: 'fixed', value: 'x' } });
     expect(generateRows(s, 2)).toEqual([{ a: 'x' }, { a: 'x' }]);
   });
 });
 
-describe('validateSpec: api and source', () => {
-  const ok = (extra: Partial<GeneratorSpec> = {}): GeneratorSpec => ({
+describe('validateSpec: api rules', () => {
+  const withApi = (extra: Partial<GeneratorSpec> = {}): GeneratorSpec => ({
     version: 1,
-    source: { url: 'api.example.com/day/{day}' },
     fields: { a: { kind: 'api', path: 'x' } },
     ...extra,
   });
 
-  it('accepts a valid source and api field', () => {
-    expect(validateSpec(ok())).toEqual([]);
-    expect(
-      validateSpec(
-        ok({
-          source: {
-            url: 'https://api.example.com/{day}',
-            listPath: 'data.items',
-            bearerAuth: true,
-            variables: { day: { label: 'Day', default: '1' } },
-          },
-        }),
-      ),
-    ).toEqual([]);
-  });
-
-  it('allows a source with no api field', () => {
-    expect(validateSpec(ok({ fields: { a: { kind: 'fixed', value: 'x' } } }))).toEqual([]);
+  it('accepts an api rule with no address in the label at all', () => {
+    // The address is typed at print time, so there is nothing in the spec to be missing.
+    expect(validateSpec(withApi())).toEqual([]);
+    expect(validateSpec(withApi({ fields: { a: { kind: 'api', path: 'user.items[0].name' } } }))).toEqual([]);
   });
 
   it('needs a non-empty, well-formed path', () => {
-    expect(validateSpec(ok({ fields: { a: { kind: 'api', path: '' } } }))).toEqual([
+    expect(validateSpec(withApi({ fields: { a: { kind: 'api', path: '' } } }))).toEqual([
       '“a” needs a path into the API response.',
     ]);
-    expect(validateSpec(ok({ fields: { a: { kind: 'api', path: 'a..b' } } }))[0]).toMatch(
+    expect(validateSpec(withApi({ fields: { a: { kind: 'api', path: 'a..b' } } }))[0]).toMatch(
       /“a” has an invalid path “a..b”/,
     );
   });
 
-  it('reports an api field on a label with no source', () => {
-    expect(validateSpec({ version: 1, fields: { a: { kind: 'api', path: 'x' } } })).toEqual([
-      '“a” reads the API but this label has no URL.',
-    ]);
+  it('does not mind a label with no api rules', () => {
+    expect(validateSpec(withApi({ fields: { a: { kind: 'fixed', value: 'x' } } }))).toEqual([]);
   });
 
-  it('reports a bad URL and a bad list path', () => {
-    expect(validateSpec(ok({ source: { url: 'file:///x' } }))[0]).toMatch(/Only http and https/);
-    expect(validateSpec(ok({ source: { url: 'https://u:p@x.com/' } }))[0]).toMatch(/access token/);
-    expect(validateSpec(ok({ source: { url: 'x.com', listPath: 'a..b' } }))[0]).toMatch(/list path “a..b”/);
-    expect(validateSpec(ok({ source: { url: 'x.com', bearerAuth: 'yes' as unknown as boolean } }))[0]).toMatch(
-      /on or off/,
-    );
-    expect(validateSpec(ok({ source: { url: 'x.com', variables: { d: { label: 3 } } as never } }))[0]).toMatch(
-      /variable “d”/,
-    );
-  });
-
-  it('refuses a token or any other unknown setting in the source', () => {
-    const problems = validateSpec(ok({ source: { url: 'x.com', token: 'secret' } as never }));
-    expect(problems[0]).toMatch(/unknown setting “token”/);
-    expect(problems[0]).not.toContain('secret');
+  it('does not validate an address, because the label has none', () => {
+    // A saved address from an older build is ignored rather than refused: the field's path is what
+    // matters now, and refusing the file would lock somebody out of their own label.
+    const stale = { version: 1, fields: { a: { kind: 'api' as const, path: 'x' } }, source: { url: 'x.com' } };
+    expect(validateSpec(stale as GeneratorSpec)).toEqual([]);
   });
 });

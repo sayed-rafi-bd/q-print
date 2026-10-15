@@ -17,7 +17,6 @@ const template = {
 
 const spec: GeneratorSpec = {
   version: 1,
-  source: { url: 'api.example.com/items' },
   fields: {
     name: { kind: 'api', path: 'user.name' },
     ean: { kind: 'api', path: 'ean' },
@@ -88,7 +87,7 @@ describe('typed placeholder values', () => {
     expect(inputs[0].name).toBe('‹user.name›');
   });
 
-  it('reach a label with no API source too', () => {
+  it('reach a label with no api rules at all', () => {
     const plain: GeneratorSpec = { version: 1, fields: { name: { kind: 'fixed', value: 'Designed in' } } };
     const { inputs, typedFields } = previewInputs(template, plain, null, { name: 'My widget' });
     expect(typedFields).toEqual(['name']);

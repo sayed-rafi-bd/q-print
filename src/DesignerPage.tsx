@@ -8,7 +8,6 @@ import { importLegacyLabels, shouldOfferImport } from './db/migrate';
 import DataEditor from './designer/DataEditor';
 import LabelToolbar from './designer/LabelToolbar';
 import PreviewDialog from './designer/PreviewDialog';
-import SourcePane from './designer/SourcePane';
 import { validateSpec } from './generator/engine';
 import type { PreviewValues } from './generator/previewInputs';
 import { scaffoldSpec } from './generator/scaffold';
@@ -471,16 +470,6 @@ export default function DesignerPage() {
         </button>
         <button
           type="button"
-          onClick={() => setTab('source')}
-          className={
-            'cursor-pointer rounded-full px-3 py-1 text-xs font-semibold transition ' +
-            (tab === 'source' ? 'bg-indigo-500 text-white' : 'text-slate-500 hover:bg-indigo-100')
-          }
-        >
-          Source{generator.source ? ' •' : ''}
-        </button>
-        <button
-          type="button"
           onClick={() => setTab('data')}
           className={
             'cursor-pointer rounded-full px-3 py-1 text-xs font-semibold transition ' +
@@ -590,25 +579,10 @@ export default function DesignerPage() {
               readOnly={meta?.builtin === true}
               onChange={setGenerator}
               sample={sample}
-              onOpenSource={() => setTab('source')}
               onPreview={() => setPreviewing(true)}
               previewValues={previewValues}
               onPreviewValues={setPreviewValues}
-            />
-          </div>
-        )}
-        {tab === 'source' && (
-          <div className="absolute inset-0 overflow-auto bg-white/70 p-4">
-            <SourcePane
-              source={generator.source}
-              onChange={(next) => {
-                const { source: _old, ...rest } = generator;
-                setGenerator(next ? { ...rest, source: next } : rest);
-              }}
-              sample={sample}
               onSample={setSample}
-              usedByFields={Object.values(generator.fields).some((r) => r?.kind === 'api')}
-              readOnly={meta?.builtin === true}
             />
           </div>
         )}

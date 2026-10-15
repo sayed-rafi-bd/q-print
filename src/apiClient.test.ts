@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { browserTransport, fetchRecords, makeTauriTransport, scrub, type Transport } from './apiClient';
-import type { ApiSource } from './generator/spec';
+import type { ApiRequest } from './generator/apiSource';
 
-const source: ApiSource = { url: 'api.example.com/day/{day}/count/{count}/logs' };
+const source: ApiRequest = { url: 'api.example.com/day/{day}/count/{count}/logs' };
 const values = { day: '15', count: '3' };
 
 /** A transport that records what it was asked for and answers with `body`. */
@@ -40,7 +40,7 @@ describe('fetchRecords', () => {
     expect(calls).toHaveLength(0);
   });
 
-  it('sends the token only when the source asks for bearer auth', async () => {
+  it('sends the token only when bearer auth is asked for', async () => {
     const bearer = { ...source, bearerAuth: true };
     const a = fake('{}');
     await fetchRecords(bearer, values, '  tok-123  ', { transport: a.transport });
@@ -51,7 +51,7 @@ describe('fetchRecords', () => {
     expect(b.calls[0].bearer).toBeUndefined();
   });
 
-  it('needs a token when the source asks for one, and refuses to send it over http', async () => {
+  it('needs a token when one is asked for, and refuses to send it over http', async () => {
     const { transport, calls } = fake('{}');
     await expect(fetchRecords({ ...source, bearerAuth: true }, values, '  ', { transport })).rejects.toThrow(
       'Enter the access token',

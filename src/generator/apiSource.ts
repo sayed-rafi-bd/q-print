@@ -1,10 +1,27 @@
 /**
- * Pure helpers for a label's API data source: reading the `{variables}` out of a URL pattern,
- * building the real URL, and turning the JSON response into records and text.
+ * Pure helpers for reading an API: the `{variables}` out of a URL pattern, building the real URL,
+ * and turning the JSON response into records and text.
  *
  * No Tauri, no DOM and no network here, so all of it is unit tested on its own. The call itself
  * lives in `src/apiClient.ts` (and `src-tauri/src/http.rs`).
  */
+
+/**
+ * Where the records come from, given by the person and never stored.
+ *
+ * This is deliberately not part of a label. A template says which path of a record each field
+ * needs; the address is typed at print time, or in the Designer to test a preview. So an exported
+ * label carries no address, and no label can send a request to a host the person did not just
+ * choose. The access token is not here either: it is held for one request and never written down.
+ */
+export type ApiRequest = {
+  /** Address with `{variables}`. The scheme is optional: `api.example.com/x` means https. */
+  url: string;
+  /** Where the list lives in the response, e.g. `data.items`. Empty means the response root. */
+  listPath?: string;
+  /** Send `Authorization: Bearer <token>`. */
+  bearerAuth?: boolean;
+};
 
 /** Every `{...}` in a URL pattern, valid name or not, so typos can be reported. */
 const BRACES = /\{([^{}]*)\}/g;

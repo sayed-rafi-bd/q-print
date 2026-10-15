@@ -54,38 +54,20 @@ export type FieldRule = Common &
      */
     | { kind: 'copy'; from: string; pattern?: string }
     /**
-     * A value from the label's API response. `path` is relative to the record (the response object,
-     * or one item of a response array): dot-separated keys plus `[n]` list positions, such as
-     * `user.name` or `items[0].id`. Needs a {@link ApiSource} on the spec.
+     * A value from an API record. `path` is relative to the record (the response object, or one item
+     * of a response array): dot-separated keys plus `[n]` list positions, such as `user.name` or
+     * `items[0].id`.
+     *
+     * A label says only which path it needs. Where the records come from is not part of the label:
+     * the person gives an address at print time, or in the Designer to test a preview. See
+     * {@link ApiRequest}.
      */
     | { kind: 'api'; path: string }
   );
 
-/**
- * Where a label's record data comes from. It lives in the label, so it is saved and exported with it.
- *
- * Deliberately has no field for an access token: the token is typed at print time and is never
- * stored in the database or in an exported label file. Keep it that way.
- */
-export type ApiSource = {
-  /** Address with `{variables}`. The scheme is optional: `api.example.com/x` means https. */
-  url: string;
-  /** Where the list lives in the response, e.g. `data.items`. Empty means the response root. */
-  listPath?: string;
-  /** Send `Authorization: Bearer <token>`. The token itself is never stored here. */
-  bearerAuth?: boolean;
-  /** Optional nicer labels and default values for the variables the URL declares. */
-  variables?: Record<string, { label?: string; default?: string }>;
-};
-
-/** The keys an {@link ApiSource} may have. Anything else (a `token`, say) is refused on import. */
-export const API_SOURCE_KEYS = ['url', 'listPath', 'bearerAuth', 'variables'] as const;
-
 export type GeneratorSpec = {
   version: 1;
   tables?: Record<string, GeneratorTable>;
-  /** Optional. When present, a print fetches records from this API and prints each one. */
-  source?: ApiSource;
   /** Keyed by pdfme field name. A template field with no rule prints its own content. */
   fields: Record<string, FieldRule>;
 };

@@ -5,9 +5,8 @@
  * can be unit tested by injecting a seeded RNG and a fixed `now`.
  */
 
-import { checkSourceUrl, parsePath, readPath, toText } from './apiSource';
+import { parsePath, readPath, toText } from './apiSource';
 import {
-  API_SOURCE_KEYS,
   asFieldRule,
   type FieldRule,
   type GeneratorSpec,
@@ -253,8 +252,14 @@ const fillPage = (page: Page, order: string[], spec: GeneratorSpec): void => {
   }
 };
 
-/** True when any field reads from the API response. */
-const hasApiRules = (spec: GeneratorSpec): boolean =>
+/**
+ * True when any field reads from an API record.
+ *
+ * The only thing that says a label needs records. It used to be duplicated as "the label has a
+ * saved data source", which could disagree with the rules; now there is one answer, and the print
+ * path asks this same question.
+ */
+export const hasApiRules = (spec: GeneratorSpec): boolean =>
   Object.values(spec?.fields ?? {}).some((rule) => asFieldRule(rule)?.kind === 'api');
 
 /**
@@ -343,49 +348,6 @@ const checkDateFormat = (field: string, format: string, errors: string[]): void 
       `“${field}” does not understand ${stray.map((s) => `“${s}”`).join(', ')} in its date format. ` +
         'Use YYYY, YY, MM, DD, HH, mm or ss.',
     );
-  }
-};
-
-/** Validates the `source` block. Unknown keys are refused so a stray token can never ride along. */
-const checkSource = (source: unknown, errors: string[]): void => {
-  if (!source || typeof source !== 'object' || Array.isArray(source)) {
-    errors.push('The data source is not valid.');
-    return;
-  }
-  const s = source as Record<string, unknown>;
-  for (const key of Object.keys(s)) {
-    if (!(API_SOURCE_KEYS as readonly string[]).includes(key)) {
-      errors.push(`The data source has an unknown setting “${key}”. Access tokens are never saved in a label.`);
-    }
-  }
-  if (typeof s.url !== 'string') {
-    errors.push('Enter the URL to fetch the data from.');
-  } else {
-    errors.push(...checkSourceUrl(s.url));
-  }
-  if (s.listPath !== undefined) {
-    if (typeof s.listPath !== 'string') {
-      errors.push('The list path must be text.');
-    } else if (s.listPath.trim() !== '' && !parsePath(s.listPath)) {
-      errors.push(`The list path “${s.listPath}” is not valid. Use names separated by dots, like data.items.`);
-    }
-  }
-  if (s.bearerAuth !== undefined && typeof s.bearerAuth !== 'boolean') {
-    errors.push('The access token setting must be on or off.');
-  }
-  if (s.variables !== undefined) {
-    const vars = s.variables;
-    if (!vars || typeof vars !== 'object' || Array.isArray(vars)) {
-      errors.push('The URL variable settings are not valid.');
-    } else {
-      for (const [name, v] of Object.entries(vars)) {
-        const entry = v as { label?: unknown; default?: unknown } | null;
-        const bad = (x: unknown) => x !== undefined && typeof x !== 'string';
-        if (!entry || typeof entry !== 'object' || bad(entry.label) || bad(entry.default)) {
-          errors.push(`The settings for variable “${name}” are not valid.`);
-        }
-      }
-    }
   }
 };
 
@@ -489,15 +451,12 @@ export function validateSpec(spec: GeneratorSpec | null | undefined): string[] {
               'position, like items[0].name.',
           );
         }
-        if (!spec.source) errors.push(`“${field}” reads the API but this label has no URL.`);
         break;
 
       default:
         break;
     }
   }
-
-  if (spec.source !== undefined) checkSource(spec.source, errors);
 
   errors.push(...resolveOrder(fields).errors);
   return errors;
@@ -545,9 +504,9 @@ export function generateRows(
   assertValidSpec(spec);
   if (!Number.isInteger(count) || count < 1) throw new Error('A print job needs at least one page.');
   if (count > LIMITS.maxRows) throw new Error(`A print job is limited to ${LIMITS.maxRows} pages.`);
-  // No caller may print `undefined`: a label that reads the API has to go through the records.
+  // No caller may print `undefined`: a label with an `api` rule has to go through the records.
   if (!placeholders && record === undefined && hasApiRules(spec)) {
-    throw new Error('This label needs API data. Fetch the records and use generateRowsFromRecords.');
+    throw new Error('This label needs data from an API. Give an address, or map the fields to its own rules.');
   }
 
   const { order } = resolveOrder(spec.fields);

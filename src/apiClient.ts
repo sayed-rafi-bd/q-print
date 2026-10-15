@@ -9,10 +9,9 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
-import { buildUrl, checkSourceUrl, extractRecords } from './generator/apiSource';
+import { type ApiRequest, buildUrl, checkSourceUrl, extractRecords } from './generator/apiSource';
 import { LIMITS } from './generator/engine';
 import { isMockUrl, mockResponse } from './generator/mockApi';
-import type { ApiSource } from './generator/spec';
 import { isTauri } from './platform';
 
 /** Gets the response body as text. Injectable so the logic around it can be tested. */
@@ -24,11 +23,11 @@ const ERROR_BODY_CHARS = 200;
 const message = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
 /** Adds what to do about the failures people hit most. The wording never includes the token. */
-export function withHint(text: string, source: Pick<ApiSource, 'bearerAuth'>): string {
+export function withHint(text: string, request: Pick<ApiRequest, 'bearerAuth'>): string {
   if (/^HTTP (401|403)\b/.test(text)) {
-    return source.bearerAuth
+    return request.bearerAuth
       ? `${text} Check the access token.`
-      : `${text} This label does not send an access token; the server may require one.`;
+      : `${text} This address is not sending an access token; the server may require one.`;
   }
   if (/^HTTP 404\b/.test(text)) return `${text} Check the values you entered.`;
   return text;
@@ -98,21 +97,21 @@ const tooLarge = (): string => `The response is larger than ${LIMITS.maxResponse
 /**
  * Builds the URL from the pattern and the typed values, fetches it, and returns the records.
  *
- * `token` is sent only when the source asks for bearer auth, and never over plain `http://`.
+ * `token` is sent only when the request asks for bearer auth, and never over plain `http://`.
  * Every error is a sentence the person can read.
  */
 export async function fetchRecords(
-  source: ApiSource,
+  request: ApiRequest,
   values: Record<string, string>,
   token?: string,
   opts: { signal?: AbortSignal; transport?: Transport } = {},
 ): Promise<unknown[]> {
-  const problems = checkSourceUrl(source.url);
+  const problems = checkSourceUrl(request.url);
   if (problems.length > 0) throw new Error(problems[0]);
 
-  const url = buildUrl(source.url, values);
-  const bearer = source.bearerAuth ? token?.trim() || undefined : undefined;
-  if (source.bearerAuth && !bearer) throw new Error('Enter the access token for this label.');
+  const url = buildUrl(request.url, values);
+  const bearer = request.bearerAuth ? token?.trim() || undefined : undefined;
+  if (request.bearerAuth && !bearer) throw new Error('Enter the access token for this address.');
   if (bearer && !/^https:\/\//i.test(url)) throw new Error('Refusing to send an access token without HTTPS.');
 
   const transport =
@@ -121,7 +120,7 @@ export async function fetchRecords(
   try {
     text = await transport(url, bearer, opts.signal);
   } catch (e) {
-    throw new Error(withHint(scrub(message(e), bearer), source));
+    throw new Error(withHint(scrub(message(e), bearer), request));
   }
 
   let json: unknown;
@@ -130,5 +129,5 @@ export async function fetchRecords(
   } catch {
     throw new Error('The response is not valid JSON.');
   }
-  return extractRecords(json, source.listPath);
+  return extractRecords(json, request.listPath);
 }

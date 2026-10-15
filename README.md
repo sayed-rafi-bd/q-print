@@ -354,7 +354,7 @@ The rules are a fixed, small set — there is no scripting:
 | Pattern | Text with `{d3}` digits, `{D2}` A–Z or `{L2}` a–z mixed in, e.g. `A{d12}A`. |
 | Numbering | Counts up per page, restarting on every print job. |
 | Copy another field | Another field's value on the same page, optionally rebuilt with a pattern where `{from}` is the copied value. |
-| A value from the API response | A value read from the web API the label calls (see [Data from a web API](#data-from-a-web-api)). Only offered once the label has a data source. |
+| A value from the API response | A value read from a web API record, such as `user.name`. The label stores only the path; you give the address when you print (see [Data from a web API](#data-from-a-web-api)). |
 
 Every rule can also add text before and after the value, and run it through *digits only*,
 *upper* or *lower*. Problems (a range the wrong way round, a rule pointing at a table that is not
@@ -365,38 +365,40 @@ before it reaches a print job. **Preview label** renders the real page with pdfm
 A built-in label's rules ship with the app, so the Data tab is read-only for them; **Duplicate**
 gives you an editable copy with the same layout and the same rules.
 
-The built-in **Product label** reads its data from a **mock API that runs inside the app**
-(`https://mock.q-print.invalid/products?count={count}`, see `src/generator/mockApi.ts`). The request
-never leaves the device and works offline. On the Print tab you enter *Number of labels* (`count`);
-*Copies of each record* then repeats each one. In the Designer, the Source tab shows the address
-read-only. Duplicate the label to point the copy at your own API.
+The built-in **Product label** is a worked example that prints with nothing typed and nothing fetched.
+Its rules are fixed values and generated numbers, so it works offline on a first run. Duplicate it to
+map the fields to a real API.
 
 ### Data from a web API
 
-Instead of random data, a label can print real records from a web API. The data source belongs to
-the label, so it is saved with it and travels in its export file.
+Instead of random data, a label can print real records from a web API. **The label stores only which
+path of a record each field needs. The address is yours to type, when you print** — so it is not saved
+with the label, does not travel in an export file, and is not remembered between sessions. A label
+can therefore never send a request to a host you did not just choose, even one imported from someone
+else.
 
-**In the Designer** (Data tab, **Source** pane):
+**While designing** (Data tab):
 
-1. Press **Use an API as the data source** and type the address with a `{name}` wherever a value will
-   be typed at print time, for example `api.example.com/day/{day}/count/{count}/logs`. Without
-   `http://` or `https://` the address is called with https.
-2. Optional: a **list path** for responses such as `{ "data": [ ... ] }` (enter `data`), a label and a
-   default for each variable, and **Use a bearer token**.
-3. Press **Fetch sample** (type a value for each variable, and a token if needed). The first record
-   and the paths found in it are shown. The sample is only for building the label: it is not saved.
-4. In the Fields tab choose **A value from the API response** for a field and give its path, for
-   example `user.name` or `items[0].id`. The field shows the real value from the sample. Prefix,
-   suffix and the *digits only / upper / lower* options work as for any other rule. **Preview label**
-   shows the sample records, or the `‹path›` of each field when no sample has been fetched.
+1. Open **Test with a real API** and type the address, with a `{name}` wherever a value will be given,
+   for example `api.example.com/day/{day}/count/{count}/logs`. Without `http://` or `https://` it is
+   called over https.
+2. Optional: a **list path** for responses such as `{ "data": [ ... ] }` (enter `data`), and
+   **Send an access token**.
+3. Press **Check data**. The record count and the first record are shown. **Forget these records**
+   puts it back to nothing.
+4. For each field choose **A value from the API response** and give its path, for example `user.name`
+   or `items[0].id`. Prefix, suffix and the *digits only / upper / lower* options work as for any
+   other rule. **Preview label** then shows the fetched records.
 
-Fields without an API rule keep working as before and can be mixed with API fields on the same label.
+Alternatively, type a **Preview value** per field and no address at all: that is stored with the label,
+so the preview is the same next time you open it. Placeholders are never printed — a print job always
+uses real records.
 
-**When printing** the label's **Data source** card appears under the label picker. It asks for the
-variables, shows the address that will be called (host in bold, so a label imported from someone
-else cannot reach out unseen), and asks for the access token if the label uses one. **Check data**
-is optional: it fetches and reports "12 records found" and the first record. The *Number of pages*
-field becomes **Copies of each record**.
+**When printing**, a label that has at least one API field shows a **Data source** card under the label
+picker. It asks for the address, shows the exact address that will be called (host in bold), the
+values its variables ask for, and the access token if you tick **Send an access token**. **Check data**
+is optional: it reports "12 records found" and the first record. The *Number of pages* field becomes
+**Copies of each record**.
 
 - An **object** response is one record; an **array** response is one record per item.
 - Every record is printed once per copy, grouped by record: record 1 × n, then record 2 × n.
@@ -440,10 +442,12 @@ A label file is JSON:
 }
 ```
 
-A label that reads a web API also has a `"source": { "url": "...", "listPath": "...", "bearerAuth": true, "variables": { } }` entry
-beside `fields` (never a token). Export writes this whole file, so the receiving device produces the same data, not just the same
-picture. Import accepts it (creating a new label) and still accepts a bare pdfme template, which
-replaces the selected label's layout and keeps its data rules.
+A field that reads from a record is `{ "kind": "api", "path": "user.name" }`. That is the whole of it:
+no address and no token, because both belong to the person printing. Export writes this whole file, so
+the receiving device produces the same data, not just the same picture. Import accepts it (creating a
+new label) and still accepts a bare pdfme template, which replaces the selected label's layout and
+keeps its data rules. A file written before addresses moved to print time still imports; its stored
+address is dropped.
 
 To add a label to the app itself rather than to your own copy: put its template under
 `src/templates/`, add it to `BUILTINS` in `src/builtinLabels.ts` and `BUILTIN_IDS` in

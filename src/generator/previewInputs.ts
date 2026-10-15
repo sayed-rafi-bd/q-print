@@ -15,7 +15,7 @@
 
 import type { Template } from '@pdfme/common';
 import { barcodeConstraint } from './barcodeCheck';
-import { generateRows, generateRowsFromRecords } from './engine';
+import { generateRows, generateRowsFromRecords, hasApiRules } from './engine';
 import { templateFields } from './scaffold';
 import type { GeneratorSpec } from './spec';
 
@@ -99,21 +99,25 @@ export function previewInputs(
 ): PreviewData {
   const typed = usableValues(template, stored);
   const typedFields = Object.keys(typed);
-  const records = spec.source && sample && sample.length > 0 ? sample.slice(0, pages) : null;
+  // Records only ever come from a test the person just ran in the Designer: a label carries no
+  // address, so there is nothing to fetch here by itself.
+  const records = sample && sample.length > 0 ? sample.slice(0, pages) : null;
+  const usesApi = hasApiRules(spec);
 
   let inputs: Record<string, string>[];
   if (records) {
     // Real records, with any typed value written over the fields it names.
     inputs = generateRowsFromRecords(spec, records, 1);
   } else {
-    inputs = generateRows(spec, pages, { placeholders: Boolean(spec.source) });
+    // With no record to read, an `api` field shows its path rather than failing.
+    inputs = generateRows(spec, pages, { placeholders: usesApi });
   }
   applyTyped(inputs, typed);
 
   // A typed value is already a real value, so it is never one of these stand-ins; replacing is
   // driven by what is left, not by whether anything at all was typed.
   const standIn = new Set<string>();
-  if (spec.source) {
+  if (usesApi) {
     for (const field of templateFields(template)) {
       if (field.kind !== 'barcode' && field.kind !== 'qr') continue;
       for (const row of inputs) {

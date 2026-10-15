@@ -122,15 +122,9 @@ describe('templateSizeMm', () => {
   });
 });
 
-describe('a label with an API data source', () => {
+describe('a label that reads from an API', () => {
   const generator = {
     version: 1 as const,
-    source: {
-      url: 'api.example.com/day/{day}',
-      listPath: 'data',
-      bearerAuth: true,
-      variables: { day: { label: 'Day', default: '1' } },
-    },
     fields: { a: { kind: 'api' as const, path: 'user.name' } },
   };
 
@@ -139,20 +133,21 @@ describe('a label with an API data source', () => {
     expect(parseBundle(json).bundle?.generator).toEqual(generator);
   });
 
-  it('has no place for an access token in the exported file', () => {
+  it('carries no address and no token: both are given at print time', () => {
     const json = bundleJson(makeBundle('Api label', template, generator));
     expect(json.toLowerCase()).not.toContain('token');
-    expect(Object.keys(generator.source).sort()).toEqual(['bearerAuth', 'listPath', 'url', 'variables']);
+    expect(json.toLowerCase()).not.toContain('api.example.com');
+    expect(Object.keys(generator).sort()).toEqual(['fields', 'version']);
   });
 
-  it('refuses a file that smuggles a token into the source', () => {
-    const withToken = { ...generator, source: { ...generator.source, token: 'abc' } };
-    const bad = makeBundle('Api label', template, withToken as never);
-    expect(() => parseBundle(bundleJson(bad))).toThrow(/unknown setting “token”/);
-  });
-
-  it('refuses an import whose URL is not usable', () => {
-    const bad = makeBundle('Api label', template, { ...generator, source: { url: 'file:///etc/passwd' } });
-    expect(() => parseBundle(bundleJson(bad))).toThrow(/Only http and https/);
+  it('imports a label that was saved with an address on it, dropping the address', () => {
+    // A file written before addresses moved to print time still opens: the address it names is
+    // simply not used, because the print screen asks for one.
+    const old = {
+      ...generator,
+      source: { url: 'api.example.com/day/{day}', listPath: 'data', bearerAuth: true },
+    };
+    const text = JSON.stringify({ ...makeBundle('Api label', template, generator), generator: old });
+    expect(parseBundle(text).bundle?.generator).toEqual(generator);
   });
 });

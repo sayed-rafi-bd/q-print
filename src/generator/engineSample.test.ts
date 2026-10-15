@@ -4,7 +4,6 @@ import type { GeneratorSpec } from './spec';
 
 const spec: GeneratorSpec = {
   version: 1,
-  source: { url: 'a.com/x' },
   fields: { who: { kind: 'api', path: 'user.name', suffix: '様' }, id: { kind: 'digits', length: 4 } },
 };
 
@@ -24,6 +23,6 @@ describe('a fetched sample record in the editor', () => {
   it('generateRows with a record fills api fields; without one it still refuses', () => {
     const rows = generateRows(spec, 2, { record: { user: { name: 'Ann' } } });
     expect(rows.map((r) => r.who)).toEqual(['Ann様', 'Ann様']);
-    expect(() => generateRows(spec, 1)).toThrow('needs API data');
+    expect(() => generateRows(spec, 1)).toThrow('needs data from an API');
   });
 });

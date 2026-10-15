@@ -215,7 +215,8 @@ adb logcat -d -s RustStdoutStderr AndroidRuntime chromium
 
 ## Labels that read a web API
 
-- **Compatibility:** a label whose generator uses an API data source (`source`, and fields with the `api` rule) cannot be imported by an older version of the app. The older app does not know the rule and refuses the import with an "unknown rule" message instead of printing it wrongly. Labels made before this feature open and print the same in the new version. No database migration is involved.
+- **Compatibility:** a label whose generator uses the `api` rule cannot be imported by an older version of the app. The older app does not know the rule and refuses the import with an "unknown rule" message instead of printing it wrongly. Labels made before this feature open and print the same in the new version. No database migration is involved.
+- **Breaking change, no data migration needed:** a label no longer stores its API address. The address, its list path and its access token are typed on the Print tab instead, and are never saved. A label that read from an API therefore prints only once you give it an address. An exported label file from an earlier build still imports — its stored `source` entry is dropped, since nothing reads it now.
 - **HTTPS from Rust:** the app makes the request in Rust (`src-tauri/src/http.rs`) with `ureq` and its `tls` feature, which pulls in `rustls` and `ring` (C code in the Android NDK build). If an Android build breaks after a dependency update, look here first.
 - **Before publishing a draft, on each platform you ship (Windows, Android):** print a label that reads a real https API with and without a bearer token, try a wrong token (expect "HTTP 401 ... Check the access token."), an unreachable host (expect a clear message within about 15 seconds), a one-record (object) response, and 100 records × 3 copies.
 - **The token** is never stored or exported. If a report or log ever shows one, treat it as a bug.
