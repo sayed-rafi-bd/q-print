@@ -76,10 +76,13 @@ const groupThousands = (n: number): string => {
 
 const formatInt = (n: number, format: IntFormat): string => {
   switch (format) {
-    case 'thousands': return groupThousands(n);
+    case 'thousands':
+      return groupThousands(n);
     // "¥1,234", and plain "¥400" below a thousand — the shape Japanese labels use.
-    case 'yen': return `¥${groupThousands(n)}`;
-    default: return String(n);
+    case 'yen':
+      return `¥${groupThousands(n)}`;
+    default:
+      return String(n);
   }
 };
 
@@ -97,16 +100,20 @@ const formatDate = (d: Date, format: string): string => {
     D: String(d.getDate()),
   };
   // One left-to-right pass, longest token first, so "MM" is never read as "M"+"M".
-  return format.replace(DATE_TOKEN_RE, t => parts[t] ?? t);
+  return format.replace(DATE_TOKEN_RE, (t) => parts[t] ?? t);
 };
 
 const applyTransforms = (value: string, transforms: Transform[] | undefined): string =>
   (transforms ?? []).reduce((v, t) => {
     switch (t) {
-      case 'digits-only': return v.replace(/\D/g, '');
-      case 'upper': return v.toUpperCase();
-      case 'lower': return v.toLowerCase();
-      default: return v;
+      case 'digits-only':
+        return v.replace(/\D/g, '');
+      case 'upper':
+        return v.toUpperCase();
+      case 'lower':
+        return v.toLowerCase();
+      default:
+        return v;
     }
   }, value);
 
@@ -174,8 +181,12 @@ const evaluate = (rule: FieldRule, page: Page, spec: GeneratorSpec): string => {
       // HH/mm/ss tokens show.
       const n = page.now;
       const base = new Date(
-        n.getFullYear(), n.getMonth(), n.getDate() + offset,
-        n.getHours(), n.getMinutes(), n.getSeconds(),
+        n.getFullYear(),
+        n.getMonth(),
+        n.getDate() + offset,
+        n.getHours(),
+        n.getMinutes(),
+        n.getSeconds(),
       );
       return formatDate(base, rule.format);
     }
@@ -254,7 +265,9 @@ const checkTable = (name: string, table: unknown, errors: string[]): void => {
   const width = Array.isArray(columns) ? columns.length : 0;
   rows.forEach((row, i) => {
     if (!Array.isArray(row) || row.length !== width) {
-      errors.push(`${label} row ${i + 1} has ${Array.isArray(row) ? row.length : 0} values but there are ${width} columns.`);
+      errors.push(
+        `${label} row ${i + 1} has ${Array.isArray(row) ? row.length : 0} values but there are ${width} columns.`,
+      );
     }
   });
 };
@@ -280,8 +293,8 @@ const checkDateFormat = (field: string, format: string, errors: string[]): void 
   const stray = format.replace(DATE_TOKEN_RE, '').match(/[A-Za-z]+/g);
   if (stray) {
     errors.push(
-      `“${field}” does not understand ${stray.map(s => `“${s}”`).join(', ')} in its date format. ` +
-      'Use YYYY, YY, MM, DD, HH, mm or ss.',
+      `“${field}” does not understand ${stray.map((s) => `“${s}”`).join(', ')} in its date format. ` +
+        'Use YYYY, YY, MM, DD, HH, mm or ss.',
     );
   }
 };
@@ -304,7 +317,9 @@ export function validateSpec(spec: GeneratorSpec | null | undefined): string[] {
   try {
     const bytes = new TextEncoder().encode(JSON.stringify(spec)).length;
     if (bytes > LIMITS.maxSpecBytes) {
-      errors.push(`The generator is ${(bytes / 1024 / 1024).toFixed(1)} MB, over the ${LIMITS.maxSpecBytes / 1024 / 1024} MB limit.`);
+      errors.push(
+        `The generator is ${(bytes / 1024 / 1024).toFixed(1)} MB, over the ${LIMITS.maxSpecBytes / 1024 / 1024} MB limit.`,
+      );
     }
   } catch {
     errors.push('The generator could not be measured.');
@@ -350,8 +365,11 @@ export function validateSpec(spec: GeneratorSpec | null | undefined): string[] {
       }
 
       case 'date':
-        if (!Array.isArray(rule.offsetDays) || rule.offsetDays.length !== 2
-          || !rule.offsetDays.every(n => Number.isFinite(n))) {
+        if (
+          !Array.isArray(rule.offsetDays) ||
+          rule.offsetDays.length !== 2 ||
+          !rule.offsetDays.every((n) => Number.isFinite(n))
+        ) {
           errors.push(`“${field}” needs a range of days from today.`);
         } else if (typeof rule.format !== 'string' || rule.format.length === 0) {
           errors.push(`“${field}” has no date format.`);
@@ -393,11 +411,7 @@ export function assertValidSpec(spec: GeneratorSpec): void {
  * Falls back to generating that rule on its own, so a field still shows a sample while some other
  * field is half-finished.
  */
-export function sampleField(
-  spec: GeneratorSpec,
-  field: string,
-  opts: GenerateOptions = {},
-): string {
+export function sampleField(spec: GeneratorSpec, field: string, opts: GenerateOptions = {}): string {
   const { now = new Date(), rng = Math.random } = opts;
   try {
     return generateRows(spec, 1, { now, rng })[0]?.[field] ?? '';

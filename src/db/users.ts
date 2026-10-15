@@ -49,10 +49,12 @@ const displayName = (username: string): string => username.trim();
 const checkUsername = (username: string): string => {
   const name = displayName(username);
   if (!name) throw new InvalidCredentialsError('Enter a username.');
-  if (name.length > MAX_USERNAME) throw new InvalidCredentialsError(`A username can be at most ${MAX_USERNAME} characters.`);
+  if (name.length > MAX_USERNAME)
+    throw new InvalidCredentialsError(`A username can be at most ${MAX_USERNAME} characters.`);
   // Control characters would end up in the UI and in any future file name.
-  // eslint-disable-next-line no-control-regex
-  if (/[\u0000-\u001f\u007f]/.test(name)) throw new InvalidCredentialsError('That username has characters we cannot store.');
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: rejecting control characters is the point
+  if (/[\u0000-\u001f\u007f]/.test(name))
+    throw new InvalidCredentialsError('That username has characters we cannot store.');
   return name;
 };
 
@@ -65,11 +67,11 @@ const checkPassword = (password: string): string => {
 };
 
 const toHex = (bytes: ArrayBuffer): string =>
-  [...new Uint8Array(bytes)].map(b => b.toString(16).padStart(2, '0')).join('');
+  [...new Uint8Array(bytes)].map((b) => b.toString(16).padStart(2, '0')).join('');
 
 const randomSalt = (): string => {
   const bytes = crypto.getRandomValues(new Uint8Array(16));
-  return [...bytes].map(b => b.toString(16).padStart(2, '0')).join('');
+  return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
 };
 
 /** SHA-256 over the salt and the password, so the stored value is not the password. */
@@ -83,7 +85,11 @@ const toUser = (row: typeof users.$inferSelect | undefined): User | null =>
 
 /** Looks up an account by name, or null. */
 export async function findByUsername(db: Database, username: string): Promise<User | null> {
-  const [row] = await db.select().from(users).where(eq(users.usernameKey, usernameKey(username))).limit(1);
+  const [row] = await db
+    .select()
+    .from(users)
+    .where(eq(users.usernameKey, usernameKey(username)))
+    .limit(1);
   return toUser(row);
 }
 
@@ -129,7 +135,11 @@ export async function createUser(db: Database, username: string, password: strin
  * A wrong name and a wrong password are indistinguishable to the caller on purpose.
  */
 export async function verifyPassword(db: Database, username: string, password: string): Promise<User | null> {
-  const [row] = await db.select().from(users).where(eq(users.usernameKey, usernameKey(username))).limit(1);
+  const [row] = await db
+    .select()
+    .from(users)
+    .where(eq(users.usernameKey, usernameKey(username)))
+    .limit(1);
   if (!row) return null;
   const hash = await hashPassword(password, row.salt);
   const matches = timingSafeEqual(hash, row.passwordHash);

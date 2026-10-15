@@ -1,36 +1,45 @@
-import { describe, expect, it } from 'vitest';
 import type { Template } from '@pdfme/common';
-import { dataFields, defaultRuleFor, orphanRules, scaffoldSpec, templateFields } from './scaffold';
-import { barcodeHint, barcodeProblem } from './barcodeCheck';
-import { generateRows, validateSpec } from './engine';
-import type { GeneratorSpec } from './spec';
-import { builtinSpec } from './builtins';
+import { describe, expect, it } from 'vitest';
 import product from '../templates/product-label.json';
+import { barcodeHint, barcodeProblem } from './barcodeCheck';
+import { builtinSpec } from './builtins';
+import { generateRows, validateSpec } from './engine';
+import { dataFields, defaultRuleFor, orphanRules, scaffoldSpec, templateFields } from './scaffold';
+import type { GeneratorSpec } from './spec';
 
 const blank = (schemas: unknown[]): Template =>
   ({ basePdf: { width: 100, height: 50, padding: [0, 0, 0, 0] }, schemas: [schemas] }) as unknown as Template;
 
 describe('templateFields', () => {
   it('lists every field once, in layout order', () => {
-    const names = templateFields(product as unknown as Template).map(f => f.name);
+    const names = templateFields(product as unknown as Template).map((f) => f.name);
     expect(names[0]).toBe('itemBarcode');
     expect(new Set(names).size).toBe(names.length);
     expect(names).toContain('trackingBarcode');
   });
 
   it('tells text, barcode, QR and image fields apart', () => {
-    const fields = templateFields(blank([
-      { name: 'a', type: 'text' },
-      { name: 'b', type: 'code128' },
-      { name: 'c', type: 'qrcode' },
-      { name: 'd', type: 'image' },
-    ]));
-    expect(fields.map(f => f.kind)).toEqual(['text', 'barcode', 'qr', 'image']);
+    const fields = templateFields(
+      blank([
+        { name: 'a', type: 'text' },
+        { name: 'b', type: 'code128' },
+        { name: 'c', type: 'qrcode' },
+        { name: 'd', type: 'image' },
+      ]),
+    );
+    expect(fields.map((f) => f.kind)).toEqual(['text', 'barcode', 'qr', 'image']);
   });
 
   it('leaves out fields with no name', () => {
-    expect(templateFields(blank([{ name: '', type: 'text' }, { name: '  ', type: 'text' }, { name: 'ok', type: 'text' }])))
-      .toHaveLength(1);
+    expect(
+      templateFields(
+        blank([
+          { name: '', type: 'text' },
+          { name: '  ', type: 'text' },
+          { name: 'ok', type: 'text' },
+        ]),
+      ),
+    ).toHaveLength(1);
   });
 
   it('survives an empty or broken template', () => {
@@ -42,27 +51,31 @@ describe('templateFields', () => {
 describe('dataFields', () => {
   it('skips read-only fields, which print their own text', () => {
     // A caption that prints its own text should never get a rule.
-    const names = dataFields(blank([
-      { name: 'lblCaption', type: 'text', readOnly: true },
-      { name: 'value', type: 'text' },
-    ])).map(f => f.name);
+    const names = dataFields(
+      blank([
+        { name: 'lblCaption', type: 'text', readOnly: true },
+        { name: 'value', type: 'text' },
+      ]),
+    ).map((f) => f.name);
     expect(names).not.toContain('lblCaption');
     expect(names).toContain('value');
   });
 
   it('skips decoration such as rectangles and images, which have no content to fill', () => {
-    const fields = dataFields(blank([
-      { name: 'logo', type: 'image' },
-      { name: 'box', type: 'rectangle' },
-      { name: 'rule', type: 'line' },
-      { name: 'a', type: 'text' },
-    ]));
-    expect(fields.map(f => f.name)).toEqual(['a']);
+    const fields = dataFields(
+      blank([
+        { name: 'logo', type: 'image' },
+        { name: 'box', type: 'rectangle' },
+        { name: 'rule', type: 'line' },
+        { name: 'a', type: 'text' },
+      ]),
+    );
+    expect(fields.map((f) => f.name)).toEqual(['a']);
   });
 
   it('can fill every field the product generator fills', () => {
     // The other way round is not required: a template may hold fields that print their own text.
-    const fillable = new Set(dataFields(product as unknown as Template).map(f => f.name));
+    const fillable = new Set(dataFields(product as unknown as Template).map((f) => f.name));
     for (const name of Object.keys(builtinSpec('product').fields)) {
       expect(fillable.has(name), `${name} has a rule but cannot take data`).toBe(true);
     }
@@ -71,12 +84,15 @@ describe('dataFields', () => {
 
 describe('defaultRuleFor', () => {
   it('gives a text field some obvious placeholder values', () => {
-    expect(defaultRuleFor({ name: 'title', type: 'text', kind: 'text', readOnly: false }))
-      .toEqual({ kind: 'pick', values: ['title', 'title 2', 'title 3'] });
+    expect(defaultRuleFor({ name: 'title', type: 'text', kind: 'text', readOnly: false })).toEqual({
+      kind: 'pick',
+      values: ['title', 'title 2', 'title 3'],
+    });
   });
 
   it('gives each barcode format a length it can actually encode', () => {
-    const lengthFor = (type: string) => (defaultRuleFor({ name: 'b', type, kind: 'barcode', readOnly: false }) as { length: number }).length;
+    const lengthFor = (type: string) =>
+      (defaultRuleFor({ name: 'b', type, kind: 'barcode', readOnly: false }) as { length: number }).length;
     expect(lengthFor('ean13')).toBe(12);
     expect(lengthFor('ean8')).toBe(7);
     expect(lengthFor('upca')).toBe(11);
@@ -97,19 +113,35 @@ describe('defaultRuleFor', () => {
 
 describe('scaffoldSpec', () => {
   it('adds a rule for every data field', () => {
-    const spec = scaffoldSpec(blank([{ name: 'a', type: 'text' }, { name: 'b', type: 'code128' }]));
+    const spec = scaffoldSpec(
+      blank([
+        { name: 'a', type: 'text' },
+        { name: 'b', type: 'code128' },
+      ]),
+    );
     expect(Object.keys(spec.fields).sort()).toEqual(['a', 'b']);
     expect(validateSpec(spec)).toEqual([]);
   });
 
   it('leaves read-only fields alone', () => {
-    const spec = scaffoldSpec(blank([{ name: 'a', type: 'text' }, { name: 'lbl', type: 'text', readOnly: true }]));
+    const spec = scaffoldSpec(
+      blank([
+        { name: 'a', type: 'text' },
+        { name: 'lbl', type: 'text', readOnly: true },
+      ]),
+    );
     expect(Object.keys(spec.fields)).toEqual(['a']);
   });
 
   it('never overwrites a rule the user already wrote', () => {
     const mine: GeneratorSpec = { version: 1, fields: { a: { kind: 'fixed', value: 'mine' } } };
-    const spec = scaffoldSpec(blank([{ name: 'a', type: 'text' }, { name: 'new', type: 'text' }]), mine);
+    const spec = scaffoldSpec(
+      blank([
+        { name: 'a', type: 'text' },
+        { name: 'new', type: 'text' },
+      ]),
+      mine,
+    );
     expect(spec.fields.a).toEqual({ kind: 'fixed', value: 'mine' });
     expect(spec.fields.new).toBeDefined();
   });
@@ -137,7 +169,10 @@ describe('scaffoldSpec', () => {
 describe('orphanRules', () => {
   it('reports rules whose field is gone', () => {
     const template = blank([{ name: 'a', type: 'text' }]);
-    const spec = { version: 1 as const, fields: { a: { kind: 'fixed' as const, value: 'x' }, gone: { kind: 'fixed' as const, value: 'y' } } };
+    const spec = {
+      version: 1 as const,
+      fields: { a: { kind: 'fixed' as const, value: 'x' }, gone: { kind: 'fixed' as const, value: 'y' } },
+    };
     expect(orphanRules(template, spec)).toEqual(['gone']);
   });
 
@@ -148,7 +183,15 @@ describe('orphanRules', () => {
 
   it('reports nothing when every rule still matches a field', () => {
     const spec = { version: 1 as const, fields: { a: { kind: 'fixed' as const, value: 'x' } } };
-    expect(orphanRules(blank([{ name: 'a', type: 'text' }, { name: 'b', type: 'text' }]), spec)).toEqual([]);
+    expect(
+      orphanRules(
+        blank([
+          { name: 'a', type: 'text' },
+          { name: 'b', type: 'text' },
+        ]),
+        spec,
+      ),
+    ).toEqual([]);
   });
 });
 

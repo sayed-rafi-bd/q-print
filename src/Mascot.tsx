@@ -7,9 +7,20 @@ import { useState } from 'react';
 export function Mascot({ busy = false, className = '' }: { busy?: boolean; className?: string }) {
   const [hearts, setHearts] = useState(0);
   return (
-    <button type="button" aria-label="Q-Print mascot" onClick={() => setHearts(h => h + 1)}
-            className={'relative inline-block shrink-0 rounded-3xl focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 ' + className}>
-      <svg viewBox="0 0 120 104" className={'mascot h-16 w-[4.6rem] overflow-visible ' + (busy ? 'is-busy' : '')} aria-hidden="true">
+    <button
+      type="button"
+      aria-label="Q-Print mascot"
+      onClick={() => setHearts((h) => h + 1)}
+      className={
+        'relative inline-block shrink-0 rounded-3xl focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 ' +
+        className
+      }
+    >
+      <svg
+        viewBox="0 0 120 104"
+        className={`mascot h-16 w-[4.6rem] overflow-visible ${busy ? 'is-busy' : ''}`}
+        aria-hidden="true"
+      >
         {/* sparkles */}
         <path className="sparkle" d="M10 18l2.4 5.6L18 26l-5.6 2.4L10 34l-2.4-5.6L2 26l5.6-2.4z" fill="#ffd166" />
         <path className="sparkle" d="M108 8l1.8 4.2L114 14l-4.2 1.8L108 20l-1.8-4.2L102 14l4.2-1.8z" fill="#9ad8ff" />
@@ -35,19 +46,28 @@ export function Mascot({ busy = false, className = '' }: { busy?: boolean; class
         <circle cx="78" cy="57.6" r="1.8" fill="#fff" />
         <ellipse cx="33" cy="68" rx="6" ry="3.6" fill="#ff8cc4" opacity="0.7" />
         <ellipse cx="87" cy="68" rx="6" ry="3.6" fill="#ff8cc4" opacity="0.7" />
-        {busy
-          ? <ellipse cx="60" cy="69" rx="4" ry="4.4" fill="#55446a" />
-          : <path d="M53 66q7 8 14 0" fill="none" stroke="#55446a" strokeWidth="3" strokeLinecap="round" />}
+        {busy ? (
+          <ellipse cx="60" cy="69" rx="4" ry="4.4" fill="#55446a" />
+        ) : (
+          <path d="M53 66q7 8 14 0" fill="none" stroke="#55446a" strokeWidth="3" strokeLinecap="round" />
+        )}
       </svg>
 
       {/* a heart floats up for every click */}
       {hearts > 0 && (
-        <span key={hearts} aria-hidden="true"
-              className="pointer-events-none absolute left-1/2 top-0 text-lg"
-              style={{
-                animation: 'confetti-burst 1.1s ease-out forwards',
-                ['--x' as string]: '0px', ['--y' as string]: '-46px', ['--r' as string]: '12deg',
-              } as React.CSSProperties}>
+        <span
+          key={hearts}
+          aria-hidden="true"
+          className="pointer-events-none absolute left-1/2 top-0 text-lg"
+          style={
+            {
+              animation: 'confetti-burst 1.1s ease-out forwards',
+              ['--x' as string]: '0px',
+              ['--y' as string]: '-46px',
+              ['--r' as string]: '12deg',
+            } as React.CSSProperties
+          }
+        >
           💖
         </span>
       )}
@@ -65,13 +85,17 @@ export function Confetti() {
         const angle = (i / PIECES.length) * Math.PI * 2;
         const dist = 70 + (i % 3) * 28;
         return (
-          <i key={i}
-             style={{
-               ['--x' as string]: `${Math.round(Math.cos(angle) * dist)}px`,
-               ['--y' as string]: `${Math.round(Math.sin(angle) * dist - 30)}px`,
-               ['--r' as string]: `${(i % 2 ? 1 : -1) * (40 + i * 18)}deg`,
-               ['--d' as string]: `${(i % 4) * 0.05}s`,
-             } as React.CSSProperties}>
+          <i
+            key={i}
+            style={
+              {
+                ['--x' as string]: `${Math.round(Math.cos(angle) * dist)}px`,
+                ['--y' as string]: `${Math.round(Math.sin(angle) * dist - 30)}px`,
+                ['--r' as string]: `${(i % 2 ? 1 : -1) * (40 + i * 18)}deg`,
+                ['--d' as string]: `${(i % 4) * 0.05}s`,
+              } as React.CSSProperties
+            }
+          >
             {p}
           </i>
         );

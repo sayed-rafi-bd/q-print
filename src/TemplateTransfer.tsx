@@ -1,11 +1,11 @@
-import { useState } from 'react';
 import type { Template } from '@pdfme/common';
-import { bundleJson, makeBundle, parseBundle } from './bundle';
-import { isBuiltin } from './builtinLabels';
-import { saveBuiltinTemplate } from './templateStore';
-import { scaffoldSpec } from './generator/scaffold';
-import { createLabel, loadLabel, saveLabel, type LabelId } from './labels';
+import { useState } from 'react';
 import { useAuth } from './auth/AuthProvider';
+import { isBuiltin } from './builtinLabels';
+import { bundleJson, makeBundle, parseBundle } from './bundle';
+import { scaffoldSpec } from './generator/scaffold';
+import { createLabel, type LabelId, loadLabel, saveLabel } from './labels';
+import { saveBuiltinTemplate } from './templateStore';
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -13,8 +13,8 @@ const btnBase =
   'cursor-pointer rounded-full border px-3 py-1.5 text-sm font-medium transition ' +
   'disabled:cursor-not-allowed disabled:opacity-50';
 // Colours are in separate variants so no element carries two conflicting colour utilities.
-const btnCls = btnBase + ' border-slate-300 text-slate-700 hover:bg-slate-50';
-const btnPrimaryCls = btnBase + ' border-indigo-600 bg-indigo-600 text-white hover:bg-indigo-500';
+const btnCls = `${btnBase} border-slate-300 text-slate-700 hover:bg-slate-50`;
+const btnPrimaryCls = `${btnBase} border-indigo-600 bg-indigo-600 text-white hover:bg-indigo-500`;
 
 /**
  * Moves a label between devices as JSON, so one designed on desktop can be used on Android.
@@ -25,7 +25,10 @@ const btnPrimaryCls = btnBase + ' border-indigo-600 bg-indigo-600 text-white hov
  *
  * Works with a file picker or copy/paste (a download link is not reliable in every WebView).
  */
-export default function TemplateTransfer({ label, onImported }: {
+export default function TemplateTransfer({
+  label,
+  onImported,
+}: {
   label: LabelId;
   onImported?: (t: Template) => void;
 }) {
@@ -37,10 +40,14 @@ export default function TemplateTransfer({ label, onImported }: {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
 
-  const reset = () => { setError(''); setMessage(''); };
+  const reset = () => {
+    setError('');
+    setMessage('');
+  };
 
   const openExport = async () => {
-    reset(); setBusy(true);
+    reset();
+    setBusy(true);
     try {
       if (!user) throw new Error('You are not signed in.');
       const { template, source, generator } = await loadLabel(user, label);
@@ -56,7 +63,11 @@ export default function TemplateTransfer({ label, onImported }: {
     }
   };
 
-  const openImport = () => { reset(); setText(''); setMode('import'); };
+  const openImport = () => {
+    reset();
+    setText('');
+    setMode('import');
+  };
 
   const copy = async () => {
     reset();
@@ -93,7 +104,8 @@ export default function TemplateTransfer({ label, onImported }: {
   };
 
   const apply = async () => {
-    reset(); setBusy(true);
+    reset();
+    setBusy(true);
     try {
       const parsed = parseBundle(text);
 
@@ -141,42 +153,78 @@ export default function TemplateTransfer({ label, onImported }: {
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-2">
-        <button className={btnCls} disabled={busy || !label} onClick={openExport}>Export label</button>
-        <button className={btnCls} disabled={busy} onClick={openImport}>Import label</button>
-        {mode && <button className={btnCls} onClick={() => { setMode(null); reset(); }}>Close</button>}
+        <button type="button" className={btnCls} disabled={busy || !label} onClick={openExport}>
+          Export label
+        </button>
+        <button type="button" className={btnCls} disabled={busy} onClick={openImport}>
+          Import label
+        </button>
+        {mode && (
+          <button
+            type="button"
+            className={btnCls}
+            onClick={() => {
+              setMode(null);
+              reset();
+            }}
+          >
+            Close
+          </button>
+        )}
       </div>
 
       {mode && (
         <div className="tab-enter space-y-2">
           {mode === 'import' && (
-            <input type="file" accept=".json,application/json" className="block w-full text-sm text-slate-700"
-              onChange={e => { onFile(e.target.files?.[0]); e.target.value = ''; }} />
+            <input
+              type="file"
+              accept=".json,application/json"
+              className="block w-full text-sm text-slate-700"
+              onChange={(e) => {
+                onFile(e.target.files?.[0]);
+                e.target.value = '';
+              }}
+            />
           )}
-          <textarea value={text} readOnly={mode === 'export'} rows={8} spellCheck={false}
+          <textarea
+            value={text}
+            readOnly={mode === 'export'}
+            rows={8}
+            spellCheck={false}
             placeholder={mode === 'import' ? 'Choose a .json file above or paste the label JSON here' : ''}
-            onChange={e => setText(e.target.value)}
-            className="w-full rounded-xl border border-slate-300 bg-white p-2 font-mono text-xs text-slate-800" />
+            onChange={(e) => setText(e.target.value)}
+            className="w-full rounded-xl border border-slate-300 bg-white p-2 font-mono text-xs text-slate-800"
+          />
           <div className="flex flex-wrap gap-2">
             {mode === 'export' ? (
               <>
-                <button className={btnCls} onClick={copy}>Copy</button>
-                <button className={btnCls} onClick={download}>Download .json</button>
+                <button type="button" className={btnCls} onClick={copy}>
+                  Copy
+                </button>
+                <button type="button" className={btnCls} onClick={download}>
+                  Download .json
+                </button>
               </>
             ) : (
-              <button className={btnPrimaryCls}
-                disabled={busy || !text.trim()} onClick={apply}>Import it</button>
+              <button type="button" className={btnPrimaryCls} disabled={busy || !text.trim()} onClick={apply}>
+                Import it
+              </button>
             )}
           </div>
           {mode === 'import' && (
             <p className="text-xs text-slate-500">
-              A full label file becomes a new label. A bare pdfme template replaces the layout of
-              “{label}” and keeps its data generator.
+              A full label file becomes a new label. A bare pdfme template replaces the layout of “{label}” and keeps
+              its data generator.
             </p>
           )}
         </div>
       )}
 
-      {error && <p role="alert" className="break-words text-xs text-red-700">{error}</p>}
+      {error && (
+        <p role="alert" className="break-words text-xs text-red-700">
+          {error}
+        </p>
+      )}
       {message && <p className="break-words text-xs text-emerald-800">{message}</p>}
     </div>
   );

@@ -1,6 +1,14 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
+import { type APIRequestContext, expect, type Page, test } from '@playwright/test';
 import {
-  canvas, createLabel, designerReady, expectCanvasPainted, signIn, signUp, tabButton, uniqueName, watchErrors,
+  canvas,
+  createLabel,
+  designerReady,
+  expectCanvasPainted,
+  signIn,
+  signUp,
+  tabButton,
+  uniqueName,
+  watchErrors,
 } from './helpers';
 
 /** The text of the red/green status bar under the tabs, or '' when there is none. */
@@ -68,7 +76,9 @@ test.describe('designer: Layout and Data tabs', () => {
     expect(errors).toEqual([]);
   });
 
-  test('the same designer instance survives: fields and unsaved layout edits are kept across tabs', async ({ page }) => {
+  test('the same designer instance survives: fields and unsaved layout edits are kept across tabs', async ({
+    page,
+  }) => {
     await signUp(page);
     await createLabel(page, { name: 'Keeps edits', from: 'sample' });
     await expect(page.getByLabel('Label', { exact: true })).toHaveValue(/keeps-edits/);
@@ -90,7 +100,7 @@ test.describe('designer: Layout and Data tabs', () => {
   test('Data editor can be opened for a label of your own and for a built-in one', async ({ page }) => {
     await signUp(page);
     await tabButton(page, 'Data').click();
-    await expect(page.getByRole('heading', { name: 'Data' })).toBeVisible();   // built-in (read-only)
+    await expect(page.getByRole('heading', { name: 'Data' })).toBeVisible(); // built-in (read-only)
     await tabButton(page, 'Layout').click();
     await createLabel(page, { name: 'Mine', from: 'sample' });
     await expect(page.getByLabel('Label', { exact: true })).toHaveValue(/mine/);
@@ -151,7 +161,7 @@ test.describe('designer: creating labels', () => {
 
     await page.getByRole('button', { name: 'Sign out' }).click();
     await signIn(page, username, password);
-    await expect(page.getByLabel('Label', { exact: true })).toHaveValue(/survivor/);   // remembered
+    await expect(page.getByLabel('Label', { exact: true })).toHaveValue(/survivor/); // remembered
     await expectCanvasPainted(page);
     // The saved width, not the one it was created with: this is what proves Save really stored it.
     await expect(page.getByLabel('Width in mm')).toHaveValue('95');
@@ -235,7 +245,7 @@ test.describe('designer: creating labels', () => {
 test.describe('designer: unsaved-changes tracking', () => {
   test('an untouched label is not reported as changed (and does not pulse)', async ({ page }) => {
     await signUp(page);
-    await page.waitForTimeout(1500);   // pdfme reports its own start-up changes late
+    await page.waitForTimeout(1500); // pdfme reports its own start-up changes late
     await expect(page.getByText('unsaved changes')).toHaveCount(0);
     await expect(page.getByText('data not saved')).toHaveCount(0);
     await expect(tabButton(page, 'Data')).not.toContainText('•');
@@ -266,11 +276,16 @@ test.describe('designer: unsaved-changes tracking', () => {
 test.describe('designer: animation', () => {
   /** After the entrance animation, nothing may be left transformed, faded or hidden. */
   const settled = async (page: Page) =>
-    canvas(page).evaluate(el => {
+    canvas(page).evaluate((el) => {
       const chain: { tag: string; transform: string; opacity: string; visibility: string }[] = [];
       for (let n: Element | null = el; n && n !== document.documentElement; n = n.parentElement) {
         const cs = getComputedStyle(n);
-        chain.push({ tag: n.tagName + (n.className ? '.' + String(n.className).split(' ')[0] : ''), transform: cs.transform, opacity: cs.opacity, visibility: cs.visibility });
+        chain.push({
+          tag: n.tagName + (n.className ? `.${String(n.className).split(' ')[0]}` : ''),
+          transform: cs.transform,
+          opacity: cs.opacity,
+          visibility: cs.visibility,
+        });
       }
       return chain;
     });
@@ -278,8 +293,10 @@ test.describe('designer: animation', () => {
   test('no ancestor of the canvas keeps a transform, fade or hidden state once settled', async ({ page }) => {
     await signUp(page);
     await expectCanvasPainted(page);
-    await page.waitForTimeout(800);   // longer than any entrance animation
-    const bad = (await settled(page)).filter(c => c.transform !== 'none' || c.opacity !== '1' || c.visibility !== 'visible');
+    await page.waitForTimeout(800); // longer than any entrance animation
+    const bad = (await settled(page)).filter(
+      (c) => c.transform !== 'none' || c.opacity !== '1' || c.visibility !== 'visible',
+    );
     expect(bad).toEqual([]);
 
     // ...and again after bouncing between the tabs and after creating a label.
@@ -288,7 +305,9 @@ test.describe('designer: animation', () => {
     await createLabel(page, { name: 'Anim', from: 'blank', size: [100, 50] });
     await expectCanvasPainted(page);
     await page.waitForTimeout(800);
-    const bad2 = (await settled(page)).filter(c => c.transform !== 'none' || c.opacity !== '1' || c.visibility !== 'visible');
+    const bad2 = (await settled(page)).filter(
+      (c) => c.transform !== 'none' || c.opacity !== '1' || c.visibility !== 'visible',
+    );
     expect(bad2).toEqual([]);
   });
 
@@ -326,16 +345,29 @@ test.describe('designer: animation', () => {
 });
 
 /** Rewrites a label's stored template directly in the (fake) database, as an older build would have. */
-async function rewriteTemplate(request: APIRequestContext, name: string, edit: (t: Record<string, unknown>) => Record<string, unknown>) {
-  const pipeline = (stmt: object) => request.post('http://localhost:8787/v2/pipeline', {
-    data: { requests: [{ type: 'execute', stmt }, { type: 'close' }] },
-  }).then(r => r.json());
-  const got = await pipeline({ sql: 'SELECT template FROM labels WHERE name = ?', args: [{ type: 'text', value: name }] });
+async function rewriteTemplate(
+  request: APIRequestContext,
+  name: string,
+  edit: (t: Record<string, unknown>) => Record<string, unknown>,
+) {
+  const pipeline = (stmt: object) =>
+    request
+      .post('http://localhost:8787/v2/pipeline', {
+        data: { requests: [{ type: 'execute', stmt }, { type: 'close' }] },
+      })
+      .then((r) => r.json());
+  const got = await pipeline({
+    sql: 'SELECT template FROM labels WHERE name = ?',
+    args: [{ type: 'text', value: name }],
+  });
   const stored = got.results[0].response.result.rows[0][0].value as string;
   const next = JSON.stringify(edit(JSON.parse(stored)));
   const done = await pipeline({
     sql: 'UPDATE labels SET template = ? WHERE name = ?',
-    args: [{ type: 'text', value: next }, { type: 'text', value: name }],
+    args: [
+      { type: 'text', value: next },
+      { type: 'text', value: name },
+    ],
   });
   expect(done.results[0].type).toBe('ok');
 }
@@ -349,23 +381,26 @@ test.describe('designer: labels saved by the older version', () => {
     await expectCanvasPainted(page);
 
     // What the earlier "New label" wrote: a blank page with no padding. It is also the last label used.
-    await rewriteTemplate(request, name, t => ({ ...t, basePdf: { width: 100, height: 50 } }));
+    await rewriteTemplate(request, name, (t) => ({ ...t, basePdf: { width: 100, height: 50 } }));
     await page.reload();
 
     await designerReady(page);
     await expect(page.getByLabel('Label', { exact: true }).locator('option:checked')).toContainText(name);
     await expect(page.getByText(/basePdf|Invalid argument|Invalid input|Could not open/)).toHaveCount(0);
     await expectCanvasPainted(page);
-    expect(errors.filter(e => !e.includes('Failed to load resource'))).toEqual([]);
+    expect(errors.filter((e) => !e.includes('Failed to load resource'))).toEqual([]);
   });
 
-  test('a label that cannot be opened at all does not lock you out: it falls back and can be deleted', async ({ page, request }) => {
+  test('a label that cannot be opened at all does not lock you out: it falls back and can be deleted', async ({
+    page,
+    request,
+  }) => {
     const name = uniqueName('Broken');
     await signUp(page);
     await createLabel(page, { name, from: 'blank', size: [100, 50] });
     await expectCanvasPainted(page);
 
-    await rewriteTemplate(request, name, t => ({ ...t, basePdf: 'not-a-pdf-at-all' }));
+    await rewriteTemplate(request, name, (t) => ({ ...t, basePdf: 'not-a-pdf-at-all' }));
     await page.reload();
 
     // The designer still comes up, on a built-in label, and says what went wrong.

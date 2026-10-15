@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
 
 /**
  * The APK is this front end plus the Rust library, so the front end's size is worth pinning down.
@@ -18,7 +18,9 @@ const built = existsSync(dist);
 
 const jsFiles = (include: (name: string) => boolean) =>
   existsSync(dist)
-    ? readdirSync(dist).filter(f => f.endsWith('.js') && include(f)).map(f => join(dist, f))
+    ? readdirSync(dist)
+        .filter((f) => f.endsWith('.js') && include(f))
+        .map((f) => join(dist, f))
     : [];
 
 const kb = (path: string) => statSync(path).size / 1024;
@@ -34,19 +36,24 @@ describe('the built front end', () => {
     it('ships the Designer as a chunk of its own', () => {
       // If this split is lost, Rollup pulls the whole Designer back into the entry file and every
       // phone downloads it, even though a phone cannot use it.
-      expect(jsFiles(f => f.startsWith('DesignerPage-')).length, 'expected a DesignerPage chunk').toBeGreaterThan(0);
-      expect(jsFiles(f => f.startsWith('designer-vendor-')).length, 'expected a designer-vendor chunk').toBeGreaterThan(0);
+      expect(jsFiles((f) => f.startsWith('DesignerPage-')).length, 'expected a DesignerPage chunk').toBeGreaterThan(0);
+      expect(
+        jsFiles((f) => f.startsWith('designer-vendor-')).length,
+        'expected a designer-vendor chunk',
+      ).toBeGreaterThan(0);
     });
 
     it('keeps what a phone downloads down, by leaving the Designer out of it', () => {
       // A phone never opens the Designer, so its chunk must not count towards what it downloads.
-      const startup = jsFiles(f => !f.startsWith('DesignerPage-') && !f.startsWith('designer-vendor-'))
-        .reduce((total, f) => total + kb(f), 0);
+      const startup = jsFiles((f) => !f.startsWith('DesignerPage-') && !f.startsWith('designer-vendor-')).reduce(
+        (total, f) => total + kb(f),
+        0,
+      );
       expect(startup, `${(startup / 1024).toFixed(2)} MB at start-up`).toBeLessThan(STARTUP_BUNDLE_LIMIT_KB);
     });
 
     it('keeps the Designer chunk bounded', () => {
-      for (const chunk of jsFiles(f => f.startsWith('designer-vendor-'))) {
+      for (const chunk of jsFiles((f) => f.startsWith('designer-vendor-'))) {
         expect(kb(chunk), chunk).toBeLessThan(DESIGNER_CHUNK_LIMIT_KB);
       }
     });

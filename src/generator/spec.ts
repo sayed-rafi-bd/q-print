@@ -31,8 +31,8 @@ type Common = {
 };
 
 export type FieldRule = Common &
+  /** Always the same text. */
   (
-    /** Always the same text. */
     | { kind: 'fixed'; value: string }
     /** N random digits, e.g. a 13-digit tracking number. */
     | { kind: 'digits'; length: number }
@@ -63,9 +63,7 @@ export type GeneratorSpec = {
 };
 
 /** Every `kind`, in the order the UI offers them. */
-export const RULE_KINDS = [
-  'fixed', 'digits', 'int', 'pick', 'table', 'date', 'pattern', 'sequence', 'copy',
-] as const;
+export const RULE_KINDS = ['fixed', 'digits', 'int', 'pick', 'table', 'date', 'pattern', 'sequence', 'copy'] as const;
 
 /** A label plus the generator that fills it, as stored in `labels/<id>.json` and exported. */
 export type LabelBundle = {

@@ -14,10 +14,9 @@
 /** Characters a Codabar (nw7) barcode can use; start and stop must match and be one of these. */
 const CODABAR = /^[0-9A-Da-d]$/;
 /** Code 39's alphabet. */
-const CODE39 = /^[0-9A-Z \-.$\/+%]$/;
+const CODE39 = /^[0-9A-Z \-.$/+%]$/;
 
-const digitsOnly = (lengths: number[]) => (value: string) =>
-  /^\d+$/.test(value) && lengths.includes(value.length);
+const digitsOnly = (lengths: number[]) => (value: string) => /^\d+$/.test(value) && lengths.includes(value.length);
 
 const anyNonEmpty = (value: string) => value.length > 0;
 
@@ -41,7 +40,7 @@ const CONSTRAINTS: Record<string, BarcodeConstraint> = {
   japanpost: {
     hint: '13 characters: a 7-digit postcode then a 6-character address code.',
     digits: 13,
-    accepts: v => v.length === 13,
+    accepts: (v) => v.length === 13,
     reason: 'a Japanese postal barcode is exactly 13 characters',
   },
   ean13: {
@@ -77,15 +76,15 @@ const CONSTRAINTS: Record<string, BarcodeConstraint> = {
   code39: {
     hint: 'Digits and A-Z, plus space and - . $ / + %.',
     digits: 12,
-    accepts: v => v.length > 0 && [...v].every(c => CODE39.test(c)),
+    accepts: (v) => v.length > 0 && [...v].every((c) => CODE39.test(c)),
     reason: 'Code 39 only allows digits, A-Z, space and - . $ / + %',
   },
   nw7: {
     hint: 'Up to 20 characters of 0-9 and A-D; the first and last must match.',
     digits: 12,
-    accepts: v => {
+    accepts: (v) => {
       if (v.length < 3 || v.length > 20) return false;
-      if (![...v].every(c => CODABAR.test(c))) return false;
+      if (![...v].every((c) => CODABAR.test(c))) return false;
       // Codabar frames the data with a start and stop character, which have to be the same.
       const first = v[0].toUpperCase();
       const last = v[v.length - 1].toUpperCase();

@@ -3,8 +3,10 @@ import { expect, type Page } from '@playwright/test';
 /** Errors the page throws or logs; every test checks this stays empty. */
 export function watchErrors(page: Page): string[] {
   const errors: string[] = [];
-  page.on('pageerror', e => errors.push(`pageerror: ${e.message}`));
-  page.on('console', m => { if (m.type() === 'error') errors.push(`console: ${m.text()}`); });
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(`console: ${m.text()}`);
+  });
   return errors;
 }
 
@@ -48,7 +50,10 @@ export const tabButton = (page: Page, name: 'Layout' | 'Data') =>
   page.getByRole('button', { name: new RegExp(`^${name}`) });
 
 /** Creates a label from the "New" dialog. */
-export async function createLabel(page: Page, opts: { name: string; from?: 'blank' | 'sample' | RegExp; size?: [number, number] }) {
+export async function createLabel(
+  page: Page,
+  opts: { name: string; from?: 'blank' | 'sample' | RegExp; size?: [number, number] },
+) {
   await page.getByRole('button', { name: 'New', exact: true }).click();
   const dialog = page.locator('form').filter({ hasText: 'Start from' });
   // Choosing a starting point resets the name and size, so pick it first and fill the rest after.

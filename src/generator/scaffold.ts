@@ -14,8 +14,18 @@ import { asFieldRule, type FieldRule, type GeneratorSpec } from './spec';
  * the package does not export the list. The value is the field's `type`.
  */
 const BARCODE_TYPES = [
-  'qrcode', 'japanpost', 'ean13', 'ean8', 'code39', 'code128',
-  'nw7', 'itf14', 'upca', 'upce', 'gs1datamatrix', 'pdf417',
+  'qrcode',
+  'japanpost',
+  'ean13',
+  'ean8',
+  'code39',
+  'code128',
+  'nw7',
+  'itf14',
+  'upca',
+  'upce',
+  'gs1datamatrix',
+  'pdf417',
 ] as const;
 
 export const isBarcodeType = (type: string): boolean => (BARCODE_TYPES as readonly string[]).includes(type);
@@ -66,9 +76,7 @@ export function templateFields(template: Template | null | undefined): TemplateF
  * and can hold content at all. Rectangles and images are decoration, not data.
  */
 export const dataFields = (template: Template | null | undefined): TemplateField[] =>
-  templateFields(template).filter(
-    f => !f.readOnly && (f.kind === 'text' || f.kind === 'barcode' || f.kind === 'qr'),
-  );
+  templateFields(template).filter((f) => !f.readOnly && (f.kind === 'text' || f.kind === 'barcode' || f.kind === 'qr'));
 
 /** A rule that produces something valid for this field, used for fields the user has just added. */
 export function defaultRuleFor(field: TemplateField): FieldRule {
@@ -98,6 +106,6 @@ export function scaffoldSpec(template: Template, base?: GeneratorSpec): Generato
  * move them to another field or delete them.
  */
 export function orphanRules(template: Template, spec: GeneratorSpec): string[] {
-  const names = new Set(templateFields(template).map(f => f.name));
-  return Object.keys(spec?.fields ?? {}).filter(name => !names.has(name));
+  const names = new Set(templateFields(template).map((f) => f.name));
+  return Object.keys(spec?.fields ?? {}).filter((name) => !names.has(name));
 }

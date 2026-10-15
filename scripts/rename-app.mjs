@@ -20,7 +20,7 @@
  * Not touched: the Android plugin package (com.example.printtest.print). It is internal, never shown to
  * users, and renaming it means moving Kotlin directories. Also not touched: .idea/ files.
  */
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -32,7 +32,7 @@ const f = (...s) => join(root, ...s);
 const opts = { dryRun: false };
 const argv = process.argv.slice(2);
 for (let i = 0; i < argv.length; i++) {
-  let [k, v] = argv[i].split(/=(.*)/s);
+  const [k, v] = argv[i].split(/=(.*)/s);
   if (k === '-h' || k === '--help') usage(0);
   else if (k === '--dry-run') opts.dryRun = true;
   else if (['--name', '--slug', '--id'].includes(k)) opts[k.slice(2)] = v ?? argv[++i];
@@ -40,8 +40,12 @@ for (let i = 0; i < argv.length; i++) {
 }
 
 function usage(code) {
-  console.log(readFileSync(fileURLToPath(import.meta.url), 'utf8').match(/\/\*\*([\s\S]*?)\*\//)[1]
-    .replace(/^ \* ?/gm, '').trim());
+  console.log(
+    readFileSync(fileURLToPath(import.meta.url), 'utf8')
+      .match(/\/\*\*([\s\S]*?)\*\//)[1]
+      .replace(/^ \* ?/gm, '')
+      .trim(),
+  );
   process.exit(code);
 }
 function fail(msg) {
@@ -54,9 +58,17 @@ const name = opts.name?.trim();
 if (!name) fail('--name is required.');
 if (/["<>&\\]/.test(name)) fail('--name must not contain " < > & or \\.');
 
-const slug = (opts.slug ?? name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')).trim();
+const slug = (
+  opts.slug ??
+  name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+).trim();
 if (!/^[a-z][a-z0-9-]*$/.test(slug)) {
-  fail(`Invalid slug "${slug}": use lowercase letters, digits and dashes, starting with a letter. Pass --slug to set it.`);
+  fail(
+    `Invalid slug "${slug}": use lowercase letters, digits and dashes, starting with a letter. Pass --slug to set it.`,
+  );
 }
 const lib = `${slug.replaceAll('-', '_')}_lib`; // Rust lib name; the _lib suffix avoids a bin/lib name clash on Windows
 
@@ -72,7 +84,10 @@ const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** Reads a file, applies fn(text) -> newText, writes it back when different. */
 function edit(file, fn) {
-  if (!existsSync(file)) { skipped.push(rel(file)); return; }
+  if (!existsSync(file)) {
+    skipped.push(rel(file));
+    return;
+  }
   const before = readFileSync(file, 'utf8');
   const after = fn(before);
   if (after === before) return;
@@ -110,14 +125,17 @@ editJson(f('src-tauri', 'tauri.conf.json'), (c) => {
   if (c.app?.windows?.[0]) c.app.windows[0].title = name;
 });
 
-editJson(f('package.json'), (p) => { p.name = slug; });
+editJson(f('package.json'), (p) => {
+  p.name = slug;
+});
 
 edit(cargoToml, (t) => t.replace(pkgRe, `$1${slug}$3`).replace(libRe, `$1${lib}$3`));
 
 // Cargo.lock: only the root package entry. `cargo check` would also fix this.
 if (oldSlug !== slug) {
   edit(f('src-tauri', 'Cargo.lock'), (t) =>
-    t.replace(new RegExp(`(^name = ")${esc(oldSlug)}(")(\\r?\\n^version = )`, 'm'), `$1${slug}$2$3`));
+    t.replace(new RegExp(`(^name = ")${esc(oldSlug)}(")(\\r?\\n^version = )`, 'm'), `$1${slug}$2$3`),
+  );
 }
 
 edit(f('src-tauri', 'src', 'main.rs'), (t) => t.replaceAll(`${oldLib}::`, `${lib}::`));
@@ -131,10 +149,12 @@ edit(f('README.md'), (t) => {
 
 // Android launcher label, only when the Android project has been generated locally.
 edit(f('src-tauri', 'gen', 'android', 'app', 'src', 'main', 'res', 'values', 'strings.xml'), (t) =>
-  t.replace(/(<string name="app_name">)[^<]*(<\/string>)/, `$1${name}$2`)
-   // The launcher shows the main activity's label, not the application's, so both must change.
-   // (The generated value may be wrapped in quotes, e.g. "print-test".)
-   .replace(/(<string name="main_activity_title">)[^<]*(<\/string>)/, `$1${name}$2`));
+  t
+    .replace(/(<string name="app_name">)[^<]*(<\/string>)/, `$1${name}$2`)
+    // The launcher shows the main activity's label, not the application's, so both must change.
+    // (The generated value may be wrapped in quotes, e.g. "print-test".)
+    .replace(/(<string name="main_activity_title">)[^<]*(<\/string>)/, `$1${name}$2`),
+);
 const androidGen = existsSync(f('src-tauri', 'gen', 'android'));
 
 // ---- report ------------------------------------------------------------------------------------
@@ -143,7 +163,11 @@ console.log(`  display name : ${name}`);
 console.log(`  package/exe  : ${oldSlug} -> ${slug}`);
 console.log(`  rust lib     : ${oldLib} -> ${lib}`);
 console.log(`  identifier   : ${id ? `${oldId} -> ${id}` : `${oldId} (unchanged)`}`);
-console.log(changed.length ? `\n${opts.dryRun ? 'Would change' : 'Changed'}:\n${changed.map((c) => `  ${c}`).join('\n')}` : '\nNothing to change.');
+console.log(
+  changed.length
+    ? `\n${opts.dryRun ? 'Would change' : 'Changed'}:\n${changed.map((c) => `  ${c}`).join('\n')}`
+    : '\nNothing to change.',
+);
 if (skipped.length) console.log(`\nSkipped (not found):\n${skipped.map((c) => `  ${c}`).join('\n')}`);
 
 if (!opts.dryRun && changed.length) {
@@ -152,6 +176,9 @@ if (!opts.dryRun && changed.length) {
   if (id && oldId && id !== oldId) {
     console.log(`  2. The identifier changed: saved printers and the label template live in a folder named after it`);
     console.log(`     (%APPDATA%\\${oldId} on Windows), so existing installs start fresh. Android sees a new app.`);
-    if (androidGen) console.log('  3. Regenerate the Android project: delete src-tauri/gen/android and run `pnpm tauri android init`.');
+    if (androidGen)
+      console.log(
+        '  3. Regenerate the Android project: delete src-tauri/gen/android and run `pnpm tauri android init`.',
+      );
   }
 }

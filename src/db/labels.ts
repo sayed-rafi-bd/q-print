@@ -147,18 +147,12 @@ export async function deleteLabel(db: Database, userId: string, slug: string): P
 
 /** How many labels an account has. Used to decide whether the one-time import should offer. */
 export async function countLabels(db: Database, userId: string): Promise<number> {
-  const [row] = await db
-    .select({ n: count() })
-    .from(labelsTable)
-    .where(eq(labelsTable.userId, userId));
+  const [row] = await db.select({ n: count() }).from(labelsTable).where(eq(labelsTable.userId, userId));
   return Number(row?.n ?? 0);
 }
 
 /** The slugs this account already has, so an import can skip names that would collide. */
 export async function listSlugs(db: Database, userId: string): Promise<string[]> {
-  const rows = await db
-    .select({ slug: labelsTable.slug })
-    .from(labelsTable)
-    .where(eq(labelsTable.userId, userId));
-  return rows.map(r => r.slug);
+  const rows = await db.select({ slug: labelsTable.slug }).from(labelsTable).where(eq(labelsTable.userId, userId));
+  return rows.map((r) => r.slug);
 }

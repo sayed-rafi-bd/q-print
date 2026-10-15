@@ -34,7 +34,8 @@ export function useLabelReload(labels: LabelMeta[], onReload: () => Promise<stri
   const [note, setNote] = useState('');
 
   const reload = async () => {
-    setReloading(true); setNote('');
+    setReloading(true);
+    setNote('');
     try {
       const failure = await onReload();
       if (failure) setNote(failure);
@@ -48,12 +49,23 @@ export function useLabelReload(labels: LabelMeta[], onReload: () => Promise<stri
 }
 
 /** Small button for the top-right corner of the Label field's title row. */
-export function ReloadLabelsButton({ onClick, reloading, disabled }: {
-  onClick: () => void; reloading: boolean; disabled?: boolean;
+export function ReloadLabelsButton({
+  onClick,
+  reloading,
+  disabled,
+}: {
+  onClick: () => void;
+  reloading: boolean;
+  disabled?: boolean;
 }) {
   return (
-    <button type="button" onClick={onClick} disabled={reloading || disabled}
-            aria-label="Reload labels from the database" className={smallBtn + ' whitespace-nowrap'}>
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={reloading || disabled}
+      aria-label="Reload labels from the database"
+      className={`${smallBtn} whitespace-nowrap`}
+    >
       {reloading ? 'Reloading…' : 'Reload labels'}
     </button>
   );
@@ -63,12 +75,17 @@ export function ReloadLabelsButton({ onClick, reloading, disabled }: {
 export default function LabelPicker({ labels, value, disabled, busy, onChange, note }: Props) {
   return (
     <div className="space-y-1">
-      <select aria-label="Label" value={value}
-              disabled={disabled || busy || labels.length === 0}
-              onChange={e => onChange(e.target.value as LabelId)}
-              className={selectCls}>
-        {labels.map(l => (
-          <option key={l.id} value={l.id}>{l.name} — {l.widthMm} × {l.heightMm} mm</option>
+      <select
+        aria-label="Label"
+        value={value}
+        disabled={disabled || busy || labels.length === 0}
+        onChange={(e) => onChange(e.target.value as LabelId)}
+        className={selectCls}
+      >
+        {labels.map((l) => (
+          <option key={l.id} value={l.id}>
+            {l.name} — {l.widthMm} × {l.heightMm} mm
+          </option>
         ))}
       </select>
       {note && <p className="text-xs text-slate-500">{note}</p>}

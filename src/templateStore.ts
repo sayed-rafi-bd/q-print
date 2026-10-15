@@ -1,8 +1,8 @@
-import { invoke } from '@tauri-apps/api/core';
 import type { Template } from '@pdfme/common';
-import { isTauri } from './platform';
-import { builtin, isBuiltin } from './builtinLabels';
+import { invoke } from '@tauri-apps/api/core';
+import { builtin } from './builtinLabels';
 import { builtinSpec } from './generator/builtins';
+import { isTauri } from './platform';
 
 // Must match the key used in the `font` option of Designer / generate().
 const FONT_NAME = 'NotoSansJP';
@@ -16,8 +16,8 @@ export function withValidBasePdf(t: Template): Template {
   const base = t.basePdf as unknown;
   if (!base || typeof base !== 'object' || Array.isArray(base)) return t;
   const { padding } = base as { padding?: unknown };
-  const ok = Array.isArray(padding) && padding.length === 4
-    && padding.every(n => typeof n === 'number' && Number.isFinite(n));
+  const ok =
+    Array.isArray(padding) && padding.length === 4 && padding.every((n) => typeof n === 'number' && Number.isFinite(n));
   return ok ? t : { ...t, basePdf: { ...base, padding: [0, 0, 0, 0] } as Template['basePdf'] };
 }
 
@@ -28,8 +28,8 @@ export function withValidBasePdf(t: Template): Template {
 export function withFont(t: Template): Template {
   return {
     ...withValidBasePdf(t),
-    schemas: t.schemas.map(page =>
-      page.map(s => (s.type === 'text' && !s.fontName ? { ...s, fontName: FONT_NAME } : s)),
+    schemas: t.schemas.map((page) =>
+      page.map((s) => (s.type === 'text' && !s.fontName ? { ...s, fontName: FONT_NAME } : s)),
     ),
   };
 }
@@ -57,7 +57,7 @@ export function assertUsableTemplate(t: unknown, what = 'the saved template'): a
     throw new Error(`${what} has no usable page size`);
   }
   const schemas = (t as { schemas?: unknown }).schemas;
-  if (!Array.isArray(schemas) || !schemas.every(page => Array.isArray(page))) {
+  if (!Array.isArray(schemas) || !schemas.every((page) => Array.isArray(page))) {
     throw new Error(`${what} has no field list`);
   }
 }
@@ -74,11 +74,17 @@ export const defaultLabelGenerator = (label: string) => builtinSpec(label);
 const webKey = (label: string) => `q-print.template.${label}`;
 
 const webRead = (label: string): string | null => {
-  try { return localStorage.getItem(webKey(label)); } catch { return null; }
+  try {
+    return localStorage.getItem(webKey(label));
+  } catch {
+    return null;
+  }
 };
 
 const webWrite = (label: string, json: string) => {
-  try { localStorage.setItem(webKey(label), json); } catch {
+  try {
+    localStorage.setItem(webKey(label), json);
+  } catch {
     throw new Error('This browser would not let the template be saved. Check that site storage is allowed.');
   }
 };
@@ -89,7 +95,9 @@ const webWrite = (label: string, json: string) => {
  * Built-in labels are the only thing still stored as a file. Everything a user creates lives in
  * the database; see `src/labels.ts`.
  */
-export async function loadBuiltinTemplate(label: string): Promise<{ template: Template; source: 'custom' | 'default' }> {
+export async function loadBuiltinTemplate(
+  label: string,
+): Promise<{ template: Template; source: 'custom' | 'default' }> {
   const saved = isTauri() ? await invoke<string | null>('load_template', { label }) : webRead(label);
   if (!saved) return { template: defaultLabelTemplate(label), source: 'default' };
   try {
@@ -116,5 +124,9 @@ export async function saveBuiltinTemplate(label: string, template: Template): Pr
 /** Deletes a built-in label's saved layout so its bundled one is used again. */
 export async function resetBuiltinTemplate(label: string): Promise<void> {
   if (isTauri()) return invoke<void>('reset_template', { label });
-  try { localStorage.removeItem(webKey(label)); } catch { /* nothing was saved */ }
+  try {
+    localStorage.removeItem(webKey(label));
+  } catch {
+    /* nothing was saved */
+  }
 }

@@ -14,12 +14,9 @@ export function pickLabelAfterReload(
   currentId: LabelId | null,
   remembered: LabelId | null,
 ): LabelMeta | null {
-  return labels.find(l => l.id === currentId)
-    ?? labels.find(l => l.id === remembered)
-    ?? labels[0]
-    ?? null;
+  return labels.find((l) => l.id === currentId) ?? labels.find((l) => l.id === remembered) ?? labels[0] ?? null;
 }
 
 /** True when the label the user was looking at is gone from the list. */
 export const isLabelMissing = (labels: LabelMeta[], id: LabelId | null): boolean =>
-  id !== null && labels.length > 0 && !labels.some(l => l.id === id);
+  id !== null && labels.length > 0 && !labels.some((l) => l.id === id);

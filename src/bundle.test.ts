@@ -1,8 +1,8 @@
-import { describe, expect, it } from 'vitest';
 import type { Template } from '@pdfme/common';
+import { describe, expect, it } from 'vitest';
 import { bundleJson, isBundle, isTemplate, makeBundle, parseBundle, parseTemplate, templateSizeMm } from './bundle';
-import { isValidId, slugify } from './labelId';
 import { builtinSpec } from './generator/builtins';
+import { isValidId, slugify } from './labelId';
 import product from './templates/product-label.json';
 
 const template = product as unknown as Template;

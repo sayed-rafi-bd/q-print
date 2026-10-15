@@ -1,10 +1,10 @@
-import { invoke } from '@tauri-apps/api/core';
 import { generate } from '@pdfme/generator';
-import { PDFDocument, degrees } from 'pdf-lib';
-import { text, rectangle, barcodes } from '@pdfme/schemas';
-import { loadLabel, type LabelId } from './labels';
+import { barcodes, rectangle, text } from '@pdfme/schemas';
+import { invoke } from '@tauri-apps/api/core';
+import { degrees, PDFDocument } from 'pdf-lib';
 import type { User } from './db/users';
 import { generateRows } from './generator/engine';
+import { type LabelId, loadLabel } from './labels';
 
 const FONT_URL = '/fonts/NotoSansJP-Regular.ttf';
 let fontCache: ArrayBuffer | null = null;
@@ -105,22 +105,30 @@ export async function loadFont(): Promise<ArrayBuffer> {
   const b = new Uint8Array(buf.slice(0, 4));
   const tag = String.fromCharCode(...b);
   const valid =
-    tag === 'OTTO' || tag === 'true' || tag === 'ttcf' ||
-    (b[0] === 0 && b[1] === 1 && b[2] === 0 && b[3] === 0);
+    tag === 'OTTO' || tag === 'true' || tag === 'ttcf' || (b[0] === 0 && b[1] === 1 && b[2] === 0 && b[3] === 0);
   if (!valid) {
     throw new Error(
       `${FONT_URL} is missing or is not a TTF/OTF file ` +
-      `(got ${res.headers.get('content-type')}, ${buf.byteLength} bytes). ` +
-      `Save a static Noto Sans JP Regular .ttf at public/fonts/NotoSansJP-Regular.ttf ` +
-      `(exact name, no .woff2) and restart the dev server.`,
+        `(got ${res.headers.get('content-type')}, ${buf.byteLength} bytes). ` +
+        `Save a static Noto Sans JP Regular .ttf at public/fonts/NotoSansJP-Regular.ttf ` +
+        `(exact name, no .woff2) and restart the dev server.`,
     );
   }
   fontCache = buf;
   return buf;
 }
 
-export async function printLabels(opts: { user: User; label: LabelId; printer: string; paper: string; orientation: Orientation; rotate: Rotation; margins: Margins; dpi: string; pages: number },
-): Promise<{ timings: Timings; report: PrintReport; templateSource: 'custom' | 'default' | 'custom label' }> {
+export async function printLabels(opts: {
+  user: User;
+  label: LabelId;
+  printer: string;
+  paper: string;
+  orientation: Orientation;
+  rotate: Rotation;
+  margins: Margins;
+  dpi: string;
+  pages: number;
+}): Promise<{ timings: Timings; report: PrintReport; templateSource: 'custom' | 'default' | 'custom label' }> {
   const t0 = performance.now();
 
   // 1. the label's template and generator. The rows are built here too, so nothing has to cross
@@ -142,12 +150,13 @@ export async function printLabels(opts: { user: User; label: LabelId; printer: s
 
   // 3. print (silent with scale-to-fit where the platform allows it, else the system dialog)
   const printOpts = { printer: opts.printer, paper: opts.paper, orientation: opts.orientation, dpi: opts.dpi };
-  const report = opts.pages > RAW_THRESHOLD_PAGES
-    ? await invoke<PrintReport>('print_pdf_raw', pdf, {
-        // header values must be ASCII; printer names may not be
-        headers: { 'x-print-options': encodeURIComponent(JSON.stringify(printOpts)) },
-      })
-    : await invoke<PrintReport>('print_pdf', { ...printOpts, bytes: Array.from(pdf) });
+  const report =
+    opts.pages > RAW_THRESHOLD_PAGES
+      ? await invoke<PrintReport>('print_pdf_raw', pdf, {
+          // header values must be ASCII; printer names may not be
+          headers: { 'x-print-options': encodeURIComponent(JSON.stringify(printOpts)) },
+        })
+      : await invoke<PrintReport>('print_pdf', { ...printOpts, bytes: Array.from(pdf) });
   const t3 = performance.now();
 
   return {

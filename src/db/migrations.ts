@@ -36,7 +36,7 @@ export async function migrate(db: Db): Promise<string[]> {
   await db.execute({ sql: TRACKING });
 
   const { rows } = await db.execute({ sql: 'SELECT name FROM __migrations' });
-  const done = new Set(rows.map(r => String(r.name)));
+  const done = new Set(rows.map((r) => String(r.name)));
 
   const applied: string[] = [];
   for (const migration of MIGRATIONS) {
@@ -57,8 +57,8 @@ export async function migrate(db: Db): Promise<string[]> {
 export async function pendingMigrations(db: Db): Promise<string[]> {
   await db.execute({ sql: TRACKING });
   const { rows } = await db.execute({ sql: 'SELECT name FROM __migrations' });
-  const done = new Set(rows.map(r => String(r.name)));
-  return MIGRATIONS.filter(m => !done.has(m.name)).map(m => m.name);
+  const done = new Set(rows.map((r) => String(r.name)));
+  return MIGRATIONS.filter((m) => !done.has(m.name)).map((m) => m.name);
 }
 
 /**
@@ -68,6 +68,6 @@ export async function pendingMigrations(db: Db): Promise<string[]> {
 export function splitStatements(sqlText: string): string[] {
   return sqlText
     .split('--> statement-breakpoint')
-    .map(s => s.trim())
-    .filter(s => s.length > 0 && !/^(--[^\n]*\n?)+$/.test(s));
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0 && !/^(--[^\n]*\n?)+$/.test(s));
 }

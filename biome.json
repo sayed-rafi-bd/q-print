@@ -2,20 +2,16 @@
   "$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
   "files": {
-    "includes": [
-      "**",
-      "!src-tauri",
-      "!db/migrations",
-      "!pnpm-lock.yaml",
-      "!playwright-report",
-      "!test-results"
-    ]
+    "includes": ["**", "!src-tauri", "!db/migrations", "!pnpm-lock.yaml", "!playwright-report", "!test-results"]
   },
   "formatter": {
     "enabled": true,
     "indentStyle": "space",
     "indentWidth": 2,
     "lineWidth": 120
+  },
+  "css": {
+    "parser": { "tailwindDirectives": true }
   },
   "javascript": {
     "formatter": {
@@ -27,7 +23,19 @@
   },
   "linter": {
     "enabled": true,
-    "rules": { "recommended": true }
+    "rules": {
+      "preset": "recommended",
+      "a11y": {
+        "noAutofocus": "warn",
+        "noStaticElementInteractions": "warn"
+      },
+      "correctness": {
+        "useExhaustiveDependencies": "warn"
+      },
+      "suspicious": {
+        "noArrayIndexKey": "warn"
+      }
+    }
   },
   "assist": {
     "enabled": true,

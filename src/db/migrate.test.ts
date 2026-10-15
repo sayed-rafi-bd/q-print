@@ -1,9 +1,8 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-
-import { createUser, findById, verifyPassword, type User } from './users';
-import { importAlreadyDone, shouldOfferImport } from './migrate';
 import { setDb } from './client';
+import { importAlreadyDone, shouldOfferImport } from './migrate';
 import { createTestDb, type TestDb } from './testDb';
+import { createUser, findById, type User, verifyPassword } from './users';
 
 let test: TestDb;
 const db = () => test.db;
@@ -110,16 +109,18 @@ describe('the one-time import offer', () => {
   it('keeps the two accounts apart when importing', async () => {
     const ann: User = await signUp('ann');
     const bob: User = await createUser(db(), 'bob', 'hunter3');
-    legacyFiles.push(
-      { slug: 'parcel', name: 'Parcel', json: JSON.stringify({ basePdf: { width: 100, height: 50 }, schemas: [[]] }) },
-    );
+    legacyFiles.push({
+      slug: 'parcel',
+      name: 'Parcel',
+      json: JSON.stringify({ basePdf: { width: 100, height: 50 }, schemas: [[]] }),
+    });
     const { importLegacyLabels } = await import('./migrate');
     const { listLabels } = await import('../labels');
 
     expect((await importLegacyLabels(ann)).imported).toBe(1);
     // Bob's account is untouched by Ann's import.
-    expect((await listLabels(bob)).filter(l => !l.builtin)).toHaveLength(0);
-    expect((await listLabels(ann)).filter(l => !l.builtin)).toHaveLength(1);
+    expect((await listLabels(bob)).filter((l) => !l.builtin)).toHaveLength(0);
+    expect((await listLabels(ann)).filter((l) => !l.builtin)).toHaveLength(1);
   });
 
   it('keeps the name and the layout that were in the file', async () => {
@@ -128,8 +129,13 @@ describe('the one-time import offer', () => {
       slug: 'my-parcel',
       name: 'My parcel',
       json: JSON.stringify({
-        format: 'q-print-label', version: 1, name: 'My parcel',
-        template: { basePdf: { width: 73, height: 37, padding: [0, 0, 0, 0] }, schemas: [[{ type: 'text', name: 'a', position: { x: 0, y: 0 }, width: 10, height: 5 }]] },
+        format: 'q-print-label',
+        version: 1,
+        name: 'My parcel',
+        template: {
+          basePdf: { width: 73, height: 37, padding: [0, 0, 0, 0] },
+          schemas: [[{ type: 'text', name: 'a', position: { x: 0, y: 0 }, width: 10, height: 5 }]],
+        },
         generator: { version: 1, fields: { a: { kind: 'fixed', value: 'hello' } } },
       }),
     });
@@ -137,7 +143,7 @@ describe('the one-time import offer', () => {
     const { listLabels, loadLabel } = await import('../labels');
 
     expect((await importLegacyLabels(user)).imported).toBe(1);
-    const [meta] = (await listLabels(user)).filter(l => l.id === 'my-parcel');
+    const [meta] = (await listLabels(user)).filter((l) => l.id === 'my-parcel');
     expect(meta.name).toBe('My parcel');
     expect(meta.widthMm).toBe(73);
 

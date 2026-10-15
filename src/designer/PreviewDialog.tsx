@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
-import { Viewer } from '@pdfme/ui';
-import { text, rectangle, barcodes } from '@pdfme/schemas';
 import type { Template } from '@pdfme/common';
-import { loadFont } from '../printApi';
+import { barcodes, rectangle, text } from '@pdfme/schemas';
+import { Viewer } from '@pdfme/ui';
+import { useEffect, useRef, useState } from 'react';
 import { generateRows } from '../generator/engine';
 import type { GeneratorSpec } from '../generator/spec';
+import { loadFont } from '../printApi';
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -61,7 +61,9 @@ export default function PreviewDialog({ template, spec, onClose }: Props) {
       <div className="flex items-center gap-2 border-b border-slate-200 px-4 py-2">
         <span className="text-sm font-semibold text-slate-800">Preview</span>
         <span className="text-xs text-slate-500">Three pages of freshly generated data.</span>
-        <button className={btnCls + ' ml-auto'} onClick={onClose}>Close</button>
+        <button type="button" className={`${btnCls} ml-auto`} onClick={onClose}>
+          Close
+        </button>
       </div>
 
       {error && (
@@ -74,7 +76,13 @@ export default function PreviewDialog({ template, spec, onClose }: Props) {
         <div ref={container} className="absolute inset-0" />
         {busy && !error && (
           <div className="absolute inset-0 flex items-center justify-center gap-2 text-sm text-slate-500">
-            <span className="text-3xl" style={{ animation: 'mascot-bounce 1.2s ease-in-out infinite' }} aria-hidden="true">👀</span>
+            <span
+              className="text-3xl"
+              style={{ animation: 'mascot-bounce 1.2s ease-in-out infinite' }}
+              aria-hidden="true"
+            >
+              👀
+            </span>
             Rendering…
           </div>
         )}

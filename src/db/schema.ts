@@ -28,25 +28,31 @@ export const users = sqliteTable('users', {
   createdAt: text('created_at').notNull(),
 });
 
-export const labels = sqliteTable('labels', {
-  id: text('id').primaryKey(),
-  /** Every read and write is filtered by this, so one account cannot reach another's labels. */
-  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  /** Shown in the label picker. */
-  name: text('name').notNull(),
-  /** File-name-shaped id, unique per account, and what the rest of the app calls a label id. */
-  slug: text('slug').notNull(),
-  /** The two halves of a LabelBundle, as JSON text. */
-  template: text('template').notNull(),
-  generator: text('generator').notNull(),
-  createdAt: text('created_at').notNull(),
-  updatedAt: text('updated_at').notNull(),
-}, table => [
-  // Mirrors the UNIQUE (user_id, slug) the hand-written schema had.
-  uniqueIndex('labels_user_slug').on(table.userId, table.slug),
-  // Every read is "this user's labels, newest first", which is exactly this index.
-  index('labels_by_user').on(table.userId, table.updatedAt),
-]);
+export const labels = sqliteTable(
+  'labels',
+  {
+    id: text('id').primaryKey(),
+    /** Every read and write is filtered by this, so one account cannot reach another's labels. */
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** Shown in the label picker. */
+    name: text('name').notNull(),
+    /** File-name-shaped id, unique per account, and what the rest of the app calls a label id. */
+    slug: text('slug').notNull(),
+    /** The two halves of a LabelBundle, as JSON text. */
+    template: text('template').notNull(),
+    generator: text('generator').notNull(),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [
+    // Mirrors the UNIQUE (user_id, slug) the hand-written schema had.
+    uniqueIndex('labels_user_slug').on(table.userId, table.slug),
+    // Every read is "this user's labels, newest first", which is exactly this index.
+    index('labels_by_user').on(table.userId, table.updatedAt),
+  ],
+);
 
 export const schema = { users, labels };
 

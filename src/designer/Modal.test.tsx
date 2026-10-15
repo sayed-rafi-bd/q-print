@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from 'vitest';
+
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import Modal from './Modal';
 
 afterEach(cleanup);
@@ -8,8 +9,7 @@ afterEach(cleanup);
 const openModal = (props: Partial<React.ComponentProps<typeof Modal>> = {}) => {
   const onClose = vi.fn();
   render(
-    <Modal open title="Delete label" onClose={onClose}
-      footer={<button>Yes, delete</button>} {...props}>
+    <Modal open title="Delete label" onClose={onClose} footer={<button type="button">Yes, delete</button>} {...props}>
       <p>“Parcel” will be removed.</p>
     </Modal>,
   );
@@ -20,7 +20,11 @@ const backdrop = () => screen.getByRole('dialog').parentElement as HTMLElement;
 
 describe('the modal', () => {
   it('renders nothing when closed', () => {
-    render(<Modal open={false} title="Delete" onClose={vi.fn()}>Body</Modal>);
+    render(
+      <Modal open={false} title="Delete" onClose={vi.fn()}>
+        Body
+      </Modal>,
+    );
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 

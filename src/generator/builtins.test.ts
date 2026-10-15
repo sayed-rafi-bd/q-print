@@ -1,10 +1,10 @@
-import { describe, expect, it } from 'vitest';
-import { generateRows, validateSpec } from './engine';
-import { builtinSpec } from './builtins';
-import { barcodeProblem } from './barcodeCheck';
-import { dataFields } from './scaffold';
-import product from '../templates/product-label.json';
 import type { Template } from '@pdfme/common';
+import { describe, expect, it } from 'vitest';
+import product from '../templates/product-label.json';
+import { barcodeProblem } from './barcodeCheck';
+import { builtinSpec } from './builtins';
+import { generateRows, validateSpec } from './engine';
+import { dataFields } from './scaffold';
 
 function seededRng(seed = 1) {
   let state = seed >>> 0 || 1;
@@ -88,21 +88,21 @@ describe('built-in product generator', () => {
 });
 
 describe('built-in barcodes', () => {
-  const cases: { id: string; template: unknown }[] = [
-    { id: 'product', template: product },
-  ];
+  const cases: { id: string; template: unknown }[] = [{ id: 'product', template: product }];
 
   for (const { id, template } of cases) {
     it(`generates content every ${id} barcode can encode`, () => {
       const spec = builtinSpec(id);
-      const barcodes = dataFields(template as Template).filter(f => f.kind === 'barcode' || f.kind === 'qr');
+      const barcodes = dataFields(template as Template).filter((f) => f.kind === 'barcode' || f.kind === 'qr');
       expect(barcodes.length).toBeGreaterThan(0);
 
       const rows = generateRows(spec, 300, { now: NOW, rng: seededRng(13) });
       for (const field of barcodes) {
         for (const row of rows) {
-          expect(barcodeProblem(field.type, row[field.name]), `${id}.${field.name} (${field.type}) = ${row[field.name]}`)
-            .toBeNull();
+          expect(
+            barcodeProblem(field.type, row[field.name]),
+            `${id}.${field.name} (${field.type}) = ${row[field.name]}`,
+          ).toBeNull();
         }
       }
     });

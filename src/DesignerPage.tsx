@@ -1,24 +1,31 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Designer } from '@pdfme/ui';
-import { text, rectangle, barcodes } from '@pdfme/schemas';
 import type { Template } from '@pdfme/common';
-import { loadFont } from './printApi';
-import { DEFAULT_LABEL } from './builtinLabels';
-import TemplateTransfer from './TemplateTransfer';
-import LabelToolbar from './designer/LabelToolbar';
+import { barcodes, rectangle, text } from '@pdfme/schemas';
+import { Designer } from '@pdfme/ui';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from './auth/AuthProvider';
-import DataEditor from './designer/DataEditor';
-import PreviewDialog from './designer/PreviewDialog';
-import {
-  listLabels, loadLabel, loadLastLabel, rememberLabel, resolveLabel, saveLabel,
-  type LabelId, type LabelMeta, type LabelContent,
-} from './labels';
-import { defaultLabelTemplate, resetBuiltinTemplate } from './templateStore';
-import { isTauri } from './platform';
+import { DEFAULT_LABEL } from './builtinLabels';
 import { importLegacyLabels, shouldOfferImport } from './db/migrate';
-import { scaffoldSpec } from './generator/scaffold';
+import DataEditor from './designer/DataEditor';
+import LabelToolbar from './designer/LabelToolbar';
+import PreviewDialog from './designer/PreviewDialog';
 import { validateSpec } from './generator/engine';
+import { scaffoldSpec } from './generator/scaffold';
 import type { GeneratorSpec } from './generator/spec';
+import {
+  type LabelContent,
+  type LabelId,
+  type LabelMeta,
+  listLabels,
+  loadLabel,
+  loadLastLabel,
+  rememberLabel,
+  resolveLabel,
+  saveLabel,
+} from './labels';
+import { isTauri } from './platform';
+import { loadFont } from './printApi';
+import TemplateTransfer from './TemplateTransfer';
+import { defaultLabelTemplate, resetBuiltinTemplate } from './templateStore';
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -69,23 +76,26 @@ export default function DesignerPage() {
   const dirty = layoutDirty || generatorDirty;
 
   /** Puts a label's template and generator into the designer. */
-  const openLabel = useCallback(async (target: LabelMeta) => {
-    const d = designer.current;
-    if (!d || !user) return;
-    const { template, source: from, generator: gen } = await loadLabel(user, target.id);
-    d.updateTemplate(template);
-    savedSnapshot.current = JSON.stringify(d.getTemplate());
-    labelRef.current = target.id;
-    setLabelId(target.id);
-    setMeta(target);
-    setLayoutDirty(false);
-    setSource(from);
-    setSize(readSize(template));
-    setGenerator(gen);
-    setGeneratorSaved(gen);
-    setError('');
-    setConfirmReset(false);
-  }, [user]);
+  const openLabel = useCallback(
+    async (target: LabelMeta) => {
+      const d = designer.current;
+      if (!d || !user) return;
+      const { template, source: from, generator: gen } = await loadLabel(user, target.id);
+      d.updateTemplate(template);
+      savedSnapshot.current = JSON.stringify(d.getTemplate());
+      labelRef.current = target.id;
+      setLabelId(target.id);
+      setMeta(target);
+      setLayoutDirty(false);
+      setSource(from);
+      setSize(readSize(template));
+      setGenerator(gen);
+      setGeneratorSaved(gen);
+      setError('');
+      setConfirmReset(false);
+    },
+    [user],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -112,7 +122,7 @@ export default function DesignerPage() {
         setLabels(registry);
         // The label remembered last time, unless it has since been deleted.
         const wanted = loadLastLabel(user) ?? '';
-        const target = registry.find(l => l.id === wanted) ?? await resolveLabel(user, wanted);
+        const target = registry.find((l) => l.id === wanted) ?? (await resolveLabel(user, wanted));
         if (!target) {
           setError('No labels were found.');
           return;
@@ -141,7 +151,7 @@ export default function DesignerPage() {
         try {
           if (!(await attempt(target))) return;
         } catch (e) {
-          const fallback = registry.find(l => l.builtin);
+          const fallback = registry.find((l) => l.builtin);
           if (!fallback || fallback.id === target.id) throw e;
           setError(`Could not open “${target.name}”: ${errMsg(e)}`);
           if (!(await attempt(fallback))) return;
@@ -172,7 +182,8 @@ export default function DesignerPage() {
   const onSave = async () => {
     const d = designer.current;
     if (!d || !meta || !user) return;
-    setError(''); setMessage('');
+    setError('');
+    setMessage('');
     try {
       const template = d.getTemplate();
       // A field added in the Layout but never given a rule gets a sensible default, so printing
@@ -189,9 +200,13 @@ export default function DesignerPage() {
       setLayoutDirty(false);
       setSource(meta.builtin ? 'custom' : 'custom label');
       setMeta({ ...meta, widthMm: size?.w ?? meta.widthMm, heightMm: size?.h ?? meta.heightMm });
-      setMessage(meta.builtin
-        ? (isTauri() ? 'Saved. Printing now uses this template.' : 'Saved in this browser. Printing on a device uses its own copy.')
-        : 'Saved. This label is on your account.');
+      setMessage(
+        meta.builtin
+          ? isTauri()
+            ? 'Saved. Printing now uses this template.'
+            : 'Saved in this browser. Printing on a device uses its own copy.'
+          : 'Saved. This label is on your account.',
+      );
     } catch (e) {
       setError(errMsg(e));
     }
@@ -200,7 +215,9 @@ export default function DesignerPage() {
   const onReset = async () => {
     const d = designer.current;
     if (!d || !meta || !user) return;
-    setConfirmReset(false); setError(''); setMessage('');
+    setConfirmReset(false);
+    setError('');
+    setMessage('');
     try {
       if (!meta.builtin) throw new Error('A label of your own has no default to go back to.');
       await resetBuiltinTemplate(meta.id);
@@ -222,20 +239,29 @@ export default function DesignerPage() {
   useEffect(() => {
     if (!ready || !user) return;
     let cancelled = false;
-    shouldOfferImport(user).then(offer => { if (!cancelled) setOfferImport(offer); }).catch(() => { /* not worth a message */ });
-    return () => { cancelled = true; };
+    shouldOfferImport(user)
+      .then((offer) => {
+        if (!cancelled) setOfferImport(offer);
+      })
+      .catch(() => {
+        /* not worth a message */
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [ready, user]);
 
   const runImport = async () => {
     if (!user) return;
     setOfferImport(false);
-    setError(''); setMessage('');
+    setError('');
+    setMessage('');
     try {
       const result = await importLegacyLabels(user);
       await onLabelsChanged();
       setMessage(
         `Copied ${result.imported} label${result.imported === 1 ? '' : 's'} onto this account.` +
-        (result.skipped.length > 0 ? ` ${result.skipped.length} could not be read and were left alone.` : ''),
+          (result.skipped.length > 0 ? ` ${result.skipped.length} could not be read and were left alone.` : ''),
       );
     } catch (e) {
       setError(errMsg(e));
@@ -244,9 +270,11 @@ export default function DesignerPage() {
 
   /** Shows another label in the same designer instance. */
   const switchLabel = async (id: string) => {
-    setPendingLabel(null); setError(''); setMessage('');
+    setPendingLabel(null);
+    setError('');
+    setMessage('');
     if (!user) return;
-    const target = labels.find(l => l.id === id);
+    const target = labels.find((l) => l.id === id);
     if (!target) {
       setError(`There is no label called “${id}”.`);
       return;
@@ -265,20 +293,22 @@ export default function DesignerPage() {
 
   const onPickLabel = (id: string) => {
     if (id === labelId) return;
-    if (dirty) setPendingLabel(id); // ask before throwing away unsaved edits
+    if (dirty)
+      setPendingLabel(id); // ask before throwing away unsaved edits
     else switchLabel(id);
   };
 
   /** After a create, rename or delete in the toolbar. */
   const onLabelsChanged = async (select?: string) => {
-    setError(''); setMessage('');
+    setError('');
+    setMessage('');
     if (!user) return;
     try {
       const registry = await listLabels(user);
       setLabels(registry);
       const target = select
-        ? registry.find(l => l.id === select)
-        : registry.find(l => l.id === labelRef.current) ?? registry[0];
+        ? registry.find((l) => l.id === select)
+        : (registry.find((l) => l.id === labelRef.current) ?? registry[0]);
       if (target) {
         await openLabel(target);
         rememberLabel(user, target.id);
@@ -299,7 +329,7 @@ export default function DesignerPage() {
     setLayoutDirty(false);
     setSource(meta?.builtin ? 'custom' : 'custom label');
     setSize(readSize(t));
-    setGenerator(g => {
+    setGenerator((g) => {
       const next = meta?.builtin ? g : scaffoldSpec(t, g);
       setGeneratorSaved(next);
       return next;
@@ -315,56 +345,119 @@ export default function DesignerPage() {
   return (
     <div className="relative flex h-full flex-col bg-white/90">
       <div className="flex flex-wrap items-start gap-x-4 gap-y-2 border-b border-slate-200 px-4 py-2">
-        <LabelToolbar labels={labels} value={labelId} disabled={!ready}
-          onPick={onPickLabel} onChanged={onLabelsChanged} onError={setError} />
+        <LabelToolbar
+          labels={labels}
+          value={labelId}
+          disabled={!ready}
+          onPick={onPickLabel}
+          onChanged={onLabelsChanged}
+          onError={setError}
+        />
 
         {size && (
           <div className="flex items-center gap-2 text-sm text-slate-700">
             <span className="font-medium">Page size</span>
-            <input aria-label="Width in mm" type="number" min={10} className={numCls} value={size.w} disabled={!ready}
-              onChange={e => setSize({ ...size, w: +e.target.value })} />
+            <input
+              aria-label="Width in mm"
+              type="number"
+              min={10}
+              className={numCls}
+              value={size.w}
+              disabled={!ready}
+              onChange={(e) => setSize({ ...size, w: +e.target.value })}
+            />
             <span>×</span>
-            <input aria-label="Height in mm" type="number" min={10} className={numCls} value={size.h} disabled={!ready}
-              onChange={e => setSize({ ...size, h: +e.target.value })} />
+            <input
+              aria-label="Height in mm"
+              type="number"
+              min={10}
+              className={numCls}
+              value={size.h}
+              disabled={!ready}
+              onChange={(e) => setSize({ ...size, h: +e.target.value })}
+            />
             <span className="text-slate-500">mm</span>
-            <button onClick={applySize} disabled={!ready || size.w < 10 || size.h < 10}
-              className={btnCls + ' border border-slate-300 text-slate-700 hover:bg-slate-50'}>Apply</button>
+            <button
+              type="button"
+              onClick={applySize}
+              disabled={!ready || size.w < 10 || size.h < 10}
+              className={`${btnCls} border border-slate-300 text-slate-700 hover:bg-slate-50`}
+            >
+              Apply
+            </button>
           </div>
         )}
 
         <div className="ml-auto flex items-center gap-3">
           <span className="text-xs text-slate-500">
             Template in use: <span className="font-medium text-slate-700">{source}</span>
-            {generatorDirty && <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-800">✏️ data not saved</span>}
-            {dirty && <span className="ml-2 animate-pulse rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-800">✏️ unsaved changes</span>}
+            {generatorDirty && (
+              <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-800">
+                ✏️ data not saved
+              </span>
+            )}
+            {dirty && (
+              <span className="ml-2 animate-pulse rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-800">
+                ✏️ unsaved changes
+              </span>
+            )}
           </span>
           {confirmReset ? (
             <>
               <span className="text-sm text-slate-700">Discard your template?</span>
-              <button onClick={onReset} className={btnCls + ' bg-red-600 text-white hover:bg-red-500'}>Yes, reset</button>
-              <button onClick={() => setConfirmReset(false)}
-                className={btnCls + ' border border-slate-300 text-slate-700 hover:bg-slate-50'}>Cancel</button>
+              <button type="button" onClick={onReset} className={`${btnCls} bg-red-600 text-white hover:bg-red-500`}>
+                Yes, reset
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmReset(false)}
+                className={`${btnCls} border border-slate-300 text-slate-700 hover:bg-slate-50`}
+              >
+                Cancel
+              </button>
             </>
           ) : (
-            <button onClick={() => setConfirmReset(true)} disabled={!ready || !meta?.builtin}
+            <button
+              type="button"
+              onClick={() => setConfirmReset(true)}
+              disabled={!ready || !meta?.builtin}
               title={meta?.builtin ? undefined : 'A label of your own has no default to go back to'}
-              className={btnCls + ' border border-slate-300 text-slate-700 hover:bg-slate-50'}>Reset to default</button>
+              className={`${btnCls} border border-slate-300 text-slate-700 hover:bg-slate-50`}
+            >
+              Reset to default
+            </button>
           )}
-          <button onClick={onSave} disabled={!ready || !dirty || generatorProblems.length > 0}
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={!ready || !dirty || generatorProblems.length > 0}
             title={generatorProblems.length > 0 ? 'Fix the data generator first' : undefined}
-            className={btnCls + ' bg-indigo-600 text-white hover:bg-indigo-500'}>Save</button>
+            className={`${btnCls} bg-indigo-600 text-white hover:bg-indigo-500`}
+          >
+            Save
+          </button>
         </div>
       </div>
 
       <div className="flex items-center gap-1 border-b border-slate-200 px-4 py-1.5">
-        <button onClick={() => setTab('layout')}
-          className={'cursor-pointer rounded-full px-3 py-1 text-xs font-semibold transition '
-            + (tab === 'layout' ? 'bg-indigo-500 text-white' : 'text-slate-500 hover:bg-indigo-100')}>
+        <button
+          type="button"
+          onClick={() => setTab('layout')}
+          className={
+            'cursor-pointer rounded-full px-3 py-1 text-xs font-semibold transition ' +
+            (tab === 'layout' ? 'bg-indigo-500 text-white' : 'text-slate-500 hover:bg-indigo-100')
+          }
+        >
           Layout
         </button>
-        <button onClick={() => setTab('data')}
-          className={'cursor-pointer rounded-full px-3 py-1 text-xs font-semibold transition '
-            + (tab === 'data' ? 'bg-indigo-500 text-white' : 'text-slate-500 hover:bg-indigo-100')}>
+        <button
+          type="button"
+          onClick={() => setTab('data')}
+          className={
+            'cursor-pointer rounded-full px-3 py-1 text-xs font-semibold transition ' +
+            (tab === 'data' ? 'bg-indigo-500 text-white' : 'text-slate-500 hover:bg-indigo-100')
+          }
+        >
           Data{generatorDirty ? ' •' : ''}
         </button>
         <span className="ml-2 text-xs text-slate-400">
@@ -374,19 +467,41 @@ export default function DesignerPage() {
 
       {pendingLabel && (
         <div className="tab-enter flex flex-wrap items-center gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">
-          <span>Discard unsaved changes to “{meta?.name}” and open “{labels.find(l => l.id === pendingLabel)?.name}”?</span>
-          <button onClick={() => switchLabel(pendingLabel)} className={btnCls + ' bg-red-600 text-white hover:bg-red-500'}>Discard and switch</button>
-          <button onClick={() => setPendingLabel(null)}
-            className={btnCls + ' border border-slate-300 bg-white text-slate-700 hover:bg-slate-50'}>Cancel</button>
+          <span>
+            Discard unsaved changes to “{meta?.name}” and open “{labels.find((l) => l.id === pendingLabel)?.name}”?
+          </span>
+          <button
+            type="button"
+            onClick={() => switchLabel(pendingLabel)}
+            className={`${btnCls} bg-red-600 text-white hover:bg-red-500`}
+          >
+            Discard and switch
+          </button>
+          <button
+            type="button"
+            onClick={() => setPendingLabel(null)}
+            className={`${btnCls} border border-slate-300 bg-white text-slate-700 hover:bg-slate-50`}
+          >
+            Cancel
+          </button>
         </div>
       )}
 
       {offerImport && (
         <div className="tab-enter flex flex-wrap items-center gap-3 border-b border-indigo-200 bg-indigo-50 px-4 py-2 text-sm text-indigo-900">
           <span>This device has labels saved from an earlier version. Copy them onto “{user?.username}”?</span>
-          <button onClick={runImport} className={btnCls + ' bg-indigo-600 text-white hover:bg-indigo-500'}>Copy them</button>
-          <button onClick={() => setOfferImport(false)}
-            className={btnCls + ' border border-slate-300 bg-white text-slate-700 hover:bg-slate-50'}>
+          <button
+            type="button"
+            onClick={runImport}
+            className={`${btnCls} bg-indigo-600 text-white hover:bg-indigo-500`}
+          >
+            Copy them
+          </button>
+          <button
+            type="button"
+            onClick={() => setOfferImport(false)}
+            className={`${btnCls} border border-slate-300 bg-white text-slate-700 hover:bg-slate-50`}
+          >
             Not now
           </button>
           <span className="text-xs text-indigo-700">The files stay on this device either way.</span>
@@ -394,39 +509,60 @@ export default function DesignerPage() {
       )}
 
       {(error || message) && (
-        <div key={error || message} className={(error ? 'alert-shake ' : 'tab-enter ') + 'border-b px-4 py-2 text-sm break-words ' +
-          (error ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-800')}>
+        <div
+          key={error || message}
+          className={
+            (error ? 'alert-shake ' : 'tab-enter ') +
+            'border-b px-4 py-2 text-sm break-words ' +
+            (error ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-800')
+          }
+        >
           {error || message}
         </div>
       )}
 
       <details className="border-b border-slate-200 px-4 py-2 text-sm">
         <summary className="cursor-pointer text-slate-700">Export / import label (move it between devices)</summary>
-        <div className="mt-2"><TemplateTransfer key={labelId} label={labelId} onImported={onImported} /></div>
+        <div className="mt-2">
+          <TemplateTransfer key={labelId} label={labelId} onImported={onImported} />
+        </div>
       </details>
 
       <div className="relative min-h-0 flex-1">
         {/* pdfme keeps drawing into this exact element for as long as the page lives, so it must stay
             mounted while the Data tab is showing. Unmounting it left pdfme painting into a detached
             node, and the Layout tab came back blank. It is hidden, not removed. */}
-        <div ref={container} data-testid="designer-canvas" className={'absolute inset-0' + (tab === 'layout' ? '' : ' tab-hidden')} />
+        <div
+          ref={container}
+          data-testid="designer-canvas"
+          className={`absolute inset-0${tab === 'layout' ? '' : ' tab-hidden'}`}
+        />
         {tab === 'layout' && !ready && !error && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-sm text-slate-500">
-            <span className="text-4xl" style={{ animation: 'mascot-bounce 1.2s ease-in-out infinite' }} aria-hidden="true">🎨</span>
+            <span
+              className="text-4xl"
+              style={{ animation: 'mascot-bounce 1.2s ease-in-out infinite' }}
+              aria-hidden="true"
+            >
+              🎨
+            </span>
             Loading designer…
           </div>
         )}
         {tab === 'data' && (
           <div className="absolute inset-0">
-            <DataEditor template={currentTemplate} spec={generator} readOnly={meta?.builtin === true}
-              onChange={setGenerator} onPreview={() => setPreviewing(true)} />
+            <DataEditor
+              template={currentTemplate}
+              spec={generator}
+              readOnly={meta?.builtin === true}
+              onChange={setGenerator}
+              onPreview={() => setPreviewing(true)}
+            />
           </div>
         )}
       </div>
 
-      {previewing && (
-        <PreviewDialog template={currentTemplate} spec={generator} onClose={() => setPreviewing(false)} />
-      )}
+      {previewing && <PreviewDialog template={currentTemplate} spec={generator} onClose={() => setPreviewing(false)} />}
     </div>
   );
 }

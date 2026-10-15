@@ -27,7 +27,10 @@ export default defineConfig({
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     launchOptions: process.env.PW_CHROMIUM_PATH
-      ? { executablePath: process.env.PW_CHROMIUM_PATH, args: (process.env.PW_CHROMIUM_ARGS ?? '').split(' ').filter(Boolean) }
+      ? {
+          executablePath: process.env.PW_CHROMIUM_PATH,
+          args: (process.env.PW_CHROMIUM_ARGS ?? '').split(' ').filter(Boolean),
+        }
       : {},
   },
   webServer: [

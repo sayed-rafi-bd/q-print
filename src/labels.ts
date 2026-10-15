@@ -1,17 +1,20 @@
 import { checkTemplate, type Template } from '@pdfme/common';
 import { BUILTINS, builtin, isBuiltin } from './builtinLabels';
 import { isBundle, makeBundle, templateSizeMm } from './bundle';
-import { builtinSpec } from './generator/builtins';
-import { scaffoldSpec } from './generator/scaffold';
-import type { GeneratorSpec, LabelBundle } from './generator/spec';
-import { sampleSpec, sampleTemplate } from './sampleLabel';
-import { isValidId, slugify } from './labelId';
 import { getDb } from './db/client';
 import * as store from './db/labels';
 import type { User } from './db/users';
+import { builtinSpec } from './generator/builtins';
+import { scaffoldSpec } from './generator/scaffold';
+import type { GeneratorSpec, LabelBundle } from './generator/spec';
+import { isValidId, slugify } from './labelId';
+import { sampleSpec, sampleTemplate } from './sampleLabel';
 import {
-  assertUsableTemplate, defaultLabelGenerator, defaultLabelTemplate, loadBuiltinTemplate,
-  saveBuiltinTemplate, withFont,
+  assertUsableTemplate,
+  defaultLabelGenerator,
+  loadBuiltinTemplate,
+  saveBuiltinTemplate,
+  withFont,
 } from './templateStore';
 
 /**
@@ -47,10 +50,7 @@ const metaFrom = (id: LabelId, name: string, size: { widthMm: number; heightMm: 
 });
 
 /** Where a new label's layout and rules come from. */
-export type LabelSource =
-  | { kind: 'blank' }
-  | { kind: 'sample' }
-  | { kind: 'copy'; id: LabelId };
+export type LabelSource = { kind: 'blank' } | { kind: 'sample' } | { kind: 'copy'; id: LabelId };
 
 export type NewLabel = {
   name: string;
@@ -64,14 +64,14 @@ export { isValidId, slugify };
 
 /** The built-in labels, which live in the app rather than in anybody's account. */
 export const builtinLabels = (): LabelMeta[] =>
-  BUILTINS.map(b => metaFrom(b.id, b.name, templateSizeMm(b.defaultTemplate)));
+  BUILTINS.map((b) => metaFrom(b.id, b.name, templateSizeMm(b.defaultTemplate)));
 
 /** The built-ins plus the signed-in account's own labels. */
 export async function listLabels(user: User): Promise<LabelMeta[]> {
   const rows = await store.listLabels(getDb(), user.id);
   return [
     ...builtinLabels(),
-    ...rows.map(r => metaFrom(r.slug, r.name, { widthMm: r.widthMm, heightMm: r.heightMm })),
+    ...rows.map((r) => metaFrom(r.slug, r.name, { widthMm: r.widthMm, heightMm: r.heightMm })),
   ];
 }
 
@@ -79,7 +79,7 @@ export async function listLabels(user: User): Promise<LabelMeta[]> {
 export async function resolveLabel(user: User, id: LabelId): Promise<LabelMeta | null> {
   const labels = await listLabels(user);
   const first = labels[0] ?? null;
-  return labels.find(l => l.id === id) ?? first;
+  return labels.find((l) => l.id === id) ?? first;
 }
 
 /**
@@ -133,7 +133,10 @@ export async function saveLabel(
 /** Creates a label and saves it, ready to open in the Designer. */
 export async function createLabel(user: User, { name, widthMm, heightMm, from }: NewLabel): Promise<LabelMeta> {
   const existing = await listLabels(user);
-  const id = slugify(name, existing.map(l => l.id));
+  const id = slugify(
+    name,
+    existing.map((l) => l.id),
+  );
   if (!isValidId(id)) throw new Error(`“${name}” cannot be turned into a usable label id.`);
 
   let template: Template;
@@ -157,7 +160,10 @@ export async function createLabel(user: User, { name, widthMm, heightMm, from }:
     }
 
     default:
-      template = { basePdf: { width: widthMm, height: heightMm, padding: [0, 0, 0, 0] }, schemas: [[]] } as unknown as Template;
+      template = {
+        basePdf: { width: widthMm, height: heightMm, padding: [0, 0, 0, 0] },
+        schemas: [[]],
+      } as unknown as Template;
       generator = { version: 1, fields: {} };
       break;
   }
@@ -166,7 +172,9 @@ export async function createLabel(user: User, { name, widthMm, heightMm, from }:
   // pdfme needs `padding` on a blank page; leaving it out makes the label impossible to open.
   const prev = template.basePdf as unknown as { padding?: [number, number, number, number] } | undefined;
   template.basePdf = {
-    width: widthMm, height: heightMm, padding: prev?.padding ?? [0, 0, 0, 0],
+    width: widthMm,
+    height: heightMm,
+    padding: prev?.padding ?? [0, 0, 0, 0],
   } as unknown as Template['basePdf'];
   checkTemplate(template); // fail here, with pdfme's message, rather than save a label that cannot open
   generator = scaffoldSpec(template, generator);
@@ -228,11 +236,19 @@ export async function deleteLabel(user: User, label: LabelId): Promise<void> {
 const lastKey = (user: User) => `q-print.label.${user.id}`;
 
 export function loadLastLabel(user: User): LabelId | null {
-  try { return localStorage.getItem(lastKey(user)); } catch { return null; }
+  try {
+    return localStorage.getItem(lastKey(user));
+  } catch {
+    return null;
+  }
 }
 
 export function rememberLabel(user: User, label: LabelId) {
-  try { localStorage.setItem(lastKey(user), label); } catch { /* not critical */ }
+  try {
+    localStorage.setItem(lastKey(user), label);
+  } catch {
+    /* not critical */
+  }
 }
 
 // ---------------------------------------------------------------------------------------------

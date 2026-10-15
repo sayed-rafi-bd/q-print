@@ -1,22 +1,36 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from 'vitest';
+
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import LabelPicker from './LabelPicker';
+import type { ComponentProps } from 'react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import LabelPicker, { ReloadLabelsButton, useLabelReload } from './LabelPicker';
 import type { LabelMeta } from './labels';
 
 afterEach(cleanup);
 
 const meta = (id: string, name = id): LabelMeta => ({ id, name, builtin: false, widthMm: 100, heightMm: 50 });
 
-const labels = [
-  { ...meta('product', 'Product label'), builtin: true },
-  meta('parcel', 'My parcel'),
-];
+const labels = [{ ...meta('product', 'Product label'), builtin: true }, meta('parcel', 'My parcel')];
 
-const setup = (overrides: Partial<React.ComponentProps<typeof LabelPicker>> = {}) => {
+type HarnessProps = Omit<ComponentProps<typeof LabelPicker>, 'note'> & {
+  onReload: () => Promise<string | null>;
+};
+
+/** Wires the picker and the reload button together the way the Print tab does. */
+function Harness({ onReload, disabled, ...picker }: HarnessProps) {
+  const { reload, reloading, note } = useLabelReload(picker.labels, onReload);
+  return (
+    <>
+      <ReloadLabelsButton onClick={reload} reloading={reloading} disabled={disabled} />
+      <LabelPicker {...picker} disabled={disabled} note={note} />
+    </>
+  );
+}
+
+const setup = (overrides: Partial<HarnessProps> = {}) => {
   const onChange = vi.fn();
   const onReload = vi.fn(async () => null as string | null);
-  render(<LabelPicker labels={labels} value="parcel" onChange={onChange} onReload={onReload} {...overrides} />);
+  render(<Harness labels={labels} value="parcel" onChange={onChange} onReload={onReload} {...overrides} />);
   return { onChange, onReload };
 };
 
@@ -63,7 +77,7 @@ describe('the label picker', () => {
 
   it('says so when a reload found nothing', async () => {
     // An empty list is not an error: it is what an account with no labels sees.
-    render(<LabelPicker labels={[]} value="" onChange={vi.fn()} onReload={vi.fn(async () => null)} />);
+    render(<Harness labels={[]} value="" onChange={vi.fn()} onReload={vi.fn(async () => null)} />);
     fireEvent.click(reloadButton());
     expect(await screen.findByText('No labels found.')).toBeTruthy();
   });
@@ -87,7 +101,12 @@ describe('the label picker', () => {
 
   it('shows that it is busy while a reload is in flight', async () => {
     let finish!: () => void;
-    const slow = vi.fn(() => new Promise<string | null>(resolve => { finish = () => resolve(null); }));
+    const slow = vi.fn(
+      () =>
+        new Promise<string | null>((resolve) => {
+          finish = () => resolve(null);
+        }),
+    );
     setup({ onReload: slow });
     fireEvent.click(reloadButton());
     expect(reloadButton().disabled).toBe(true);
@@ -111,7 +130,7 @@ describe('the label picker', () => {
   });
 
   it('disables the picker when there are no labels', () => {
-    render(<LabelPicker labels={[]} value="" onChange={vi.fn()} onReload={vi.fn()} />);
+    render(<Harness labels={[]} value="" onChange={vi.fn()} onReload={vi.fn(async () => null)} />);
     expect((screen.getByRole('combobox', { name: 'Label' }) as HTMLSelectElement).disabled).toBe(true);
   });
 });

@@ -24,29 +24,48 @@ export const SAMPLE_SIZE: { widthMm: number; heightMm: number } = {
 };
 
 const text = (name: string, y: number, extra: Record<string, unknown> = {}) => ({
-  type: 'text', name, content: '',
-  position: { x: 4, y }, width: 92, height: 5, fontSize: 8, ...extra,
+  type: 'text',
+  name,
+  content: '',
+  position: { x: 4, y },
+  width: 92,
+  height: 5,
+  fontSize: 8,
+  ...extra,
 });
 
 const SAMPLE_TEMPLATE = {
   basePdf: { width: SAMPLE_SIZE.widthMm, height: SAMPLE_SIZE.heightMm, padding: [0, 0, 0, 0] },
-  schemas: [[
-    {
-      // Read-only, so it prints its own text and never gets a rule.
-      type: 'text', name: 'title', content: 'Sample label',
-      position: { x: 4, y: 3 }, width: 60, height: 7, fontSize: 13, readOnly: true,
-    },
-    text('note', 12, { width: 60, content: 'Change any of this in the Data tab.' }),
-    text('madeOn', 18),
-    text('city', 24),
-    text('zip', 30, { width: 40 }),
-    text('pageNo', 36, { width: 20 }),
-    {
-      type: 'code128', name: 'itemCode', content: '',
-      position: { x: 4, y: 40 }, width: 92, height: 8, includetext: true,
-    },
-    text('itemCodeText', 40, { width: 92, fontSize: 6 }),
-  ]],
+  schemas: [
+    [
+      {
+        // Read-only, so it prints its own text and never gets a rule.
+        type: 'text',
+        name: 'title',
+        content: 'Sample label',
+        position: { x: 4, y: 3 },
+        width: 60,
+        height: 7,
+        fontSize: 13,
+        readOnly: true,
+      },
+      text('note', 12, { width: 60, content: 'Change any of this in the Data tab.' }),
+      text('madeOn', 18),
+      text('city', 24),
+      text('zip', 30, { width: 40 }),
+      text('pageNo', 36, { width: 20 }),
+      {
+        type: 'code128',
+        name: 'itemCode',
+        content: '',
+        position: { x: 4, y: 40 },
+        width: 92,
+        height: 8,
+        includetext: true,
+      },
+      text('itemCodeText', 40, { width: 92, fontSize: 6 }),
+    ],
+  ],
 } as unknown as Template;
 
 const SAMPLE_SPEC: GeneratorSpec = {
