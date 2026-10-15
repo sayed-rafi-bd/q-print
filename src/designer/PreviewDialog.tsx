@@ -2,7 +2,7 @@ import type { Template } from '@pdfme/common';
 import { barcodes, rectangle, text } from '@pdfme/schemas';
 import { Viewer } from '@pdfme/ui';
 import { useEffect, useRef, useState } from 'react';
-import { generateRows, generateRowsFromRecords } from '../generator/engine';
+import { previewInputs } from '../generator/previewInputs';
 import type { GeneratorSpec } from '../generator/spec';
 import { loadFont } from '../printApi';
 
@@ -33,6 +33,7 @@ export default function PreviewDialog({ template, spec, sample = null, onClose }
   const container = useRef<HTMLDivElement>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(true);
+  const [standInBarcodes, setStandInBarcodes] = useState<string[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -40,10 +41,8 @@ export default function PreviewDialog({ template, spec, sample = null, onClose }
     (async () => {
       try {
         // A handful of pages, so a sequence rule and a table read sensibly.
-        const inputs =
-          spec.source && sample && sample.length > 0
-            ? generateRowsFromRecords(spec, sample.slice(0, 3), 1)
-            : generateRows(spec, 3, { placeholders: Boolean(spec.source) });
+        const { inputs, standInBarcodes: madeUp } = previewInputs(template, spec, sample);
+        setStandInBarcodes(madeUp);
         const font = await loadFont();
         if (cancelled || !container.current) return;
         viewer = new Viewer({
@@ -80,8 +79,10 @@ export default function PreviewDialog({ template, spec, sample = null, onClose }
 
       {standIns && (
         <p className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900">
-          No sample has been fetched, so fields that read the API show their path. Fetch a sample in the Source pane to
-          preview real values (a barcode cannot show a path).
+          No sample has been fetched, so fields that read the API show their path.
+          {standInBarcodes.length > 0 &&
+            ` Barcode field(s) ${standInBarcodes.join(', ')} show a made-up value, since a barcode cannot show a path.`}{' '}
+          Fetch a sample in the Source pane to preview real values.
         </p>
       )}
 
