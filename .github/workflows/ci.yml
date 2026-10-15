@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
 
 concurrency:
@@ -10,10 +10,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # The pure TypeScript that carries the data generator and the label registry, plus the Rust
-  # side of label storage.
-  tests:
-    if: false   # TEMPORARILY DISABLED
+  # Formatting, lint rules and import order (Biome). Needs no Rust or Tauri setup, so it is quick.
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,8 +21,30 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test
+      - run: pnpm check
+
+  # Type-check and unit tests of the TypeScript side (the data generator and the label registry).
+  typescript:
+    if: false   # TEMPORARILY DISABLED
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
+      - run: pnpm test
+
+  # Rust unit tests for label storage. Separate from `typescript` so a TS failure does not wait
+  # behind the Rust build.
+  rust-tests:
+    if: false   # TEMPORARILY DISABLED
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: swatinem/rust-cache@v2
         with:

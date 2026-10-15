@@ -198,7 +198,7 @@ Keep the keystore and its passwords out of git and back them up; a lost Play Sto
 
 ### Both at once on GitHub
 Pushing a version tag runs `.github/workflows/release.yml`, which builds the Windows installers and an Android APK and
-attaches them to a draft release (the APK is unsigned until you add signing secrets):
+attaches them to a draft release (the APK is signed when the four `ANDROID_*` signing secrets are set, see RELEASE.md; unsigned otherwise):
 ```powershell
 pnpm version:minor --tag    # 0.1.0 -> 0.2.0: commits "Release v0.2.0" and creates the tag
 git push origin main        # wait for CI to pass
@@ -234,7 +234,7 @@ a debug APK build.
 ## Designer
 The **Designer** tab is the pdfme designer. Edit the layout, set the page size, and press *Save template*.
 The template is saved to the app data folder (on Windows
-`%APPDATA%\com.example.print-test\label-template-product.json`) and the Print tab uses it from then on.
+`%APPDATA%\jp.co.keex.qprint\label-template-product.json`) and the Print tab uses it from then on.
 *Reset to default* deletes it and returns to `src/templates/product-label.json`.
 Fields named like the keys listed in the Designer ("Fields filled with random data") get random data per page;
 any other field prints its own text.

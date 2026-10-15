@@ -170,17 +170,18 @@ migrations itself at start-up, so an existing database gets them on next launch.
 
 ## Signing the Android release
 
-Android refuses to install an unsigned APK, so a release build needs a keystore. Do this once. Signing
-is not set up in CI yet, so the APK attached to a draft release is still unsigned.
+Android refuses to install an unsigned APK, so a release build needs a keystore. Do this once. Back
+the keystore and its passwords up somewhere safe: if you lose them, you cannot update the app under
+the same signature.
 
-1. Create the keystore. Back it up and its passwords somewhere safe: if you lose it, you cannot update
-   the app under the same signature.
+1. Create the keystore:
 
    ```powershell
    keytool -genkey -v -keystore $HOME\upload-keystore.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload
    ```
 
-2. Create `src-tauri/gen/android/keystore.properties`. It is git-ignored and must never be committed:
+2. **Local builds.** Create `src-tauri/gen/android/keystore.properties`. It is git-ignored and must
+   never be committed:
 
    ```
    storePassword=YOUR_PASSWORD
@@ -189,15 +190,24 @@ is not set up in CI yet, so the APK attached to a draft release is still unsigne
    storeFile=C:\\Users\\YOU\\upload-keystore.jks
    ```
 
-3. In `src-tauri/gen/android/app/build.gradle.kts`, add `import java.io.FileInputStream` at the top and
-   a `signingConfigs` block inside `android { }` that reads `keystore.properties`. Then point the
-   release build type at it with `signingConfig = signingConfigs.getByName("release")`. Use the exact
-   block from Tauri's "Android Code Signing" page, because the generated file can change between Tauri
-   CLI versions.
-4. Run `pnpm build:android`. Each signed APK is moved to `releases\q-print_<version>_<abi>-release.apk`.
+   `app/build.gradle.kts` signs the release build with it when the file exists. Without the file the
+   release APK is built unsigned, and debug builds are unaffected. Run `pnpm build:android`; each
+   signed APK is moved to `releases\q-print_<version>_<abi>-release.apk`.
 
-To sign in CI, store the keystore (base64) and passwords as GitHub secrets and write them out before
-the build step. That step is not written yet.
+3. **CI builds.** Add four repository secrets (Settings > Secrets and variables > Actions):
+
+   | Secret                       | Value                                                           |
+   | ---------------------------- | --------------------------------------------------------------- |
+   | `ANDROID_KEYSTORE_BASE64`    | the keystore, base64-encoded (`base64 -w0 upload-keystore.jks`; on Windows `[Convert]::ToBase64String([IO.File]::ReadAllBytes("$HOME\upload-keystore.jks"))`) |
+   | `ANDROID_KEYSTORE_PASSWORD`  | the keystore password                                           |
+   | `ANDROID_KEY_ALIAS`          | `upload` (the alias from step 1)                                |
+   | `ANDROID_KEY_PASSWORD`       | the key password                                                |
+
+   The `android` job in `release.yml` decodes them into a temporary `keystore.properties`, builds,
+   checks every APK with `apksigner verify`, and deletes the keystore again. If
+   `ANDROID_KEYSTORE_BASE64` is missing the job warns and still builds an unsigned APK.
+
+Windows installers are not code-signed, so SmartScreen shows a warning on first run.
 
 ## Installing and testing on a phone
 
