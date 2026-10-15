@@ -4,6 +4,7 @@ import { useAuth } from './auth/AuthProvider';
 import { isBuiltin } from './builtinLabels';
 import { bundleJson, makeBundle, parseBundle } from './bundle';
 import { scaffoldSpec } from './generator/scaffold';
+import { fitName } from './labelId';
 import { createLabel, type LabelId, loadLabel, saveLabel } from './labels';
 import { saveBuiltinTemplate } from './templateStore';
 
@@ -111,7 +112,7 @@ export default function TemplateTransfer({
 
       if (parsed.bundle) {
         // A whole label. Imported as a new label of its own, so it cannot overwrite one by mistake.
-        const name = parsed.bundle.name.trim() || 'Imported label';
+        const name = fitName(parsed.bundle.name) || 'Imported label';
         const template = parsed.bundle.template as Template;
         const generator = scaffoldSpec(template, parsed.bundle.generator);
         const size = (template.basePdf as { width?: number; height?: number }) ?? {};

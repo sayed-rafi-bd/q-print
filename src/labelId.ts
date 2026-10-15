@@ -42,3 +42,22 @@ export function slugify(name: string, taken: Iterable<string> = []): string {
   // Only reachable with a thousand labels of the same name; a timestamp is good enough.
   return `label-${Date.now()}`;
 }
+
+/** Longest label name, in characters. Keeps names readable in the label list and dropdowns. */
+export const MAX_NAME = 20;
+
+const chars = (text: string): string[] => Array.from(text);
+
+/** Why a label name cannot be used, or null when it can. */
+export function nameProblem(name: string): string | null {
+  const n = chars(name.trim()).length;
+  if (n === 0) return 'A label needs a name.';
+  if (n > MAX_NAME) return `A label name can have at most ${MAX_NAME} characters (this one has ${n}).`;
+  return null;
+}
+
+/** `name` plus `suffix`, with the name shortened so the whole fits in {@link MAX_NAME}. */
+export function fitName(name: string, suffix = ''): string {
+  const room = Math.max(0, MAX_NAME - chars(suffix).length);
+  return `${chars(name.trim()).slice(0, room).join('').trimEnd()}${suffix}`.trim();
+}

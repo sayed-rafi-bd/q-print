@@ -149,7 +149,15 @@ describe('the Data tab with an API source', () => {
     schemas: [[{ name: 'who', type: 'text', position: { x: 0, y: 0 }, width: 10, height: 5 }]],
   } as never;
 
-  function Editor({ spec, sample }: { spec: GeneratorSpec; sample: unknown[] | null }) {
+  function Editor({
+    spec,
+    sample,
+    onOpenSource,
+  }: {
+    spec: GeneratorSpec;
+    sample: unknown[] | null;
+    onOpenSource?: () => void;
+  }) {
     const [s, setS] = useState(spec);
     return (
       <DataEditor
@@ -158,7 +166,7 @@ describe('the Data tab with an API source', () => {
         onChange={setS}
         onPreview={() => {}}
         sample={sample}
-        onSample={() => {}}
+        onOpenSource={onOpenSource}
       />
     );
   }
@@ -194,10 +202,12 @@ describe('the Data tab with an API source', () => {
     expect(screen.getByText(/was not found/)).toBeTruthy();
   });
 
-  it('has a Source tab', () => {
-    render(<Editor spec={{ version: 1, fields: {} }} sample={null} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Source' }));
-    expect(screen.getByRole('button', { name: /use an api/i })).toBeTruthy();
+  it('points to the top-level Source tab instead of holding the source itself', () => {
+    const open = vi.fn();
+    render(<Editor spec={{ version: 1, fields: {} }} sample={null} onOpenSource={open} />);
+    expect(screen.queryByRole('button', { name: 'Source' })).toBeNull(); // no Source pill inside Data
+    fireEvent.click(screen.getByRole('button', { name: 'Source tab' }));
+    expect(open).toHaveBeenCalledTimes(1);
   });
 
   it('keeps a label valid once the source and an api field are filled in', () => {

@@ -29,8 +29,7 @@ test.describe('designer: API data source', () => {
     await expect(page.getByLabel('Label', { exact: true })).toHaveValue(/api-label/);
 
     // Turn the data source on and describe it.
-    await tabButton(page, 'Data').click();
-    await page.getByRole('button', { name: /^Source/ }).click();
+    await tabButton(page, 'Source').click();
     await page.getByRole('button', { name: 'Use an API as the data source' }).click();
     await page.getByLabel('URL pattern').fill('api.e2e.test/items/{id}');
 
@@ -43,6 +42,7 @@ test.describe('designer: API data source', () => {
     await expect(test_.getByText('title', { exact: true })).toBeVisible(); // a path offered from the sample
 
     // Map a field to a path in the response; its live sample shows the real value.
+    await tabButton(page, 'Data').click();
     await page.getByRole('button', { name: 'Fields', exact: true }).click();
     const title = page.locator('details').filter({ has: page.locator('code', { hasText: /^title$/ }) });
     await title.locator('summary').click();
@@ -55,8 +55,7 @@ test.describe('designer: API data source', () => {
     await expect(page.getByText('Saved. This label is on your account.')).toBeVisible();
     await page.reload();
     await designerReady(page);
-    await tabButton(page, 'Data').click();
-    await page.getByRole('button', { name: /^Source/ }).click();
+    await tabButton(page, 'Source').click();
     await expect(page.getByLabel('URL pattern')).toHaveValue('api.e2e.test/items/{id}');
     await expect(page.getByRole('status')).toHaveCount(0);
 
@@ -69,8 +68,7 @@ test.describe('designer: API data source', () => {
     );
     await signUp(page);
     await createLabel(page, { name: 'Api error', from: 'sample' });
-    await tabButton(page, 'Data').click();
-    await page.getByRole('button', { name: /^Source/ }).click();
+    await tabButton(page, 'Source').click();
     await page.getByRole('button', { name: 'Use an API as the data source' }).click();
     await page.getByLabel('URL pattern').fill('api.e2e.test/secure');
     await page.getByLabel('Use a bearer token').check();
@@ -90,8 +88,7 @@ test.describe('designer: API data source', () => {
   test('a bad address is reported and blocks Save', async ({ page }) => {
     await signUp(page);
     await createLabel(page, { name: 'Api bad url', from: 'sample' });
-    await tabButton(page, 'Data').click();
-    await page.getByRole('button', { name: /^Source/ }).click();
+    await tabButton(page, 'Source').click();
     await page.getByRole('button', { name: 'Use an API as the data source' }).click();
     await page.getByLabel('URL pattern').fill('ftp://api.e2e.test/{id}');
 

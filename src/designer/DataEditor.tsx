@@ -6,7 +6,6 @@ import { sampleField, validateSpec } from '../generator/engine';
 import { dataFields, orphanRules, type TemplateField, templateFields } from '../generator/scaffold';
 import type { FieldRule, GeneratorSpec } from '../generator/spec';
 import { RuleRow } from './RuleEditor';
-import SourcePane from './SourcePane';
 import TableEditor from './TableEditor';
 
 const btnCls =
@@ -29,7 +28,8 @@ type Props = {
   readOnly?: boolean;
   /** Records fetched from the label's API in the Source pane, kept by the designer. Never saved. */
   sample?: unknown[] | null;
-  onSample?: (records: unknown[] | null) => void;
+  /** Switches the designer to its Source tab, where the API address is set. */
+  onOpenSource?: () => void;
 };
 
 /**
@@ -38,8 +38,16 @@ type Props = {
  * This is deliberately a fixed set of rule kinds rather than a small language, so what a label
  * prints is always something the screen shows before saving.
  */
-export default function DataEditor({ template, spec, onChange, onPreview, readOnly, sample = null, onSample }: Props) {
-  const [pane, setPane] = useState<'fields' | 'tables' | 'source'>('fields');
+export default function DataEditor({
+  template,
+  spec,
+  onChange,
+  onPreview,
+  readOnly,
+  sample = null,
+  onOpenSource,
+}: Props) {
+  const [pane, setPane] = useState<'fields' | 'tables'>('fields');
   const [sampleTick, setSampleTick] = useState(0);
 
   const fields = useMemo(() => dataFields(template), [template]);
@@ -73,7 +81,6 @@ export default function DataEditor({ template, spec, onChange, onPreview, readOn
 
   const firstRecord = sample?.[0];
   const samplePaths = useMemo(() => (firstRecord === undefined ? [] : leafPaths(firstRecord)), [firstRecord]);
-  const usesApi = Object.values(spec.fields).some((r) => r?.kind === 'api');
 
   const sampleFor = (field: TemplateField) => {
     // sampleTick makes "New sample" draw again from the same spec.
@@ -104,9 +111,6 @@ export default function DataEditor({ template, spec, onChange, onPreview, readOn
         </button>
         <button type="button" className={tabCls(pane === 'tables')} onClick={() => setPane('tables')}>
           Tables
-        </button>
-        <button type="button" className={tabCls(pane === 'source')} onClick={() => setPane('source')}>
-          Source{spec.source ? ' •' : ''}
         </button>
         <span className="ml-auto flex gap-1.5">
           <button type="button" className={btnCls} onClick={() => setSampleTick((t) => t + 1)}>
@@ -145,6 +149,15 @@ export default function DataEditor({ template, spec, onChange, onPreview, readOn
 
       {pane === 'fields' && (
         <div className="space-y-2">
+          {!spec.source && onOpenSource && (
+            <p className="rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs text-indigo-900">
+              To fill fields from a web API, set the address in the{' '}
+              <button type="button" className="cursor-pointer font-semibold underline" onClick={onOpenSource}>
+                Source tab
+              </button>{' '}
+              first.
+            </p>
+          )}
           {fields.length === 0 && (
             <p className="text-sm text-slate-500">
               This template has no fields that can take data. Add text or a barcode field in the Layout tab, and it will
@@ -249,20 +262,6 @@ export default function DataEditor({ template, spec, onChange, onPreview, readOn
       )}
 
       {pane === 'tables' && <TableEditor spec={spec} onChange={onChange} readOnly={locked} />}
-
-      {pane === 'source' && (
-        <SourcePane
-          source={spec.source}
-          onChange={(source) => {
-            const { source: _old, ...rest } = spec;
-            onChange(source ? { ...rest, source } : rest);
-          }}
-          sample={sample}
-          onSample={(records) => onSample?.(records)}
-          usedByFields={usesApi}
-          readOnly={locked}
-        />
-      )}
     </div>
   );
 }

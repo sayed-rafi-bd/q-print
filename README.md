@@ -365,6 +365,12 @@ before it reaches a print job. **Preview label** renders the real page with pdfm
 A built-in label's rules ship with the app, so the Data tab is read-only for them; **Duplicate**
 gives you an editable copy with the same layout and the same rules.
 
+The built-in **Product label** reads its data from a **mock API that runs inside the app**
+(`https://mock.q-print.invalid/products?count={count}`, see `src/generator/mockApi.ts`). The request
+never leaves the device and works offline. On the Print tab you enter *Number of labels* (`count`);
+*Copies of each record* then repeats each one. In the Designer, the Source tab shows the address
+read-only. Duplicate the label to point the copy at your own API.
+
 ### Data from a web API
 
 Instead of random data, a label can print real records from a web API. The data source belongs to

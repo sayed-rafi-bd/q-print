@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '../auth/AuthProvider';
+import { fitName, MAX_NAME } from '../labelId';
 import { createLabel, deleteLabel, type LabelId, type LabelMeta, type NewLabel, renameLabel } from '../labels';
 import Modal from './Modal';
 import NewLabelDialog from './NewLabelDialog';
@@ -64,7 +65,7 @@ export default function LabelToolbar({ labels, value, disabled, onPick, onChange
     run(async () => {
       if (!user) throw new Error('You are not signed in.');
       const copy = await createLabel(user, {
-        name: `${current!.name} copy`,
+        name: fitName(current!.name, ' copy'),
         widthMm: current!.widthMm,
         heightMm: current!.heightMm,
         from: { kind: 'copy', id: current!.id },
@@ -104,7 +105,7 @@ export default function LabelToolbar({ labels, value, disabled, onPick, onChange
           value={value}
           disabled={disabled}
           onChange={(e) => onPick(e.target.value)}
-          className={`${selectCls} max-w-64`}
+          className={`${selectCls} w-64 truncate`}
         >
           {labels.map((l) => (
             <option key={l.id} value={l.id}>
@@ -188,6 +189,7 @@ export default function LabelToolbar({ labels, value, disabled, onPick, onChange
             // biome-ignore lint/a11y/noAutofocus: focus the field when this dialog opens
             autoFocus
             value={newName}
+            maxLength={MAX_NAME}
             onChange={(e) => setNewName(e.target.value)}
             className="w-64 rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
           />

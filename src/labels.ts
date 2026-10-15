@@ -7,7 +7,7 @@ import type { User } from './db/users';
 import { builtinSpec } from './generator/builtins';
 import { scaffoldSpec } from './generator/scaffold';
 import type { GeneratorSpec, LabelBundle } from './generator/spec';
-import { isValidId, slugify } from './labelId';
+import { isValidId, nameProblem, slugify } from './labelId';
 import { sampleSpec, sampleTemplate } from './sampleLabel';
 import {
   assertUsableTemplate,
@@ -132,6 +132,8 @@ export async function saveLabel(
 
 /** Creates a label and saves it, ready to open in the Designer. */
 export async function createLabel(user: User, { name, widthMm, heightMm, from }: NewLabel): Promise<LabelMeta> {
+  const tooLong = nameProblem(name);
+  if (tooLong) throw new Error(tooLong);
   const existing = await listLabels(user);
   const id = slugify(
     name,
@@ -214,7 +216,8 @@ export async function importLabel(
 export async function renameLabel(user: User, label: LabelId, name: string): Promise<void> {
   if (isBuiltin(label)) throw new Error('A built-in label cannot be renamed.');
   const trimmed = name.trim();
-  if (!trimmed) throw new Error('A label needs a name.');
+  const problem = nameProblem(trimmed);
+  if (problem) throw new Error(problem);
   if (!(await store.updateLabel(getDb(), user.id, label, { name: trimmed }))) {
     throw new Error(`There is no label called “${label}” on this account.`);
   }

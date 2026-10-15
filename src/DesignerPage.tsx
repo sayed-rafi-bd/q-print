@@ -8,11 +8,11 @@ import { importLegacyLabels, shouldOfferImport } from './db/migrate';
 import DataEditor from './designer/DataEditor';
 import LabelToolbar from './designer/LabelToolbar';
 import PreviewDialog from './designer/PreviewDialog';
+import SourcePane from './designer/SourcePane';
 import { validateSpec } from './generator/engine';
 import { scaffoldSpec } from './generator/scaffold';
 import type { GeneratorSpec } from './generator/spec';
 import {
-  type LabelContent,
   type LabelId,
   type LabelMeta,
   listLabels,
@@ -60,12 +60,11 @@ export default function DesignerPage() {
   const [ready, setReady] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const [source, setSource] = useState<LabelContent['source']>('default');
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const [layoutDirty, setLayoutDirty] = useState(false);
   const [generator, setGenerator] = useState<GeneratorSpec>({ version: 1, fields: {} });
   const [generatorSaved, setGeneratorSaved] = useState<GeneratorSpec>({ version: 1, fields: {} });
-  const [tab, setTab] = useState<'layout' | 'data'>('layout');
+  const [tab, setTab] = useState<'layout' | 'source' | 'data'>('layout');
   const [previewing, setPreviewing] = useState(false);
   // Records fetched in the Source pane to map fields and preview. Memory only, never saved, and
   // dropped whenever another label is opened.
@@ -88,14 +87,13 @@ export default function DesignerPage() {
     async (target: LabelMeta) => {
       const d = designer.current;
       if (!d || !user) return;
-      const { template, source: from, generator: gen } = await loadLabel(user, target.id);
+      const { template, generator: gen } = await loadLabel(user, target.id);
       d.updateTemplate(template);
       savedSnapshot.current = JSON.stringify(d.getTemplate());
       labelRef.current = target.id;
       setLabelId(target.id);
       setMeta(target);
       setLayoutDirty(false);
-      setSource(from);
       setSize(readSize(template));
       setGenerator(gen);
       setGeneratorSaved(gen);
@@ -139,14 +137,13 @@ export default function DesignerPage() {
         // the designer stuck on "Loading": otherwise a single bad label locks the user out of
         // every other label, including the one they would need to delete it.
         const attempt = async (meta: LabelMeta) => {
-          const { template, source: from, generator: gen } = await loadLabel(user, meta.id);
+          const { template, generator: gen } = await loadLabel(user, meta.id);
           if (cancelled) return false;
           d!.updateTemplate(template);
           savedSnapshot.current = JSON.stringify(d!.getTemplate());
           labelRef.current = meta.id;
           setLabelId(meta.id);
           setMeta(meta);
-          setSource(from);
           setSize(readSize(template));
           setGenerator(gen);
           // What was just loaded is, by definition, what is saved. Without these two the page
@@ -206,7 +203,6 @@ export default function DesignerPage() {
       setGenerator(next);
       setGeneratorSaved(next);
       setLayoutDirty(false);
-      setSource(meta.builtin ? 'custom' : 'custom label');
       setMeta({ ...meta, widthMm: size?.w ?? meta.widthMm, heightMm: size?.h ?? meta.heightMm });
       setMessage(
         meta.builtin
@@ -233,7 +229,6 @@ export default function DesignerPage() {
       d.updateTemplate(template);
       savedSnapshot.current = JSON.stringify(d.getTemplate());
       setLayoutDirty(false);
-      setSource('default');
       setSize(readSize(template));
       setGenerator(gen);
       setGeneratorSaved(gen);
@@ -335,7 +330,6 @@ export default function DesignerPage() {
     d.updateTemplate(t);
     savedSnapshot.current = JSON.stringify(d.getTemplate());
     setLayoutDirty(false);
-    setSource(meta?.builtin ? 'custom' : 'custom label');
     setSize(readSize(t));
     setGenerator((g) => {
       const next = meta?.builtin ? g : scaffoldSpec(t, g);
@@ -398,11 +392,8 @@ export default function DesignerPage() {
 
         <div className="ml-auto flex items-center gap-3">
           <span className="text-xs text-slate-500">
-            Template in use: <span className="font-medium text-slate-700">{source}</span>
             {generatorDirty && (
-              <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-800">
-                ✏️ data not saved
-              </span>
+              <span className="rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-800">✏️ data not saved</span>
             )}
             {dirty && (
               <span className="ml-2 animate-pulse rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-800">
@@ -460,6 +451,16 @@ export default function DesignerPage() {
         </button>
         <button
           type="button"
+          onClick={() => setTab('source')}
+          className={
+            'cursor-pointer rounded-full px-3 py-1 text-xs font-semibold transition ' +
+            (tab === 'source' ? 'bg-indigo-500 text-white' : 'text-slate-500 hover:bg-indigo-100')
+          }
+        >
+          Source{generator.source ? ' •' : ''}
+        </button>
+        <button
+          type="button"
           onClick={() => setTab('data')}
           className={
             'cursor-pointer rounded-full px-3 py-1 text-xs font-semibold transition ' +
@@ -469,7 +470,11 @@ export default function DesignerPage() {
           Data{generatorDirty ? ' •' : ''}
         </button>
         <span className="ml-2 text-xs text-slate-400">
-          {tab === 'layout' ? 'Where things sit on the page.' : 'What each field prints on every page.'}
+          {tab === 'layout'
+            ? 'Where things sit on the page.'
+            : tab === 'source'
+              ? 'Where the data comes from.'
+              : 'What each field prints on every page.'}
         </span>
       </div>
 
@@ -565,8 +570,23 @@ export default function DesignerPage() {
               readOnly={meta?.builtin === true}
               onChange={setGenerator}
               sample={sample}
-              onSample={setSample}
+              onOpenSource={() => setTab('source')}
               onPreview={() => setPreviewing(true)}
+            />
+          </div>
+        )}
+        {tab === 'source' && (
+          <div className="absolute inset-0 overflow-auto bg-white/70 p-4">
+            <SourcePane
+              source={generator.source}
+              onChange={(next) => {
+                const { source: _old, ...rest } = generator;
+                setGenerator(next ? { ...rest, source: next } : rest);
+              }}
+              sample={sample}
+              onSample={setSample}
+              usedByFields={Object.values(generator.fields).some((r) => r?.kind === 'api')}
+              readOnly={meta?.builtin === true}
             />
           </div>
         )}

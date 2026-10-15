@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 import product from '../templates/product-label.json';
 import { barcodeProblem } from './barcodeCheck';
 import { builtinSpec } from './builtins';
-import { generateRows, validateSpec } from './engine';
+import { generateRowsFromRecords, validateSpec } from './engine';
+import { MOCK_HOST, mockResponse } from './mockApi';
 import { dataFields } from './scaffold';
 
 function seededRng(seed = 1) {
@@ -35,11 +36,18 @@ const PRODUCT_SHAPES: Record<string, RegExp> = {
   operator: /^SUJON MD SAIDUR$/,
 };
 
-const runParity = (id: string, shapes: Record<string, RegExp>, now = NOW) => {
+/** What a print does: ask the mock API for `n` records, then turn each into one page. */
+const mockRows = (id: string, n: number, seed = 7, now = NOW) => {
   const spec = builtinSpec(id);
-  expect(validateSpec(spec)).toEqual([]);
+  const url = spec.source!.url.replace('{count}', String(n));
+  const records = (JSON.parse(mockResponse(url, { now, rng: seededRng(seed) })) as { data: unknown[] }).data;
+  return generateRowsFromRecords(spec, records, 1, { now, rng: seededRng(seed) });
+};
 
-  const rows = generateRows(spec, 400, { now, rng: seededRng(7) });
+const runParity = (id: string, shapes: Record<string, RegExp>, now = NOW) => {
+  expect(validateSpec(builtinSpec(id))).toEqual([]);
+
+  const rows = mockRows(id, 400, 7, now);
   for (const row of rows) {
     for (const [field, shape] of Object.entries(shapes)) {
       expect(row[field], `${id}.${field} = ${JSON.stringify(row[field])}`).toMatch(shape);
@@ -75,7 +83,7 @@ describe('built-in product generator', () => {
 
   it('dates the issue within the last three months', () => {
     const now = new Date(2026, 9, 14);
-    const [row] = generateRows(builtinSpec('product'), 1, { now, rng: seededRng() });
+    const [row] = mockRows('product', 1, 1, now);
     // The Rust version wrote "2610 05 再"; the format is still YY MM DD, but relative to today.
     const parsed = /^(\d{2})(\d{2}) (\d{2}) 再$/.exec(row.issueDate);
     expect(parsed, row.issueDate).not.toBeNull();
@@ -92,11 +100,10 @@ describe('built-in barcodes', () => {
 
   for (const { id, template } of cases) {
     it(`generates content every ${id} barcode can encode`, () => {
-      const spec = builtinSpec(id);
       const barcodes = dataFields(template as Template).filter((f) => f.kind === 'barcode' || f.kind === 'qr');
       expect(barcodes.length).toBeGreaterThan(0);
 
-      const rows = generateRows(spec, 300, { now: NOW, rng: seededRng(13) });
+      const rows = mockRows(id, 300, 13);
       for (const field of barcodes) {
         for (const row of rows) {
           expect(
@@ -114,6 +121,12 @@ describe('built-in specs', () => {
     const a = builtinSpec('product');
     a.fields.brandName = { kind: 'fixed', value: 'changed' };
     expect(builtinSpec('product').fields.brandName).not.toEqual({ kind: 'fixed', value: 'changed' });
+  });
+
+  it('reads the in-app mock API, never a real server', () => {
+    const { source } = builtinSpec('product');
+    expect(new URL(source!.url.replace('{count}', '1')).host).toBe(MOCK_HOST);
+    expect(source!.bearerAuth).toBeUndefined();
   });
 
   it('falls back to an empty spec for an unknown id', () => {

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { fetchRecords } from '../apiClient';
 import { checkSourceUrl, leafPaths, urlVariables } from '../generator/apiSource';
+import { MOCK_HOST } from '../generator/mockApi';
 import type { ApiSource } from '../generator/spec';
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -121,6 +122,15 @@ export default function SourcePane({ source, onChange, sample, onSample, usedByF
 
   return (
     <div className="space-y-4">
+      {locked && (
+        <p className="rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs text-indigo-900">
+          This built-in label reads sample data from an API that runs inside the app, so no network is used. The address
+          and field mapping are fixed. Use <strong>Duplicate</strong> to get a copy you can point at your own API.
+        </p>
+      )}
+      {source.url.includes(MOCK_HOST) && !locked && (
+        <p className="text-xs text-slate-500">This address is the app's built-in sample API; it needs no network.</p>
+      )}
       <div className="space-y-1">
         <label htmlFor="source-url" className="text-xs font-medium text-slate-700">
           URL pattern

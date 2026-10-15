@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { MAX_NAME } from '../labelId';
 import type { LabelId, LabelMeta, NewLabel } from '../labels';
 import { SAMPLE_LABEL_NAME, SAMPLE_SIZE } from '../sampleLabel';
 
@@ -106,11 +107,15 @@ export default function NewLabelDialog({ labels, onCreate, onClose }: Props) {
           // biome-ignore lint/a11y/noAutofocus: focus the field when this dialog opens
           autoFocus
           value={name}
+          maxLength={MAX_NAME}
           onChange={(e) => setName(e.target.value)}
           placeholder="My parcel label"
           className={`${inputCls} w-full`}
         />
-        <p className="text-xs text-slate-500">Shown in the label list. The file name is made from it.</p>
+        <p className="text-xs text-slate-500">
+          Shown in the label list, up to {MAX_NAME} characters ({Array.from(name).length}/{MAX_NAME}). The file name is
+          made from it.
+        </p>
       </div>
 
       <fieldset className="space-y-2">

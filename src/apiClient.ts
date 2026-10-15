@@ -11,6 +11,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { buildUrl, checkSourceUrl, extractRecords } from './generator/apiSource';
 import { LIMITS } from './generator/engine';
+import { isMockUrl, mockResponse } from './generator/mockApi';
 import type { ApiSource } from './generator/spec';
 import { isTauri } from './platform';
 
@@ -48,6 +49,9 @@ export const makeTauriTransport =
       throw new Error(scrub(message(e), bearer));
     }
   };
+
+/** The in-app mock API: answered here, so no request leaves the device. */
+export const mockTransport: Transport = async (url) => mockResponse(url);
 
 /** The fallback for a plain browser. */
 export const browserTransport: Transport = async (url, bearer, signal) => {
@@ -111,7 +115,8 @@ export async function fetchRecords(
   if (source.bearerAuth && !bearer) throw new Error('Enter the access token for this label.');
   if (bearer && !/^https:\/\//i.test(url)) throw new Error('Refusing to send an access token without HTTPS.');
 
-  const transport = opts.transport ?? (isTauri() ? makeTauriTransport() : browserTransport);
+  const transport =
+    opts.transport ?? (isMockUrl(url) ? mockTransport : isTauri() ? makeTauriTransport() : browserTransport);
   let text: string;
   try {
     text = await transport(url, bearer, opts.signal);

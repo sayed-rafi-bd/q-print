@@ -270,15 +270,14 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
     };
   }, [printer, caps.dpiSelect]);
 
-  // Read the selected label's data source. Built-in labels never have one. A late answer for a
+  // Read the selected label's data source (built-in labels read the in-app mock API). A late answer for a
   // label that is no longer selected is ignored.
   const selectedId = label?.id ?? '';
-  const selectedBuiltin = label?.builtin ?? true;
   useEffect(() => {
     setSource(null);
     setToken('');
     setChecked(null);
-    if (!user || !selectedId || selectedBuiltin) return;
+    if (!user || !selectedId) return;
     let stale = false;
     loadLabel(user, selectedId)
       .then(({ generator }) => {
@@ -296,9 +295,9 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
     return () => {
       stale = true;
     };
-  }, [user, selectedId, selectedBuiltin]);
+  }, [user, selectedId]);
 
-  const sourceReady = selectedBuiltin || sourceLoadedFor === selectedId;
+  const sourceReady = sourceLoadedFor === selectedId;
 
   const onPrint = async () => {
     if (!label || !user) return; // nothing selected yet; the button is disabled until there is one

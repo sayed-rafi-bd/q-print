@@ -46,7 +46,7 @@ export async function expectCanvasPainted(page: Page) {
   await expect(canvas(page).getByText('Field List')).toBeVisible();
 }
 
-export const tabButton = (page: Page, name: 'Layout' | 'Data') =>
+export const tabButton = (page: Page, name: 'Layout' | 'Source' | 'Data') =>
   page.getByRole('button', { name: new RegExp(`^${name}`) });
 
 /** Creates a label from the "New" dialog. */

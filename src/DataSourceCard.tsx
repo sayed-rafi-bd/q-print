@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { fetchRecords } from './apiClient';
 import { buildUrl, normalizeUrl, urlVariables } from './generator/apiSource';
 import { LIMITS } from './generator/engine';
+import { MOCK_HOST } from './generator/mockApi';
 import type { ApiSource } from './generator/spec';
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -148,6 +149,12 @@ export default function DataSourceCard({
           address.rest
         )}
       </p>
+
+      {address.host === MOCK_HOST && (
+        <p className="text-xs text-slate-500" data-testid="mock-note">
+          Sample data made inside the app. Nothing is sent over the network.
+        </p>
+      )}
 
       {source.bearerAuth && (
         <div className="space-y-1">
