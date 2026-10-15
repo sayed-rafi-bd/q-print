@@ -41,14 +41,14 @@ jobs:
       - name: Write .env from secrets
         shell: bash
         env:
-          TURSO_URL: ${{ secrets.TURSO_URL }}
-          TURSO_TOKEN: ${{ secrets.TURSO_TOKEN }}
+          VITE_TURSO_URL: ${{ secrets.VITE_TURSO_URL }}
+          VITE_TURSO_TOKEN: ${{ secrets.VITE_TURSO_TOKEN }}
         run: |
-          if [ -z "$TURSO_URL" ] || [ -z "$TURSO_TOKEN" ]; then
-            echo "::error::Add TURSO_URL and TURSO_TOKEN as repository secrets (Settings > Secrets and variables > Actions)."
+          if [ -z "$VITE_TURSO_URL" ] || [ -z "$VITE_TURSO_TOKEN" ]; then
+            echo "::error::Add VITE_TURSO_URL and VITE_TURSO_TOKEN as repository secrets (Settings > Secrets and variables > Actions)."
             exit 1
           fi
-          printf 'VITE_TURSO_URL=%s\nVITE_TURSO_TOKEN=%s\n' "$TURSO_URL" "$TURSO_TOKEN" > .env
+          printf 'VITE_TURSO_URL=%s\nVITE_TURSO_TOKEN=%s\n' "$VITE_TURSO_URL" "$VITE_TURSO_TOKEN" > .env
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -90,22 +90,58 @@ jobs:
       - name: Write .env from secrets
         shell: bash
         env:
-          TURSO_URL: ${{ secrets.TURSO_URL }}
-          TURSO_TOKEN: ${{ secrets.TURSO_TOKEN }}
+          VITE_TURSO_URL: ${{ secrets.VITE_TURSO_URL }}
+          VITE_TURSO_TOKEN: ${{ secrets.VITE_TURSO_TOKEN }}
         run: |
-          if [ -z "$TURSO_URL" ] || [ -z "$TURSO_TOKEN" ]; then
-            echo "::error::Add TURSO_URL and TURSO_TOKEN as repository secrets (Settings > Secrets and variables > Actions)."
+          if [ -z "$VITE_TURSO_URL" ] || [ -z "$VITE_TURSO_TOKEN" ]; then
+            echo "::error::Add VITE_TURSO_URL and VITE_TURSO_TOKEN as repository secrets (Settings > Secrets and variables > Actions)."
             exit 1
           fi
-          printf 'VITE_TURSO_URL=%s\nVITE_TURSO_TOKEN=%s\n' "$TURSO_URL" "$TURSO_TOKEN" > .env
+          printf 'VITE_TURSO_URL=%s\nVITE_TURSO_TOKEN=%s\n' "$VITE_TURSO_URL" "$VITE_TURSO_TOKEN" > .env
       - run: if [ ! -d src-tauri/gen/android ]; then pnpm tauri android init --ci; fi
       # A project committed from Windows has no executable bit on gradlew, which makes Gradle fail on Linux.
       - name: Make gradlew executable
         run: chmod +x src-tauri/gen/android/gradlew
-      - name: Build release APK (unsigned unless you add signing)
+      # `pnpm build:android` moves the APKs out of Gradle's output folder into releases/.
+      - name: Build release APK
         run: pnpm build:android
+      - name: Sign the APK
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          for v in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [ -z "${!v}" ]; then
+              echo "::error::Missing repository secret $v (Settings > Secrets and variables > Actions)."
+              exit 1
+            fi
+          done
+          shopt -s nullglob
+          apks=(releases/*.apk)
+          if [ ${#apks[@]} -eq 0 ]; then
+            echo "::error::No APK found in releases/ to sign."
+            exit 1
+          fi
+          KEYSTORE="$RUNNER_TEMP/release-keystore.jks"
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$KEYSTORE"
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)
+          for apk in "${apks[@]}"; do
+            final="${apk/-unsigned/}"
+            "$APKSIGNER" sign \
+              --ks "$KEYSTORE" \
+              --ks-key-alias "$ANDROID_KEY_ALIAS" \
+              --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
+              --key-pass env:ANDROID_KEY_PASSWORD \
+              --out "$apk.signed" "$apk"
+            rm "$apk"
+            mv "$apk.signed" "$final"
+            "$APKSIGNER" verify --print-certs "$final"
+          done
+          rm -f "$KEYSTORE"
       - uses: softprops/action-gh-release@v2
         with:
           draft: true
           fail_on_unmatched_files: true
-          files: src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+          files: releases/*.apk

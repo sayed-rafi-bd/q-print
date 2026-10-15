@@ -86,12 +86,12 @@ pnpm dev          # or try it locally at http://localhost:1420 in a normal brows
 In the Print tab open **Add a printer (no dialog)**, pick or enter the printer, press **Test**, then **Save printer**
 and select it in the Printer list. Printing to it never shows the Android print screen.
 
-| Connection                              | How it is found                               | What is sent                                                                  |
-|-----------------------------------------|-----------------------------------------------|-------------------------------------------------------------------------------|
-| Wi-Fi / LAN, **IPP** (port 631)         | **Find Wi-Fi printers** (mDNS) or type the IP | PDF as-is. If the printer lists no PDF support, a PWG raster bitmap (300 dpi) |
-| Wi-Fi / LAN, **raw socket** (port 9100) | mDNS or type the IP                           | PDF as-is, or a bitmap in **ZPL / TSPL / ESC-POS / CPCL**                     |
-| **Bluetooth** (classic SPP)             | paired devices list                           | bitmap in ZPL / TSPL / ESC-POS / CPCL                                         |
-| **USB** (OTG cable)                     | connected USB printers list                   | bitmap in ZPL / TSPL / ESC-POS / CPCL                                         |
+| Connection | How it is found | What is sent |
+|---|---|---|
+| Wi-Fi / LAN, **IPP** (port 631) | **Find Wi-Fi printers** (mDNS) or type the IP | PDF as-is. If the printer lists no PDF support, a PWG raster bitmap (300 dpi) |
+| Wi-Fi / LAN, **raw socket** (port 9100) | mDNS or type the IP | PDF as-is, or a bitmap in **ZPL / TSPL / ESC-POS / CPCL** |
+| **Bluetooth** (classic SPP) | paired devices list | bitmap in ZPL / TSPL / ESC-POS / CPCL |
+| **USB** (OTG cable) | connected USB printers list | bitmap in ZPL / TSPL / ESC-POS / CPCL |
 
 - **Test** (IPP) asks the printer for its model, state and supported formats, and says whether it takes PDF or PWG raster.
 - The label keeps the PDF's own page size. Bitmap languages render at the printer's resolution (default 203 dpi, set per
@@ -177,7 +177,8 @@ Release builds:
 pnpm build:android        # APK
 pnpm build:android:aab    # Play Store bundle
 ```
-A release APK is **unsigned** and Android refuses to install it. Create a keystore once and set up signing following the
+A release APK built on your PC is **unsigned** and Android refuses to install it. (The GitHub release workflow signs its
+APK for you; see `RELEASE.md`.) To sign locally, create a keystore once and set up signing following the
 Tauri v2 docs section "Android Code Signing" (a `keystore.properties` file plus a `signingConfigs` block in
 `src-tauri/gen/android/app/build.gradle.kts`):
 ```powershell
@@ -198,7 +199,8 @@ Keep the keystore and its passwords out of git and back them up; a lost Play Sto
 
 ### Both at once on GitHub
 Pushing a version tag runs `.github/workflows/release.yml`, which builds the Windows installers and an Android APK and
-attaches them to a draft release (the APK is signed when the four `ANDROID_*` signing secrets are set, see RELEASE.md; unsigned otherwise):
+attaches them to a draft release. The tag must be on a commit on `main`, and the repository needs the Turso and Android
+signing secrets listed in `RELEASE.md` ("GitHub secrets"):
 ```powershell
 pnpm version:minor --tag    # 0.1.0 -> 0.2.0: commits "Release v0.2.0" and creates the tag
 git push origin main        # wait for CI to pass
@@ -234,7 +236,7 @@ a debug APK build.
 ## Designer
 The **Designer** tab is the pdfme designer. Edit the layout, set the page size, and press *Save template*.
 The template is saved to the app data folder (on Windows
-`%APPDATA%\jp.co.keex.qprint\label-template-product.json`) and the Print tab uses it from then on.
+`%APPDATA%\com.example.print-test\label-template-product.json`) and the Print tab uses it from then on.
 *Reset to default* deletes it and returns to `src/templates/product-label.json`.
 Fields named like the keys listed in the Designer ("Fields filled with random data") get random data per page;
 any other field prints its own text.
@@ -289,20 +291,20 @@ in — once, and never again if the user deletes what was imported.
 
 ### Commands
 
-| Command            | Does                                                                                                 |
-|--------------------|------------------------------------------------------------------------------------------------------|
-| `pnpm test`        | Unit tests, including the SQL run against a local SQLite file. No credentials needed.                |
-| `pnpm test:db`     | The same flows against the **real** database. Needs `.env`; creates and removes a throwaway account. |
-| `pnpm db:generate` | Writes a migration from `src/db/schema.ts`.                                                          |
-| `pnpm db:migrate`  | Applies outstanding migrations (the app also does this at start-up).                                 |
+| Command | Does |
+| ------- | ---- |
+| `pnpm test` | Unit tests, including the SQL run against a local SQLite file. No credentials needed. |
+| `pnpm test:db` | The same flows against the **real** database. Needs `.env`; creates and removes a throwaway account. |
+| `pnpm db:generate` | Writes a migration from `src/db/schema.ts`. |
+| `pnpm db:migrate` | Applies outstanding migrations (the app also does this at start-up). |
 
 ## Labels
 
 The app ships with one label and lets you add your own, all chosen with the **Label** `<select>`:
 
-| Label         | id        | Page size    | Default layout                     |
-|---------------|-----------|--------------|------------------------------------|
-| Product label | `product` | 190 x 160 mm | `src/templates/product-label.json` |
+| Label                  | id         | Page size    | Default layout                       |
+| ---------------------- | ---------- | ------------ | ------------------------------------ |
+| Product label          | `product`  | 190 x 160 mm | `src/templates/product-label.json`   |
 
 A built-in keeps its saved template next to the bundled one (`label-template-product.json` for `product`)
 and has its own *Reset to default*. A label you create yourself is one row in the database, holding
@@ -416,39 +418,6 @@ Phones cannot use the Designer, but they can print anything imported this way.
 ## Large jobs
 Jobs of more than 50 pages are sent from the frontend to Rust as a raw binary payload (`print_pdf_raw`) instead
 of a JSON number array, which is much faster on a phone.
-
-## Building a smaller APK
-
-The APK is the front end plus the Rust library. Three things decide its size:
-
-**1. The Designer is the heaviest part, and a phone cannot use it.** `@pdfme/ui` and the UI kit
-behind it are about two thirds of the front end. `DesignerPage` is loaded on demand
-(`React.lazy`) and its dependencies are a separate Rollup chunk, so a phone — which cannot show
-the Designer at all — never downloads it: **2.9 MB at start-up instead of 7.8 MB**, with a further
-4.7 MB only when the Designer tab is actually opened. The split is pinned by
-`src/bundleSize.test.ts`, so losing it fails the tests.
-
-**2. The Rust release profile.** `src-tauri/Cargo.toml` sets `lto`, `codegen-units = 1`,
-`opt-level = "s"` and `strip`. Measured on the Linux target, the library goes from **5.5 MB to
-0.9 MB**, and that saving is paid once per architecture.
-
-**3. One architecture per APK.** `pnpm build:android` now passes `--split-per-abi`, so instead of
-a universal APK carrying four copies of the same library, `releases/` gets one APK per
-architecture. The AAB does the same, which is what Play wants.
-
-To see the numbers before building, `pnpm build && npx vitest run src/bundleSize.test.ts`.
-
-### Not done
-
-- **The Japanese font is 5.5 MB** (`public/fonts/NotoSansJP-Regular.ttf`), and printing needs the
-  raw TTF. It deflates to about 3.2 MB inside the APK. Subsetting it to only the glyphs in use would
-  save most of that, but a user can type any Japanese into a field, so that is a correctness risk
-  rather than a free win. Converting to WOFF2 and inflating at runtime would need a decompressor,
-  and would make a font failure fatal to printing.
-- `panic = "abort"` would save a little more of the library, but it turns any panic in the printing
-  worker threads into a hard crash.
-- PDF generation (`@pdfme/generator`, `pdf-lib`, `bwip-js`) is the other 2.5 MB and is needed
-  wherever printing is.
 
 ## Test order
 **Windows:** virtual printer (Microsoft Print to PDF), 1 page -> check PDF -> 5 pages (different data) ->

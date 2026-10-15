@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { LabelId, LabelMeta } from './labels';
 
 const smallBtn =
-  'cursor-pointer rounded-full border border-slate-300 px-2.5 py-1.5 text-xs font-medium text-slate-700 ' +
+  'cursor-pointer rounded-full border border-slate-300 size-8 text-xs font-medium text-slate-700 ' +
   'transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50';
 
 const selectCls =
@@ -66,7 +66,7 @@ export function ReloadLabelsButton({
       aria-label="Reload labels from the database"
       className={`${smallBtn} whitespace-nowrap`}
     >
-      {reloading ? 'Reloading…' : 'Reload labels'}
+      🔃
     </button>
   );
 }
