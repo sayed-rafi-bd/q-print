@@ -86,12 +86,12 @@ pnpm dev          # or try it locally at http://localhost:1420 in a normal brows
 In the Print tab open **Add a printer (no dialog)**, pick or enter the printer, press **Test**, then **Save printer**
 and select it in the Printer list. Printing to it never shows the Android print screen.
 
-| Connection | How it is found | What is sent |
-|---|---|---|
-| Wi-Fi / LAN, **IPP** (port 631) | **Find Wi-Fi printers** (mDNS) or type the IP | PDF as-is. If the printer lists no PDF support, a PWG raster bitmap (300 dpi) |
-| Wi-Fi / LAN, **raw socket** (port 9100) | mDNS or type the IP | PDF as-is, or a bitmap in **ZPL / TSPL / ESC-POS / CPCL** |
-| **Bluetooth** (classic SPP) | paired devices list | bitmap in ZPL / TSPL / ESC-POS / CPCL |
-| **USB** (OTG cable) | connected USB printers list | bitmap in ZPL / TSPL / ESC-POS / CPCL |
+| Connection                              | How it is found                               | What is sent                                                                  |
+|-----------------------------------------|-----------------------------------------------|-------------------------------------------------------------------------------|
+| Wi-Fi / LAN, **IPP** (port 631)         | **Find Wi-Fi printers** (mDNS) or type the IP | PDF as-is. If the printer lists no PDF support, a PWG raster bitmap (300 dpi) |
+| Wi-Fi / LAN, **raw socket** (port 9100) | mDNS or type the IP                           | PDF as-is, or a bitmap in **ZPL / TSPL / ESC-POS / CPCL**                     |
+| **Bluetooth** (classic SPP)             | paired devices list                           | bitmap in ZPL / TSPL / ESC-POS / CPCL                                         |
+| **USB** (OTG cable)                     | connected USB printers list                   | bitmap in ZPL / TSPL / ESC-POS / CPCL                                         |
 
 - **Test** (IPP) asks the printer for its model, state and supported formats, and says whether it takes PDF or PWG raster.
 - The label keeps the PDF's own page size. Bitmap languages render at the printer's resolution (default 203 dpi, set per
@@ -289,20 +289,20 @@ in — once, and never again if the user deletes what was imported.
 
 ### Commands
 
-| Command | Does |
-| ------- | ---- |
-| `pnpm test` | Unit tests, including the SQL run against a local SQLite file. No credentials needed. |
-| `pnpm test:db` | The same flows against the **real** database. Needs `.env`; creates and removes a throwaway account. |
-| `pnpm db:generate` | Writes a migration from `src/db/schema.ts`. |
-| `pnpm db:migrate` | Applies outstanding migrations (the app also does this at start-up). |
+| Command            | Does                                                                                                 |
+|--------------------|------------------------------------------------------------------------------------------------------|
+| `pnpm test`        | Unit tests, including the SQL run against a local SQLite file. No credentials needed.                |
+| `pnpm test:db`     | The same flows against the **real** database. Needs `.env`; creates and removes a throwaway account. |
+| `pnpm db:generate` | Writes a migration from `src/db/schema.ts`.                                                          |
+| `pnpm db:migrate`  | Applies outstanding migrations (the app also does this at start-up).                                 |
 
 ## Labels
 
 The app ships with one label and lets you add your own, all chosen with the **Label** `<select>`:
 
-| Label                  | id         | Page size    | Default layout                       |
-| ---------------------- | ---------- | ------------ | ------------------------------------ |
-| Product label          | `product`  | 190 x 160 mm | `src/templates/product-label.json`   |
+| Label         | id        | Page size    | Default layout                     |
+|---------------|-----------|--------------|------------------------------------|
+| Product label | `product` | 190 x 160 mm | `src/templates/product-label.json` |
 
 A built-in keeps its saved template next to the bundled one (`label-template-product.json` for `product`)
 and has its own *Reset to default*. A label you create yourself is one row in the database, holding
