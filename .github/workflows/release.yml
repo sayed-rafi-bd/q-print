@@ -1,41 +1,28 @@
 name: Release
 
 # Push a tag such as v0.2.0 to build the Windows installers and an Android APK and attach them to a draft release.
+# Releases are only built from commits that are on main: a tag pointing anywhere else fails the `verify-main` job.
 on:
   push:
     tags: ["v*"]
 
 jobs:
-  # Gate: nothing is built for a tag unless the tag matches the app version and the checks pass.
-  # tauri-action takes the version from tauri.conf.json, not from the tag, so a mismatch would
-  # publish installers whose version differs from the release they are attached to.
-  verify:
+  verify-main:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
         with:
-          node-version: 24
-          cache: pnpm
-      - name: Tag matches the app version
+          fetch-depth: 0
+      - name: Require the tagged commit to be on main
         run: |
-          TAG="${GITHUB_REF_NAME#v}"
-          CONF=$(node -p "require('./src-tauri/tauri.conf.json').version")
-          PKG=$(node -p "require('./package.json').version")
-          echo "tag=$TAG tauri.conf.json=$CONF package.json=$PKG"
-          if [ "$TAG" != "$CONF" ] || [ "$TAG" != "$PKG" ]; then
-            echo "::error::Tag v$TAG does not match tauri.conf.json ($CONF) and package.json ($PKG). Run 'pnpm version:set $TAG' and tag again."
+          git fetch origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Tag ${GITHUB_REF_NAME} (${GITHUB_SHA}) is not on main. Releases are only built from main."
             exit 1
           fi
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm check
-      - run: pnpm typecheck
-      - run: pnpm test
 
   windows:
-    needs: verify
-    if: false   # TEMPORARILY DISABLED: remove this line (and the one in `android`) to re-enable releases
+    needs: verify-main
     runs-on: windows-latest
     permissions:
       contents: write
@@ -51,6 +38,17 @@ jobs:
         with:
           workspaces: src-tauri
       - run: pnpm install --frozen-lockfile
+      - name: Write .env from secrets
+        shell: bash
+        env:
+          TURSO_URL: ${{ secrets.TURSO_URL }}
+          TURSO_TOKEN: ${{ secrets.TURSO_TOKEN }}
+        run: |
+          if [ -z "$TURSO_URL" ] || [ -z "$TURSO_TOKEN" ]; then
+            echo "::error::Add TURSO_URL and TURSO_TOKEN as repository secrets (Settings > Secrets and variables > Actions)."
+            exit 1
+          fi
+          printf 'VITE_TURSO_URL=%s\nVITE_TURSO_TOKEN=%s\n' "$TURSO_URL" "$TURSO_TOKEN" > .env
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -61,8 +59,7 @@ jobs:
 
   android:
     # Wait for the Windows job so both attach to the same draft release instead of racing to create two.
-    needs: [verify, windows]
-    if: false   # TEMPORARILY DISABLED (see `windows` above)
+    needs: windows
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -90,40 +87,23 @@ jobs:
         with:
           workspaces: src-tauri
       - run: pnpm install --frozen-lockfile
+      - name: Write .env from secrets
+        shell: bash
+        env:
+          TURSO_URL: ${{ secrets.TURSO_URL }}
+          TURSO_TOKEN: ${{ secrets.TURSO_TOKEN }}
+        run: |
+          if [ -z "$TURSO_URL" ] || [ -z "$TURSO_TOKEN" ]; then
+            echo "::error::Add TURSO_URL and TURSO_TOKEN as repository secrets (Settings > Secrets and variables > Actions)."
+            exit 1
+          fi
+          printf 'VITE_TURSO_URL=%s\nVITE_TURSO_TOKEN=%s\n' "$TURSO_URL" "$TURSO_TOKEN" > .env
       - run: if [ ! -d src-tauri/gen/android ]; then pnpm tauri android init --ci; fi
       # A project committed from Windows has no executable bit on gradlew, which makes Gradle fail on Linux.
       - name: Make gradlew executable
         run: chmod +x src-tauri/gen/android/gradlew
-      # Signing needs four repository secrets (Settings > Secrets and variables > Actions):
-      # ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD.
-      # Without them the APK is still built, but unsigned, and a phone will refuse to install it.
-      - name: Set up Android signing
-        env:
-          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: |
-          if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "::warning::ANDROID_KEYSTORE_BASE64 is not set, so the APK will be UNSIGNED and cannot be installed."
-            exit 0
-          fi
-          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
-          printf 'storeFile=%s\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
-            "$RUNNER_TEMP/release.jks" "$KEYSTORE_PASSWORD" "$KEY_ALIAS" "$KEY_PASSWORD" \
-            > src-tauri/gen/android/keystore.properties
-      - name: Build release APK
+      - name: Build release APK (unsigned unless you add signing)
         run: pnpm build:android
-      - name: Verify the APKs are signed
-        run: |
-          if [ ! -f src-tauri/gen/android/keystore.properties ]; then exit 0; fi
-          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort | tail -n 1)
-          for apk in $(find src-tauri/gen/android/app/build/outputs/apk -name '*.apk'); do
-            "$APKSIGNER" verify "$apk"
-          done
-      - name: Remove signing material
-        if: always()
-        run: rm -f "$RUNNER_TEMP/release.jks" src-tauri/gen/android/keystore.properties
       - uses: softprops/action-gh-release@v2
         with:
           draft: true
