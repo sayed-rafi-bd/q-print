@@ -251,6 +251,33 @@ export function rememberLabel(user: User, label: LabelId) {
   }
 }
 
+/**
+ * The values last typed for a label's URL variables, per account and label. They are not secret, so
+ * localStorage is fine. The access token is deliberately never remembered.
+ */
+const valuesKey = (user: User, label: LabelId) => `q-print.source.${user.id}.${label}`;
+
+export function loadSourceValues(user: User, label: LabelId): Record<string, string> {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(valuesKey(user, label)) ?? '{}');
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    return Object.fromEntries(Object.entries(parsed).filter(([, v]) => typeof v === 'string')) as Record<
+      string,
+      string
+    >;
+  } catch {
+    return {};
+  }
+}
+
+export function rememberSourceValues(user: User, label: LabelId, values: Record<string, string>) {
+  try {
+    localStorage.setItem(valuesKey(user, label), JSON.stringify(values));
+  } catch {
+    /* not critical */
+  }
+}
+
 // ---------------------------------------------------------------------------------------------
 // Export / import
 // ---------------------------------------------------------------------------------------------

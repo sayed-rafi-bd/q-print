@@ -1,8 +1,19 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useAuth } from './auth/AuthProvider';
 import { useCapabilities } from './capabilities';
+import DataSourceCard, { type CheckState } from './DataSourceCard';
+import type { ApiSource } from './generator/spec';
 import LabelPicker, { ReloadLabelsButton, useLabelReload } from './LabelPicker';
-import { type LabelId, type LabelMeta, listLabels, loadLastLabel, rememberLabel } from './labels';
+import {
+  type LabelId,
+  type LabelMeta,
+  listLabels,
+  loadLabel,
+  loadLastLabel,
+  loadSourceValues,
+  rememberLabel,
+  rememberSourceValues,
+} from './labels';
 import { Confetti, Mascot } from './Mascot';
 import PrintersPanel from './PrintersPanel';
 import { pickLabelAfterReload } from './pickLabel';
@@ -18,6 +29,7 @@ import {
   type Rotation,
   type Timings,
 } from './printApi';
+import { missingInput, startingValues } from './printRows';
 import TemplateTransfer from './TemplateTransfer';
 
 const fmt = (ms: number) => (ms >= 1000 ? `${(ms / 1000).toFixed(2)} s` : `${Math.round(ms)} ms`);
@@ -152,6 +164,12 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
   const [resolutions, setResolutions] = useState<string[]>([]);
   const [dpiNote, setDpiNote] = useState('');
   const [pages, setPages] = useState(3);
+  // The label's API data source, when it has one, and what the person typed for it. The token is
+  // React state only: it is not remembered, not stored and is cleared when the label changes.
+  const [source, setSource] = useState<ApiSource | null>(null);
+  const [sourceValues, setSourceValues] = useState<Record<string, string>>({});
+  const [token, setToken] = useState('');
+  const [checked, setChecked] = useState<CheckState>(null);
   const [busy, setBusy] = useState(false);
   // The "Add a printer" section stays open until the user closes it, so more than one printer can be added.
   const [addOpen, setAddOpen] = useState(true);
@@ -161,6 +179,9 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
   const [result, setResult] = useState<{
     label: string;
     pages: number;
+    /** API records and the copies of each; null for a label without an API source. */
+    records: number | null;
+    copies: number;
     printer: string;
     t: Timings;
     report: PrintReport;
@@ -246,13 +267,47 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
     };
   }, [printer, caps.dpiSelect]);
 
+  // Read the selected label's data source. Built-in labels never have one. A late answer for a
+  // label that is no longer selected is ignored.
+  const selectedId = label?.id ?? '';
+  const selectedBuiltin = label?.builtin ?? true;
+  useEffect(() => {
+    setSource(null);
+    setToken('');
+    setChecked(null);
+    if (!user || !selectedId || selectedBuiltin) return;
+    let stale = false;
+    loadLabel(user, selectedId)
+      .then(({ generator }) => {
+        if (stale || !generator.source) return;
+        setSource(generator.source);
+        setSourceValues(startingValues(generator.source, loadSourceValues(user, selectedId)));
+      })
+      .catch(() => {
+        /* printing reports a label that cannot be read */
+      });
+    return () => {
+      stale = true;
+    };
+  }, [user, selectedId, selectedBuiltin]);
+
   const onPrint = async () => {
     if (!label || !user) return; // nothing selected yet; the button is disabled until there is one
     setBusy(true);
     setError('');
     setResult(null);
+    if (source) {
+      // Checked before any request, so a blank field or a missing token costs nothing.
+      const missing = missingInput(source, sourceValues, token);
+      if (missing) {
+        setError(missing);
+        setBusy(false);
+        return;
+      }
+      rememberSourceValues(user, label.id, sourceValues);
+    }
     try {
-      const { timings, report, templateSource } = await printLabels({
+      const { timings, report, templateSource, pageCount, records } = await printLabels({
         user,
         label: label.id,
         printer,
@@ -262,8 +317,19 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
         margins,
         dpi,
         pages,
+        api: source ? { values: sourceValues, token: token.trim() || undefined } : undefined,
       });
-      setResult({ label: label.name, pages, printer, t: timings, report, source: templateSource, silent });
+      setResult({
+        label: label.name,
+        pages: pageCount,
+        records,
+        copies: pages,
+        printer,
+        t: timings,
+        report,
+        source: templateSource,
+        silent,
+      });
       setCelebrate((n) => n + 1);
     } catch (e) {
       setError(errMsg(e));
@@ -323,6 +389,8 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
               setLabelId(id);
               if (user) rememberLabel(user, id);
               setResult(null);
+              setToken('');
+              setChecked(null);
             }}
             note={labelsNote}
           />
@@ -345,6 +413,20 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
             ))}
           </select>
         </Field>
+
+        {source && (
+          <DataSourceCard
+            source={source}
+            values={sourceValues}
+            onValues={setSourceValues}
+            token={token}
+            onToken={setToken}
+            copies={pages}
+            checked={checked}
+            onChecked={setChecked}
+            disabled={busy}
+          />
+        )}
 
         {caps.directPrinters && (
           <details className="text-sm md:col-span-2" open={addOpen} onToggle={(e) => setAddOpen(e.currentTarget.open)}>
@@ -524,7 +606,15 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
           </Field>
         )}
 
-        <Field label="Number of pages" htmlFor="pages" hint="One label per page, each with different data.">
+        <Field
+          label={source ? 'Copies of each record' : 'Number of pages'}
+          htmlFor="pages"
+          hint={
+            source
+              ? 'Every record is printed this many times, copies together. An object response counts as one record.'
+              : 'One label per page, each with different data.'
+          }
+        >
           <input
             id="pages"
             type="number"
@@ -570,7 +660,9 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
               <span className="mr-1" aria-hidden="true">
                 🎉
               </span>
-              {result.silent ? 'Sent' : 'Opened the print dialog for'} {result.pages} page(s){' '}
+              {result.silent ? 'Sent' : 'Opened the print dialog for'} {result.pages} page(s)
+              {result.records !== null &&
+                ` (${result.records} ${result.records === 1 ? 'record' : 'records'} × ${result.copies} ${result.copies === 1 ? 'copy' : 'copies'})`}{' '}
               {result.silent ? 'to' : 'via'} <span className="font-medium">{result.printer}</span> using the{' '}
               <span className="font-medium">{result.label}</span> ({result.source} template)
             </p>
@@ -578,9 +670,10 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
               <span className="text-sm text-slate-600">Total time</span>
               <span className="text-2xl font-semibold text-slate-900">{fmt(result.t.total)}</span>
             </div>
-            <dl className="grid grid-cols-3 gap-2 text-center text-xs">
+            <dl className={`grid gap-2 text-center text-xs ${result.records !== null ? 'grid-cols-4' : 'grid-cols-3'}`}>
               {(
                 [
+                  ...(result.records !== null ? ([['Fetch', result.t.fetch]] as const) : []),
                   ['Data', result.t.data],
                   ['PDF build', result.t.pdf],
                   [result.silent ? 'Send to printer' : 'Open dialog', result.t.print],
