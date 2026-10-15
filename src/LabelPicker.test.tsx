@@ -109,8 +109,8 @@ describe('the label picker', () => {
     );
     setup({ onReload: slow });
     fireEvent.click(reloadButton());
+    // The button is an icon, so "busy" is shown by it being disabled until the reload ends.
     expect(reloadButton().disabled).toBe(true);
-    expect(reloadButton().textContent).toContain('Reloading');
     finish();
     await waitFor(() => expect(reloadButton().disabled).toBe(false));
     expect(screen.getByText('Labels reloaded.')).toBeTruthy();

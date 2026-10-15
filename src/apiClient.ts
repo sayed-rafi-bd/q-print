@@ -22,6 +22,17 @@ const ERROR_BODY_CHARS = 200;
 
 const message = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
+/** Adds what to do about the failures people hit most. The wording never includes the token. */
+export function withHint(text: string, source: Pick<ApiSource, 'bearerAuth'>): string {
+  if (/^HTTP (401|403)\b/.test(text)) {
+    return source.bearerAuth
+      ? `${text} Check the access token.`
+      : `${text} This label does not send an access token; the server may require one.`;
+  }
+  if (/^HTTP 404\b/.test(text)) return `${text} Check the values you entered.`;
+  return text;
+}
+
 /** Replaces the token wherever it appears, as a last line of defence against leaking it. */
 export const scrub = (text: string, token: string | undefined): string =>
   token ? text.split(token).join('***') : text;
@@ -54,7 +65,9 @@ export const browserTransport: Transport = async (url, bearer, signal) => {
     } catch (e) {
       if (controller.signal.aborted) {
         const seconds = LIMITS.fetchTimeoutMs / 1000;
-        throw new Error(signal?.aborted ? 'The request was cancelled.' : `${host} did not answer within ${seconds} seconds.`);
+        throw new Error(
+          signal?.aborted ? 'The request was cancelled.' : `${host} did not answer within ${seconds} seconds.`,
+        );
       }
       throw new Error(
         `Could not reach ${host}. In a browser this is often CORS: the server must allow requests from this page. ` +
@@ -103,7 +116,7 @@ export async function fetchRecords(
   try {
     text = await transport(url, bearer, opts.signal);
   } catch (e) {
-    throw new Error(scrub(message(e), bearer));
+    throw new Error(withHint(scrub(message(e), bearer), source));
   }
 
   let json: unknown;

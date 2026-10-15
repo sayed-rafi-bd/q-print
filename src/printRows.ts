@@ -33,7 +33,7 @@ export async function buildRows(
   if (!generator.source) {
     return { rows: generateRows(generator, pages), records: null, fetchMs: 0 };
   }
-  if (!api) throw new Error('This label needs values for its URL.');
+  if (!api) throw new Error('This label needs values for its URL. Fill in its Data source and try again.');
   const t0 = performance.now();
   const records = await fetcher(generator.source, api.values, api.token);
   const fetchMs = performance.now() - t0;

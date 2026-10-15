@@ -38,6 +38,28 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
 
+  # End-to-end tests of the Designer in a real browser (Playwright), against a local stand-in for the
+  # database and mocked web APIs. Nothing real is contacted.
+  e2e:
+    if: false   # TEMPORARILY DISABLED, like the jobs around it. Remove this line to turn it on.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-traces
+          path: test-results/
+          if-no-files-found: ignore
+
   # Rust unit tests for label storage. Separate from `typescript` so a TS failure does not wait
   # behind the Rust build.
   rust-tests:

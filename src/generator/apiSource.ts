@@ -128,6 +128,8 @@ export function parsePath(path: string): Array<string | number> | null {
   return out;
 }
 
+// Not Object.hasOwn: the project's TypeScript `lib` is ES2020, which has no typing for it.
+// biome-ignore lint/suspicious/noPrototypeBuiltins: see above
 const hasOwn = (obj: object, key: string): boolean => Object.prototype.hasOwnProperty.call(obj, key);
 
 const kindOf = (value: unknown): string => {

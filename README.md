@@ -354,6 +354,7 @@ The rules are a fixed, small set — there is no scripting:
 | Pattern | Text with `{d3}` digits, `{D2}` A–Z or `{L2}` a–z mixed in, e.g. `A{d12}A`. |
 | Numbering | Counts up per page, restarting on every print job. |
 | Copy another field | Another field's value on the same page, optionally rebuilt with a pattern where `{from}` is the copied value. |
+| A value from the API response | A value read from the web API the label calls (see [Data from a web API](#data-from-a-web-api)). Only offered once the label has a data source. |
 
 Every rule can also add text before and after the value, and run it through *digits only*,
 *upper* or *lower*. Problems (a range the wrong way round, a rule pointing at a table that is not
@@ -363,6 +364,61 @@ before it reaches a print job. **Preview label** renders the real page with pdfm
 
 A built-in label's rules ship with the app, so the Data tab is read-only for them; **Duplicate**
 gives you an editable copy with the same layout and the same rules.
+
+### Data from a web API
+
+Instead of random data, a label can print real records from a web API. The data source belongs to
+the label, so it is saved with it and travels in its export file.
+
+**In the Designer** (Data tab, **Source** pane):
+
+1. Press **Use an API as the data source** and type the address with a `{name}` wherever a value will
+   be typed at print time, for example `api.example.com/day/{day}/count/{count}/logs`. Without
+   `http://` or `https://` the address is called with https.
+2. Optional: a **list path** for responses such as `{ "data": [ ... ] }` (enter `data`), a label and a
+   default for each variable, and **Use a bearer token**.
+3. Press **Fetch sample** (type a value for each variable, and a token if needed). The first record
+   and the paths found in it are shown. The sample is only for building the label: it is not saved.
+4. In the Fields tab choose **A value from the API response** for a field and give its path, for
+   example `user.name` or `items[0].id`. The field shows the real value from the sample. Prefix,
+   suffix and the *digits only / upper / lower* options work as for any other rule. **Preview label**
+   shows the sample records, or the `‹path›` of each field when no sample has been fetched.
+
+Fields without an API rule keep working as before and can be mixed with API fields on the same label.
+
+**When printing** the label's **Data source** card appears under the label picker. It asks for the
+variables, shows the address that will be called (host in bold, so a label imported from someone
+else cannot reach out unseen), and asks for the access token if the label uses one. **Check data**
+is optional: it fetches and reports "12 records found" and the first record. The *Number of pages*
+field becomes **Copies of each record**.
+
+- An **object** response is one record; an **array** response is one record per item.
+- Every record is printed once per copy, grouped by record: record 1 × n, then record 2 × n.
+  `Numbering` rules keep counting across the whole job. Other random rules still give each copy a
+  fresh value; only the API values are shared by the copies of a record.
+- The job is limited to 10,000 pages in total (records × copies), checked before anything is built.
+
+| JSON value | Printed as |
+| ---------- | ---------- |
+| text | as is |
+| number, true/false | `42`, `true` |
+| `null` | empty |
+| missing key | an error naming the record, the field and the path; nothing is printed |
+| object or list | an error: pick a field inside it |
+
+**Rules of the request:** GET only, JSON only. Values typed for the variables are URL-encoded
+(`2026/10/15` becomes `2026%2F10%2F15`). In the apps the request is made by Rust (no CORS), waits at
+most 15 seconds, accepts at most 5 MB, and follows redirects only to the same address. In a browser
+(the web build) the server has to allow the page's origin (CORS), which is only a concern when
+developing.
+
+**The access token** is typed at print time, kept in memory for that one request, and is never saved in the
+database, in a label file, in a report or in an error message. It is refused over plain `http://` and
+is never remembered between runs. The values typed for the variables are not secret and are remembered
+per label and account.
+
+A label that uses an API cannot be imported by an older version of the app: it refuses the unknown
+rule instead of printing it wrongly.
 
 ### Label files and moving one between devices
 
@@ -378,7 +434,8 @@ A label file is JSON:
 }
 ```
 
-Export writes this whole file, so the receiving device produces the same data, not just the same
+A label that reads a web API also has a `"source": { "url": "...", "listPath": "...", "bearerAuth": true, "variables": { } }` entry
+beside `fields` (never a token). Export writes this whole file, so the receiving device produces the same data, not just the same
 picture. Import accepts it (creating a new label) and still accepts a bare pdfme template, which
 replaces the selected label's layout and keeps its data rules.
 
@@ -416,10 +473,13 @@ Phones cannot use the Designer, but they can print anything imported this way.
   rotate the content to match the stock and set the paper in the dialog or in the printer's own settings.
 
 ## Large jobs
-Jobs of more than 50 pages are sent from the frontend to Rust as a raw binary payload (`print_pdf_raw`) instead
+Jobs of more than 50 pages (counted after records × copies, for a label with an API source) are sent from the frontend to Rust as a raw binary payload (`print_pdf_raw`) instead
 of a JSON number array, which is much faster on a phone.
 
 ## Test order
+**Web API labels:** on each platform, a label with a real https API with and without a bearer token, a wrong
+token (401), a slow or unreachable host (timeout), one record (an object response), and 100 records × 3 copies.
+
 **Windows:** virtual printer (Microsoft Print to PDF), 1 page -> check PDF -> 5 pages (different data) ->
 real printer -> `pnpm tauri build` and repeat.
 

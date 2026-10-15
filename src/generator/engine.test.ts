@@ -582,4 +582,3 @@ describe('validateSpec: api and source', () => {
     expect(problems[0]).not.toContain('secret');
   });
 });
-

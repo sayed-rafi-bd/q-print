@@ -233,7 +233,13 @@ describe('scaffoldSpec with an API data source', () => {
       source: { url: 'api.example.com/{day}', bearerAuth: true },
       fields: { a: { kind: 'api', path: 'user.name' } },
     };
-    const out = scaffoldSpec(blank([{ name: 'a', type: 'text' }, { name: 'b', type: 'text' }]), base);
+    const out = scaffoldSpec(
+      blank([
+        { name: 'a', type: 'text' },
+        { name: 'b', type: 'text' },
+      ]),
+      base,
+    );
     expect(out.source).toEqual(base.source);
     expect(out.fields.a).toEqual({ kind: 'api', path: 'user.name' });
     expect(out.fields.b?.kind).toBe('pick');
@@ -248,4 +254,3 @@ describe('scaffoldSpec with an API data source', () => {
     expect(orphanRules(blank([{ name: 'a', type: 'text' }]), base)).toEqual(['gone']);
   });
 });
-

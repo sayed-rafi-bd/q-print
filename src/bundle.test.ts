@@ -156,4 +156,3 @@ describe('a label with an API data source', () => {
     expect(() => parseBundle(bundleJson(bad))).toThrow(/Only http and https/);
   });
 });
-

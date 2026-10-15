@@ -117,7 +117,7 @@ Keep the `.pfx` and its password somewhere safe, keep the file out of git, and d
 
 A release is a version bump, a tag and a review of the draft.
 
-1. Confirm the latest `CI` run on `main` is green (frontend build, Rust checks, debug APK). Note that every job in `ci.yml` is currently disabled with `if: false`, so there is no run to check until those lines are removed.
+1. Confirm the latest `CI` run on `main` is green (lint, unit tests, frontend build, Rust checks, debug APK, e2e). Note that every job in `ci.yml` is currently disabled with `if: false`, so there is no run to check until those lines are removed.
 2. Bump the version, commit it and create the tag, all from `main`. Pick major, minor or patch:
 
 ```powershell
@@ -212,6 +212,13 @@ adb logcat -c
 # open the app so the error appears, then:
 adb logcat -d -s RustStdoutStderr AndroidRuntime chromium
 ```
+
+## Labels that read a web API
+
+- **Compatibility:** a label whose generator uses an API data source (`source`, and fields with the `api` rule) cannot be imported by an older version of the app. The older app does not know the rule and refuses the import with an "unknown rule" message instead of printing it wrongly. Labels made before this feature open and print the same in the new version. No database migration is involved.
+- **HTTPS from Rust:** the app makes the request in Rust (`src-tauri/src/http.rs`) with `ureq` and its `tls` feature, which pulls in `rustls` and `ring` (C code in the Android NDK build). If an Android build breaks after a dependency update, look here first.
+- **Before publishing a draft, on each platform you ship (Windows, Android):** print a label that reads a real https API with and without a bearer token, try a wrong token (expect "HTTP 401 ... Check the access token."), an unreachable host (expect a clear message within about 15 seconds), a one-record (object) response, and 100 records × 3 copies.
+- **The token** is never stored or exported. If a report or log ever shows one, treat it as a bug.
 
 ## Known issues and troubleshooting
 

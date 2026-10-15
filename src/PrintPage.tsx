@@ -170,6 +170,9 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
   const [sourceValues, setSourceValues] = useState<Record<string, string>>({});
   const [token, setToken] = useState('');
   const [checked, setChecked] = useState<CheckState>(null);
+  // The label whose data source has been read. Printing waits for it, so a label that needs API
+  // values can never be sent off before its Data source card has appeared.
+  const [sourceLoadedFor, setSourceLoadedFor] = useState('');
   const [busy, setBusy] = useState(false);
   // The "Add a printer" section stays open until the user closes it, so more than one printer can be added.
   const [addOpen, setAddOpen] = useState(true);
@@ -279,17 +282,23 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
     let stale = false;
     loadLabel(user, selectedId)
       .then(({ generator }) => {
-        if (stale || !generator.source) return;
-        setSource(generator.source);
-        setSourceValues(startingValues(generator.source, loadSourceValues(user, selectedId)));
+        if (stale) return;
+        if (generator.source) {
+          setSource(generator.source);
+          setSourceValues(startingValues(generator.source, loadSourceValues(user, selectedId)));
+        }
+        setSourceLoadedFor(selectedId);
       })
       .catch(() => {
-        /* printing reports a label that cannot be read */
+        // Printing reports a label that cannot be read, so it must not stay blocked here.
+        if (!stale) setSourceLoadedFor(selectedId);
       });
     return () => {
       stale = true;
     };
   }, [user, selectedId, selectedBuiltin]);
+
+  const sourceReady = selectedBuiltin || sourceLoadedFor === selectedId;
 
   const onPrint = async () => {
     if (!label || !user) return; // nothing selected yet; the button is disabled until there is one
@@ -629,7 +638,7 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
         <button
           type="button"
           onClick={onPrint}
-          disabled={!printer || busy || !label}
+          disabled={!printer || busy || !label || !sourceReady}
           className="btn-cute flex w-full md:col-span-2 cursor-pointer items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-4 py-3 text-base font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
         >
           {busy && (
