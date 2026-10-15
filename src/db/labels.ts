@@ -46,6 +46,22 @@ export type LabelInput = {
 export const MAX_LABEL_BYTES = 5 * 1024 * 1024;
 
 /**
+ * Refuses a label too big to store. A pdfme template carries embedded images as base64, so the
+ * Designer can grow one without the person noticing; the old backend refused it and the limit was
+ * lost when labels moved into the database. Importing a bundle is already capped by `bundle.ts`, so
+ * this covers editing in the Designer.
+ */
+const checkSize = (label: Partial<LabelInput>): void => {
+  const bytes = new TextEncoder().encode((label.template ?? '') + (label.generator ?? '')).length;
+  if (bytes > MAX_LABEL_BYTES) {
+    throw new Error(
+      `This label is ${(bytes / 1024 / 1024).toFixed(1)} MB; the limit is ` +
+        `${MAX_LABEL_BYTES / 1024 / 1024} MB. Try a smaller image.`,
+    );
+  }
+};
+
+/**
  * Reads a page size out of a stored template, falling back to a size that at least renders.
  * A row whose template is unreadable should still show up in the list, not break it.
  */
@@ -96,6 +112,7 @@ export async function getLabel(db: Database, userId: string, slug: string): Prom
 
 /** Stores a new label. Throws if this account already has one with that slug. */
 export async function createLabel(db: Database, userId: string, slug: string, label: LabelInput): Promise<StoredLabel> {
+  checkSize(label);
   const now = new Date().toISOString();
   const row: Row = {
     id: crypto.randomUUID(),
@@ -126,6 +143,7 @@ export async function updateLabel(
   if (patch.template !== undefined) values.template = patch.template;
   if (patch.generator !== undefined) values.generator = patch.generator;
   if (Object.keys(values).length === 0) return false;
+  checkSize({ template: values.template, generator: values.generator });
 
   const result = await db
     .update(labelsTable)

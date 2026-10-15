@@ -1,12 +1,12 @@
 import { checkTemplate, type Template } from '@pdfme/common';
 import { BUILTINS, builtin, isBuiltin } from './builtinLabels';
-import { isBundle, makeBundle, templateSizeMm } from './bundle';
+import { isBundle, templateSizeMm } from './bundle';
 import { getDb } from './db/client';
 import * as store from './db/labels';
 import type { User } from './db/users';
 import { builtinSpec } from './generator/builtins';
 import { scaffoldSpec } from './generator/scaffold';
-import type { GeneratorSpec, LabelBundle } from './generator/spec';
+import type { GeneratorSpec } from './generator/spec';
 import { isValidId, nameProblem, slugify } from './labelId';
 import { sampleSpec, sampleTemplate } from './sampleLabel';
 import {
@@ -284,11 +284,5 @@ export function rememberSourceValues(user: User, label: LabelId, values: Record<
 // ---------------------------------------------------------------------------------------------
 // Export / import
 // ---------------------------------------------------------------------------------------------
-
-/** The whole label as a file: its layout and the generator that fills it. */
-export const exportBundle = async (user: User, label: LabelId, name: string): Promise<LabelBundle> => {
-  const { template, generator } = await loadLabel(user, label);
-  return makeBundle(name, template, generator);
-};
 
 export { isBundle };

@@ -27,8 +27,5 @@ export const str = (row: Row | undefined, key: string): string | null => {
   return v === null || v === undefined ? null : String(v);
 };
 
-/** Reads a column as text, falling back to `fallback` for null/undefined. */
-export const strOr = (row: Row | undefined, key: string, fallback: string): string => str(row, key) ?? fallback;
-
 /** The single row a query that matched one thing returns, or null. */
 export const one = (rows: Row[]): Row | null => rows[0] ?? null;

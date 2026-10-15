@@ -1,5 +1,14 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { countLabels, createLabel, deleteLabel, getLabel, listLabels, listSlugs, updateLabel } from './labels';
+import {
+  countLabels,
+  createLabel,
+  deleteLabel,
+  getLabel,
+  listLabels,
+  listSlugs,
+  MAX_LABEL_BYTES,
+  updateLabel,
+} from './labels';
 import { isUniqueViolation } from './schema';
 import { createTestDb, type TestDb } from './testDb';
 import {
@@ -226,6 +235,30 @@ describe('labels', () => {
     await new Promise((r) => setTimeout(r, 5));
     await updateLabel(db(), user.id, 'a', { name: 'A again' });
     expect((await getLabel(db(), user.id, 'a'))!.updatedAt > before).toBe(true);
+  });
+
+  it('refuses a label over the size limit on create, and stores nothing', async () => {
+    const user = await signUp();
+    const huge = JSON.stringify({ basePdf: { width: 100, height: 50 }, pad: 'x'.repeat(MAX_LABEL_BYTES) });
+    await expect(createLabel(db(), user.id, 'big', { name: 'Big', template: huge, generator: '{}' })).rejects.toThrow(
+      /the limit is 5 MB/,
+    );
+    expect(await countLabels(db(), user.id)).toBe(0);
+  });
+
+  it('refuses a label over the size limit on update too, leaving the old one in place', async () => {
+    const user = await signUp();
+    await createLabel(db(), user.id, 'a', { name: 'A', template: labelJson(100), generator: '{}' });
+    const huge = JSON.stringify({ pad: 'x'.repeat(MAX_LABEL_BYTES) });
+    await expect(updateLabel(db(), user.id, 'a', { template: huge })).rejects.toThrow(/the limit is 5 MB/);
+    expect((await getLabel(db(), user.id, 'a'))!.template).toBe(labelJson(100));
+  });
+
+  it('still accepts a label just under the limit', async () => {
+    const user = await signUp();
+    const big = JSON.stringify({ pad: 'x'.repeat(MAX_LABEL_BYTES - 1024) });
+    await createLabel(db(), user.id, 'a', { name: 'A', template: big, generator: '{}' });
+    expect((await getLabel(db(), user.id, 'a'))!.template).toBe(big);
   });
 });
 

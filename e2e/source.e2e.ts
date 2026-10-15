@@ -41,14 +41,15 @@ test.describe('designer: API data source', () => {
     expect(requested).toEqual(['https://api.e2e.test/items/42']);
     await expect(test_.getByText('title', { exact: true })).toBeVisible(); // a path offered from the sample
 
-    // Map a field to a path in the response; its live sample shows the real value.
+    // Map a field to a path in the response; its live sample shows the real value. `note` is one of
+    // the sample label's own fields.
     await tabButton(page, 'Data').click();
     await page.getByRole('button', { name: 'Fields', exact: true }).click();
-    const title = page.locator('details').filter({ has: page.locator('code', { hasText: /^title$/ }) });
-    await title.locator('summary').click();
-    await title.getByLabel('Rule').selectOption('api');
-    await title.getByLabel('Path in the API record').fill('title');
-    await expect(title.locator('summary')).toContainText('Alpha');
+    const note = page.locator('details').filter({ has: page.locator('code', { hasText: /^note$/ }) });
+    await note.locator('summary').click();
+    await note.getByLabel('Rule').selectOption('api');
+    await note.getByLabel('Path in the API record').fill('title');
+    await expect(note.locator('summary')).toContainText('Alpha');
 
     // Save, reload, and the source is still there. The sample and any token are not.
     await saveButton(page).click();

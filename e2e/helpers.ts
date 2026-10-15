@@ -10,7 +10,13 @@ export function watchErrors(page: Page): string[] {
   return errors;
 }
 
-export const uniqueName = (prefix = 'user') => `${prefix}${Date.now()}${Math.floor(Math.random() * 1000)}`;
+/**
+ * A name no other test uses, within the 20 characters a label name allows. The cap matters: the
+ * name field has a `maxLength`, so a longer name would be stored cut short and a test that looks the
+ * label up by the name it typed would find nothing. Base 36 keeps the timestamp short.
+ */
+export const uniqueName = (prefix = 'user') =>
+  `${prefix}${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`.slice(-20);
 
 /** Creates a fresh account through the real sign-up form and waits for the Designer. */
 export async function signUp(page: Page, username = uniqueName(), password = 'secret1') {

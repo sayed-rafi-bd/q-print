@@ -1,13 +1,15 @@
 /**
- * Turning a label name into the id used as its file name.
+ * Turning a label name into the id a label is stored and exported under.
  *
- * Kept apart from the registry because it is pure: the same rule runs in Rust (`labels::validate_id`),
- * so both sides have to agree, and this is the half that can be tested without a filesystem.
+ * Kept apart from the registry because it is pure, so the rule can be tested without a database.
  */
 
 /**
- * Matches `validate_id` in src-tauri/src/labels.rs: 1-40 characters of a-z, 0-9 and '-', starting
- * with a letter or a digit. The id is used as a file name, so this is what keeps separators out.
+ * 1-40 characters of a-z, 0-9 and '-', starting with a letter or a digit.
+ *
+ * A label used to be a file named after this id, which is why the rule is so strict, and why it
+ * still matters: the slug ends up in exported file names (`label-<slug>.json`) and in a URL. It is
+ * no longer a file path — labels are rows in the database — so nothing here guards the filesystem.
  */
 export function isValidId(id: string): boolean {
   return /^[a-z0-9][a-z0-9-]{0,39}$/.test(id);
