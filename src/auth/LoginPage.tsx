@@ -67,7 +67,6 @@ export default function LoginPage() {
             </label>
             <input
               id="username"
-              autoFocus
               autoComplete="username"
               value={username}
               maxLength={MAX_USERNAME}

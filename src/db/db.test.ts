@@ -222,10 +222,10 @@ describe('labels', () => {
   it('moves updated_at forward when it saves, so the newest label can be offered', async () => {
     const user = await signUp();
     await createLabel(db(), user.id, 'a', { name: 'A', template: labelJson(100), generator: '{}' });
-    const before = (await getLabel(db(), user.id, 'a'))!.updatedAt;
+    const before = (await getLabel(db(), user.id, 'a'))?.updatedAt;
     await new Promise((r) => setTimeout(r, 5));
     await updateLabel(db(), user.id, 'a', { name: 'A again' });
-    expect((await getLabel(db(), user.id, 'a'))!.updatedAt > before).toBe(true);
+    expect((await getLabel(db(), user.id, 'a'))?.updatedAt > before).toBe(true);
   });
 });
 

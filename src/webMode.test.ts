@@ -37,7 +37,7 @@ describe('running as a web page', () => {
   });
 
   it('keeps a saved built-in layout in the browser and reads it back', async () => {
-    const template = { ...builtin(DEFAULT_LABEL)!.defaultTemplate, schemas: [[]] };
+    const template = { ...builtin(DEFAULT_LABEL)?.defaultTemplate, schemas: [[]] };
     await saveBuiltinTemplate(DEFAULT_LABEL, template);
     const { source, template: loaded } = await loadBuiltinTemplate(DEFAULT_LABEL);
     expect(source).toBe('custom');
@@ -45,7 +45,7 @@ describe('running as a web page', () => {
   });
 
   it('goes back to the bundled layout after a reset', async () => {
-    await saveBuiltinTemplate(DEFAULT_LABEL, builtin(DEFAULT_LABEL)!.defaultTemplate);
+    await saveBuiltinTemplate(DEFAULT_LABEL, builtin(DEFAULT_LABEL)?.defaultTemplate);
     await resetBuiltinTemplate(DEFAULT_LABEL);
     expect((await loadBuiltinTemplate(DEFAULT_LABEL)).source).toBe('default');
   });
