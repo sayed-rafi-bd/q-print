@@ -209,3 +209,31 @@ export function toText(value: unknown, path: string): string {
   if (Array.isArray(value)) throw new Error(`“${path}” points at a list; pick a field inside it.`);
   throw new Error(`“${path}” points at an object; pick a field inside it.`);
 }
+
+/**
+ * The paths of every value inside a sample record that can be printed (text, numbers, true/false
+ * and null), in the syntax `readPath` reads: `user.name`, `items[0].id`. Objects and lists are
+ * walked into, not listed. Capped, so a huge response cannot flood the editor.
+ */
+export function leafPaths(record: unknown, max = 200): string[] {
+  const out: string[] = [];
+  const walk = (value: unknown, path: string, depth: number) => {
+    if (out.length >= max || depth > 8) return;
+    if (Array.isArray(value)) {
+      // The first few items are enough to show the shape.
+      value.slice(0, 3).forEach((item, i) => {
+        walk(item, `${path}[${i}]`, depth + 1);
+      });
+    } else if (value !== null && typeof value === 'object') {
+      for (const [key, child] of Object.entries(value)) {
+        // A key that readPath could not read back is not offered.
+        if (key === '' || /[.[\]]/.test(key)) continue;
+        walk(child, path ? `${path}.${key}` : key, depth + 1);
+      }
+    } else if (path) {
+      out.push(path);
+    }
+  };
+  walk(record, '', 0);
+  return out;
+}

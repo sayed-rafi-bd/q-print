@@ -67,9 +67,17 @@ export default function DesignerPage() {
   const [generatorSaved, setGeneratorSaved] = useState<GeneratorSpec>({ version: 1, fields: {} });
   const [tab, setTab] = useState<'layout' | 'data'>('layout');
   const [previewing, setPreviewing] = useState(false);
+  // Records fetched in the Source pane to map fields and preview. Memory only, never saved, and
+  // dropped whenever another label is opened.
+  const [sample, setSample] = useState<unknown[] | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
   // A one-off offer to copy label files from an earlier version onto this account.
   const [offerImport, setOfferImport] = useState(false);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a sample belongs to one label, so it is dropped whenever the open label changes
+  useEffect(() => {
+    setSample(null);
+  }, [labelId]);
 
   /** True when the layout, the page size or the generator has something unsaved. */
   const generatorDirty = JSON.stringify(generator) !== JSON.stringify(generatorSaved);
@@ -556,13 +564,22 @@ export default function DesignerPage() {
               spec={generator}
               readOnly={meta?.builtin === true}
               onChange={setGenerator}
+              sample={sample}
+              onSample={setSample}
               onPreview={() => setPreviewing(true)}
             />
           </div>
         )}
       </div>
 
-      {previewing && <PreviewDialog template={currentTemplate} spec={generator} onClose={() => setPreviewing(false)} />}
+      {previewing && (
+        <PreviewDialog
+          template={currentTemplate}
+          spec={generator}
+          sample={sample}
+          onClose={() => setPreviewing(false)}
+        />
+      )}
     </div>
   );
 }

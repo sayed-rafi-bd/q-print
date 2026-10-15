@@ -2,7 +2,7 @@ import type { Template } from '@pdfme/common';
 import { barcodes, rectangle, text } from '@pdfme/schemas';
 import { Viewer } from '@pdfme/ui';
 import { useEffect, useRef, useState } from 'react';
-import { generateRows } from '../generator/engine';
+import { generateRows, generateRowsFromRecords } from '../generator/engine';
 import type { GeneratorSpec } from '../generator/spec';
 import { loadFont } from '../printApi';
 
@@ -15,6 +15,8 @@ const btnCls =
 type Props = {
   template: Template;
   spec: GeneratorSpec;
+  /** Records fetched in the Source pane; the first three are previewed when there are any. */
+  sample?: unknown[] | null;
   onClose: () => void;
 };
 
@@ -24,7 +26,10 @@ type Props = {
  * This is the check that catches content a barcode format cannot encode, before it reaches a print
  * job: pdfme renders the real page here, so anything it would reject shows up as an error now.
  */
-export default function PreviewDialog({ template, spec, onClose }: Props) {
+export default function PreviewDialog({ template, spec, sample = null, onClose }: Props) {
+  // A label with an API source previews the fetched sample, or ‹path› stand-ins when there is none.
+  const real = Boolean(spec.source && sample && sample.length > 0);
+  const standIns = Boolean(spec.source) && !real;
   const container = useRef<HTMLDivElement>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(true);
@@ -35,7 +40,10 @@ export default function PreviewDialog({ template, spec, onClose }: Props) {
     (async () => {
       try {
         // A handful of pages, so a sequence rule and a table read sensibly.
-        const inputs = generateRows(spec, 3);
+        const inputs =
+          spec.source && sample && sample.length > 0
+            ? generateRowsFromRecords(spec, sample.slice(0, 3), 1)
+            : generateRows(spec, 3, { placeholders: Boolean(spec.source) });
         const font = await loadFont();
         if (cancelled || !container.current) return;
         viewer = new Viewer({
@@ -54,17 +62,28 @@ export default function PreviewDialog({ template, spec, onClose }: Props) {
       cancelled = true;
       viewer?.destroy();
     };
-  }, [template, spec]);
+  }, [template, spec, sample]);
 
   return (
     <div className="absolute inset-0 z-20 flex flex-col bg-white/95" role="dialog" aria-label="Label preview">
       <div className="flex items-center gap-2 border-b border-slate-200 px-4 py-2">
         <span className="text-sm font-semibold text-slate-800">Preview</span>
-        <span className="text-xs text-slate-500">Three pages of freshly generated data.</span>
+        <span className="text-xs text-slate-500">
+          {real
+            ? `The first ${Math.min(3, sample?.length ?? 0)} record(s) of the fetched sample.`
+            : 'Three pages of freshly generated data.'}
+        </span>
         <button type="button" className={`${btnCls} ml-auto`} onClick={onClose}>
           Close
         </button>
       </div>
+
+      {standIns && (
+        <p className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900">
+          No sample has been fetched, so fields that read the API show their path. Fetch a sample in the Source pane to
+          preview real values (a barcode cannot show a path).
+        </p>
+      )}
 
       {error && (
         <p role="alert" className="border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">

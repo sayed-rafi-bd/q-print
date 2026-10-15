@@ -88,11 +88,14 @@ export default function RuleEditor({
   rule,
   spec,
   fieldNames,
+  samplePaths = [],
   onChange,
 }: {
   rule: FieldRule;
   spec: GeneratorSpec;
   fieldNames: string[];
+  /** Paths found in a fetched sample, offered as suggestions for an `api` rule. */
+  samplePaths?: string[];
   onChange: (next: FieldRule) => void;
 }) {
   const tables = spec.tables ?? {};
@@ -330,6 +333,29 @@ export default function RuleEditor({
       );
       break;
 
+    case 'api':
+      params = (
+        <label className="block text-xs text-slate-600">
+          <span className="mb-1 block">
+            Path in each record, such as user.name or items[0].id.
+            {samplePaths.length === 0 && ' Fetch a sample in the Source tab to pick from the real paths.'}
+          </span>
+          <input
+            aria-label="Path in the API record"
+            list="api-sample-paths"
+            className={`${inputCls} font-mono`}
+            value={rule.path}
+            onChange={(e) => set({ path: e.target.value })}
+          />
+          <datalist id="api-sample-paths">
+            {samplePaths.map((p) => (
+              <option key={p} value={p} />
+            ))}
+          </datalist>
+        </label>
+      );
+      break;
+
     default:
       params = null;
   }
@@ -347,12 +373,14 @@ export function RuleRow({
   rule,
   spec,
   fieldNames,
+  samplePaths,
   onChange,
   locked,
 }: {
   rule: FieldRule | null;
   spec: GeneratorSpec;
   fieldNames: string[];
+  samplePaths?: string[];
   onChange: (next: FieldRule | null) => void;
   /** Show the rule but do not let it be changed. */
   locked?: boolean;
@@ -372,8 +400,8 @@ export function RuleRow({
             }
           >
             <option value="">— nothing, print the text as designed —</option>
-            {/* `api` is not offered until the Source pane exists (Phase 4); an imported label can still carry it. */}
-            {RULE_KINDS.filter((k) => k !== 'api').map((k) => (
+            {/* `api` needs a data source to read from, so it is offered once the label has one (or already uses it). */}
+            {RULE_KINDS.filter((k) => k !== 'api' || spec.source || rule?.kind === 'api').map((k) => (
               <option key={k} value={k}>
                 {KIND_LABELS[k]}
               </option>
@@ -384,7 +412,7 @@ export function RuleRow({
       {rule && asFieldRule(rule) && (
         // A locked rule still shows its settings, so it can be read and copied into a duplicate.
         <fieldset disabled={locked} className="contents">
-          <RuleEditor rule={rule} spec={spec} fieldNames={fieldNames} onChange={onChange} />
+          <RuleEditor rule={rule} spec={spec} fieldNames={fieldNames} samplePaths={samplePaths} onChange={onChange} />
         </fieldset>
       )}
     </div>

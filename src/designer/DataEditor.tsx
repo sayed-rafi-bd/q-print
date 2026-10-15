@@ -1,10 +1,12 @@
 import type { Template } from '@pdfme/common';
 import { useMemo, useState } from 'react';
+import { leafPaths, readPath } from '../generator/apiSource';
 import { barcodeProblem } from '../generator/barcodeCheck';
 import { sampleField, validateSpec } from '../generator/engine';
 import { dataFields, orphanRules, type TemplateField, templateFields } from '../generator/scaffold';
 import type { FieldRule, GeneratorSpec } from '../generator/spec';
 import { RuleRow } from './RuleEditor';
+import SourcePane from './SourcePane';
 import TableEditor from './TableEditor';
 
 const btnCls =
@@ -25,6 +27,9 @@ type Props = {
    * would be thrown away on save. Duplicate the label to get an editable copy.
    */
   readOnly?: boolean;
+  /** Records fetched from the label's API in the Source pane, kept by the designer. Never saved. */
+  sample?: unknown[] | null;
+  onSample?: (records: unknown[] | null) => void;
 };
 
 /**
@@ -33,8 +38,8 @@ type Props = {
  * This is deliberately a fixed set of rule kinds rather than a small language, so what a label
  * prints is always something the screen shows before saving.
  */
-export default function DataEditor({ template, spec, onChange, onPreview, readOnly }: Props) {
-  const [pane, setPane] = useState<'fields' | 'tables'>('fields');
+export default function DataEditor({ template, spec, onChange, onPreview, readOnly, sample = null, onSample }: Props) {
+  const [pane, setPane] = useState<'fields' | 'tables' | 'source'>('fields');
   const [sampleTick, setSampleTick] = useState(0);
 
   const fields = useMemo(() => dataFields(template), [template]);
@@ -66,10 +71,26 @@ export default function DataEditor({ template, spec, onChange, onPreview, readOn
     onChange({ ...spec, fields });
   };
 
+  const firstRecord = sample?.[0];
+  const samplePaths = useMemo(() => (firstRecord === undefined ? [] : leafPaths(firstRecord)), [firstRecord]);
+  const usesApi = Object.values(spec.fields).some((r) => r?.kind === 'api');
+
   const sampleFor = (field: TemplateField) => {
     // sampleTick makes "New sample" draw again from the same spec.
     void sampleTick;
-    return sampleField(spec, field.name);
+    // An `api` field shows the real value from the fetched sample, else its path in ‹ ›.
+    return sampleField(spec, field.name, { placeholders: true, record: firstRecord });
+  };
+
+  /** For an `api` rule with a fetched sample: what is wrong with its path, if anything. */
+  const apiPathProblem = (rule: FieldRule | null): string | null => {
+    if (rule?.kind !== 'api' || firstRecord === undefined || !rule.path.trim()) return null;
+    try {
+      readPath(firstRecord, rule.path);
+      return null;
+    } catch (e) {
+      return e instanceof Error ? `${e.message} (checked against the first record of the sample)` : String(e);
+    }
   };
 
   const problemsFor = (name: string) => problems.filter((p) => p.startsWith(`“${name}”`));
@@ -83,6 +104,9 @@ export default function DataEditor({ template, spec, onChange, onPreview, readOn
         </button>
         <button type="button" className={tabCls(pane === 'tables')} onClick={() => setPane('tables')}>
           Tables
+        </button>
+        <button type="button" className={tabCls(pane === 'source')} onClick={() => setPane('source')}>
+          Source{spec.source ? ' •' : ''}
         </button>
         <span className="ml-auto flex gap-1.5">
           <button type="button" className={btnCls} onClick={() => setSampleTick((t) => t + 1)}>
@@ -134,6 +158,7 @@ export default function DataEditor({ template, spec, onChange, onPreview, readOn
             const barcode = field.kind === 'barcode' || field.kind === 'qr';
             const barcodeError = barcode ? barcodeProblem(field.type, value) : null;
             const fieldProblems = problemsFor(field.name);
+            const pathProblem = apiPathProblem(rule);
             return (
               <details key={field.name} className="rounded-xl border border-slate-200 bg-white px-3 py-2">
                 <summary className="flex cursor-pointer flex-wrap items-center gap-2 text-sm">
@@ -156,9 +181,11 @@ export default function DataEditor({ template, spec, onChange, onPreview, readOn
                     rule={rule}
                     spec={spec}
                     fieldNames={allNames}
+                    samplePaths={samplePaths}
                     locked={locked}
                     onChange={(next) => setRule(field.name, next)}
                   />
+                  {pathProblem && <p className="text-xs text-amber-700">{pathProblem}</p>}
                   {fieldProblems.length > 0 && (
                     <ul className="list-inside list-disc text-xs text-red-700">
                       {fieldProblems.map((p) => (
@@ -222,6 +249,20 @@ export default function DataEditor({ template, spec, onChange, onPreview, readOn
       )}
 
       {pane === 'tables' && <TableEditor spec={spec} onChange={onChange} readOnly={locked} />}
+
+      {pane === 'source' && (
+        <SourcePane
+          source={spec.source}
+          onChange={(source) => {
+            const { source: _old, ...rest } = spec;
+            onChange(source ? { ...rest, source } : rest);
+          }}
+          sample={sample}
+          onSample={(records) => onSample?.(records)}
+          usedByFields={usesApi}
+          readOnly={locked}
+        />
+      )}
     </div>
   );
 }

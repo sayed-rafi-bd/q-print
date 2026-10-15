@@ -58,6 +58,11 @@ export type GenerateOptions = {
    * samples and the preview, never for a real print.
    */
   placeholders?: boolean;
+  /**
+   * A fetched sample record that `api` rules read from, for the editor's samples and the preview.
+   * A real print never uses this; it goes through {@link generateRowsFromRecords}.
+   */
+  record?: unknown;
 };
 
 /** One page's worth of state. */
@@ -511,14 +516,14 @@ export function assertValidSpec(spec: GeneratorSpec): void {
  * field is half-finished.
  */
 export function sampleField(spec: GeneratorSpec, field: string, opts: GenerateOptions = {}): string {
-  const { now = new Date(), rng = Math.random, placeholders } = opts;
+  const { now = new Date(), rng = Math.random, placeholders, record } = opts;
   try {
-    return generateRows(spec, 1, { now, rng, placeholders })[0]?.[field] ?? '';
+    return generateRows(spec, 1, { now, rng, placeholders, record })[0]?.[field] ?? '';
   } catch {
     const rule = asFieldRule(spec?.fields?.[field]);
     if (!rule) return '';
     try {
-      const page: Page = { now, rng, index: 0, values: {}, tableRows: new Map(), placeholders };
+      const page: Page = { now, rng, index: 0, values: {}, tableRows: new Map(), placeholders, record };
       return decorate(evaluate(rule, page, spec), rule);
     } catch {
       return '';
@@ -535,19 +540,19 @@ export function sampleField(spec: GeneratorSpec, field: string, opts: GenerateOp
 export function generateRows(
   spec: GeneratorSpec,
   count: number,
-  { now = new Date(), rng = Math.random, placeholders }: GenerateOptions = {},
+  { now = new Date(), rng = Math.random, placeholders, record }: GenerateOptions = {},
 ): Record<string, string>[] {
   assertValidSpec(spec);
   if (!Number.isInteger(count) || count < 1) throw new Error('A print job needs at least one page.');
   if (count > LIMITS.maxRows) throw new Error(`A print job is limited to ${LIMITS.maxRows} pages.`);
   // No caller may print `undefined`: a label that reads the API has to go through the records.
-  if (!placeholders && hasApiRules(spec)) {
+  if (!placeholders && record === undefined && hasApiRules(spec)) {
     throw new Error('This label needs API data. Fetch the records and use generateRowsFromRecords.');
   }
 
   const { order } = resolveOrder(spec.fields);
   return Array.from({ length: count }, (_, index) => {
-    const page: Page = { now, rng, index, values: {}, tableRows: new Map(), placeholders };
+    const page: Page = { now, rng, index, values: {}, tableRows: new Map(), placeholders, record };
     fillPage(page, order, spec);
     return { ...page.values };
   });

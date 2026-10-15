@@ -3,6 +3,7 @@ import {
   buildUrl,
   checkSourceUrl,
   extractRecords,
+  leafPaths,
   normalizeUrl,
   parsePath,
   readPath,
@@ -191,5 +192,25 @@ describe('toText', () => {
   it('refuses objects and lists, naming the path', () => {
     expect(() => toText({ a: 1 }, 'user')).toThrow('“user” points at an object; pick a field inside it.');
     expect(() => toText([1], 'tags')).toThrow('“tags” points at a list; pick a field inside it.');
+  });
+});
+
+describe('leafPaths', () => {
+  it('lists printable values with paths readPath can read back', () => {
+    const record = { id: 7, user: { name: 'Ann', tags: ['a', 'b'] }, note: null, ok: true, empty: {} };
+    const paths = leafPaths(record);
+    expect(paths).toEqual(['id', 'user.name', 'user.tags[0]', 'user.tags[1]', 'note', 'ok']);
+    for (const p of paths) expect(() => readPath(record, p)).not.toThrow();
+  });
+
+  it('shows only the first three list items, skips unreadable keys and caps the count', () => {
+    expect(leafPaths({ l: [1, 2, 3, 4, 5] })).toEqual(['l[0]', 'l[1]', 'l[2]']);
+    expect(leafPaths({ 'a.b': 1, ok: 2 })).toEqual(['ok']);
+    const wide = Object.fromEntries(Array.from({ length: 500 }, (_, i) => [`k${i}`, i]));
+    expect(leafPaths(wide, 10)).toHaveLength(10);
+  });
+
+  it('gives nothing for a bare value', () => {
+    expect(leafPaths('x')).toEqual([]);
   });
 });
