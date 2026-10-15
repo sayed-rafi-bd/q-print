@@ -10,6 +10,7 @@ import LabelToolbar from './designer/LabelToolbar';
 import PreviewDialog from './designer/PreviewDialog';
 import SourcePane from './designer/SourcePane';
 import { validateSpec } from './generator/engine';
+import type { PreviewValues } from './generator/previewInputs';
 import { scaffoldSpec } from './generator/scaffold';
 import type { GeneratorSpec } from './generator/spec';
 import {
@@ -18,9 +19,11 @@ import {
   listLabels,
   loadLabel,
   loadLastLabel,
+  loadPreview,
   rememberLabel,
   resolveLabel,
   saveLabel,
+  savePreview,
 } from './labels';
 import { isTauri } from './platform';
 import { loadFont } from './printApi';
@@ -69,6 +72,10 @@ export default function DesignerPage() {
   // Records fetched in the Source pane to map fields and preview. Memory only, never saved, and
   // dropped whenever another label is opened.
   const [sample, setSample] = useState<unknown[] | null>(null);
+  // Placeholder values the person typed to see the label previewed. Kept in the database, so they
+  // are the same next time they open this label. Design-time only: printing never reads them.
+  const [previewValues, setPreviewValues] = useState<PreviewValues>({});
+  const [previewSaved, setPreviewSaved] = useState<PreviewValues>({});
   const [confirmReset, setConfirmReset] = useState(false);
   // A one-off offer to copy label files from an earlier version onto this account.
   const [offerImport, setOfferImport] = useState(false);
@@ -78,9 +85,10 @@ export default function DesignerPage() {
     setSample(null);
   }, [labelId]);
 
-  /** True when the layout, the page size or the generator has something unsaved. */
+  /** True when the layout, the page size, the generator or the preview values have something unsaved. */
   const generatorDirty = JSON.stringify(generator) !== JSON.stringify(generatorSaved);
-  const dirty = layoutDirty || generatorDirty;
+  const previewDirty = JSON.stringify(previewValues) !== JSON.stringify(previewSaved);
+  const dirty = layoutDirty || generatorDirty || previewDirty;
 
   /** Puts a label's template and generator into the designer. */
   const openLabel = useCallback(
@@ -97,6 +105,10 @@ export default function DesignerPage() {
       setSize(readSize(template));
       setGenerator(gen);
       setGeneratorSaved(gen);
+      // A built-in has no row in `labels`, but it can still have preview values of its own here.
+      const values = await loadPreview(user, target.id);
+      setPreviewValues(values);
+      setPreviewSaved(values);
       setError('');
       setConfirmReset(false);
     },
@@ -150,6 +162,12 @@ export default function DesignerPage() {
           // started out claiming "unsaved changes" and "data not saved" on an untouched label.
           setGeneratorSaved(gen);
           setLayoutDirty(false);
+          // Placeholders belong to the label, so they load here too. A built-in has no row in
+          // `labels` but can still have its own.
+          const values = await loadPreview(user, meta.id);
+          if (cancelled) return false;
+          setPreviewValues(values);
+          setPreviewSaved(values);
           rememberLabel(user, meta.id);
           return true;
         };
@@ -199,9 +217,11 @@ export default function DesignerPage() {
       if (problems.length > 0) throw new Error(problems[0]);
 
       await saveLabel(user, meta.id, meta.name, template, next);
+      await savePreview(user, meta.id, previewValues);
       savedSnapshot.current = JSON.stringify(template);
       setGenerator(next);
       setGeneratorSaved(next);
+      setPreviewSaved(previewValues);
       setLayoutDirty(false);
       setMeta({ ...meta, widthMm: size?.w ?? meta.widthMm, heightMm: size?.h ?? meta.heightMm });
       setMessage(
@@ -572,6 +592,8 @@ export default function DesignerPage() {
               sample={sample}
               onOpenSource={() => setTab('source')}
               onPreview={() => setPreviewing(true)}
+              previewValues={previewValues}
+              onPreviewValues={setPreviewValues}
             />
           </div>
         )}
@@ -597,6 +619,7 @@ export default function DesignerPage() {
           template={currentTemplate}
           spec={generator}
           sample={sample}
+          previewValues={previewValues}
           onClose={() => setPreviewing(false)}
         />
       )}

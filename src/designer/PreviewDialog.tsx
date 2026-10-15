@@ -1,8 +1,8 @@
 import type { Template } from '@pdfme/common';
 import { barcodes, rectangle, text } from '@pdfme/schemas';
 import { Viewer } from '@pdfme/ui';
-import { useEffect, useRef, useState } from 'react';
-import { previewInputs } from '../generator/previewInputs';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { type PreviewValues, previewInputs, usableValues } from '../generator/previewInputs';
 import type { GeneratorSpec } from '../generator/spec';
 import { loadFont } from '../printApi';
 
@@ -17,6 +17,8 @@ type Props = {
   spec: GeneratorSpec;
   /** Records fetched in the Source pane; the first three are previewed when there are any. */
   sample?: unknown[] | null;
+  /** Placeholder values typed in the Data tab. They outrank a fetched record and a generated value. */
+  previewValues?: PreviewValues;
   onClose: () => void;
 };
 
@@ -26,8 +28,10 @@ type Props = {
  * This is the check that catches content a barcode format cannot encode, before it reaches a print
  * job: pdfme renders the real page here, so anything it would reject shows up as an error now.
  */
-export default function PreviewDialog({ template, spec, sample = null, onClose }: Props) {
-  // A label with an API source previews the fetched sample, or ‹path› stand-ins when there is none.
+export default function PreviewDialog({ template, spec, sample = null, previewValues, onClose }: Props) {
+  // A value the person typed wins over the fetched sample and over what a rule would generate.
+  const typed = useMemo(() => usableValues(template, previewValues), [template, previewValues]);
+  const typedCount = Object.keys(typed).length;
   const real = Boolean(spec.source && sample && sample.length > 0);
   const standIns = Boolean(spec.source) && !real;
   const container = useRef<HTMLDivElement>(null);
@@ -41,7 +45,7 @@ export default function PreviewDialog({ template, spec, sample = null, onClose }
     (async () => {
       try {
         // A handful of pages, so a sequence rule and a table read sensibly.
-        const { inputs, standInBarcodes: madeUp } = previewInputs(template, spec, sample);
+        const { inputs, standInBarcodes: madeUp } = previewInputs(template, spec, sample, typed);
         setStandInBarcodes(madeUp);
         const font = await loadFont();
         if (cancelled || !container.current) return;
@@ -61,16 +65,18 @@ export default function PreviewDialog({ template, spec, sample = null, onClose }
       cancelled = true;
       viewer?.destroy();
     };
-  }, [template, spec, sample]);
+  }, [template, spec, sample, typed]);
 
   return (
     <div className="absolute inset-0 z-20 flex flex-col bg-white/95" role="dialog" aria-label="Label preview">
       <div className="flex items-center gap-2 border-b border-slate-200 px-4 py-2">
         <span className="text-sm font-semibold text-slate-800">Preview</span>
         <span className="text-xs text-slate-500">
-          {real
-            ? `The first ${Math.min(3, sample?.length ?? 0)} record(s) of the fetched sample.`
-            : 'Three pages of freshly generated data.'}
+          {typedCount > 0
+            ? `Three pages, with your placeholder value in ${typedCount} field(s).`
+            : real
+              ? `The first ${Math.min(3, sample?.length ?? 0)} record(s) of the fetched sample.`
+              : 'Three pages of freshly generated data.'}
         </span>
         <button type="button" className={`${btnCls} ml-auto`} onClick={onClose}>
           Close
@@ -79,10 +85,12 @@ export default function PreviewDialog({ template, spec, sample = null, onClose }
 
       {standIns && (
         <p className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900">
-          No sample has been fetched, so fields that read the API show their path.
+          {typedCount > 0
+            ? `Fields without a placeholder of your own show their path, since the API has not been fetched.`
+            : 'No sample has been fetched, so fields that read the API show their path.'}
           {standInBarcodes.length > 0 &&
             ` Barcode field(s) ${standInBarcodes.join(', ')} show a made-up value, since a barcode cannot show a path.`}{' '}
-          Fetch a sample in the Source pane to preview real values.
+          Type a placeholder value in the Data tab, or fetch a sample in the Source pane.
         </p>
       )}
 

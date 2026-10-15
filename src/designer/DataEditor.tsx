@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { leafPaths, readPath } from '../generator/apiSource';
 import { barcodeProblem } from '../generator/barcodeCheck';
 import { sampleField, validateSpec } from '../generator/engine';
+import { defaultPreviewValues, type PreviewValues, usableValues } from '../generator/previewInputs';
 import { dataFields, orphanRules, type TemplateField, templateFields } from '../generator/scaffold';
 import type { FieldRule, GeneratorSpec } from '../generator/spec';
 import { RuleRow } from './RuleEditor';
@@ -30,6 +31,12 @@ type Props = {
   sample?: unknown[] | null;
   /** Switches the designer to its Source tab, where the API address is set. */
   onOpenSource?: () => void;
+  /**
+   * Placeholder values typed here to see the label previewed, and how to change them. They are saved
+   * with the label and only ever seen on screen: a print job builds its data from the real records.
+   */
+  previewValues: PreviewValues;
+  onPreviewValues: (next: PreviewValues) => void;
 };
 
 /**
@@ -46,6 +53,8 @@ export default function DataEditor({
   readOnly,
   sample = null,
   onOpenSource,
+  previewValues,
+  onPreviewValues,
 }: Props) {
   const [pane, setPane] = useState<'fields' | 'tables'>('fields');
   const [sampleTick, setSampleTick] = useState(0);
@@ -54,6 +63,8 @@ export default function DataEditor({
   const allNames = useMemo(() => templateFields(template).map((f) => f.name), [template]);
   const orphans = useMemo(() => orphanRules(template, spec), [template, spec]);
   const problems = useMemo(() => validateSpec(spec), [spec]);
+  // Entries for fields that no longer exist are ignored, so a renamed field starts clean.
+  const typed = useMemo(() => usableValues(template, previewValues), [template, previewValues]);
 
   const locked = readOnly === true;
 
@@ -81,6 +92,14 @@ export default function DataEditor({
 
   const firstRecord = sample?.[0];
   const samplePaths = useMemo(() => (firstRecord === undefined ? [] : leafPaths(firstRecord)), [firstRecord]);
+
+  /** Sets or clears one field's placeholder. Clearing it removes the entry, not sets it to "". */
+  const setTyped = (name: string, value: string) => {
+    const next = { ...typed };
+    if (value === '') delete next[name];
+    else next[name] = value;
+    onPreviewValues(next);
+  };
 
   const sampleFor = (field: TemplateField) => {
     // sampleTick makes "New sample" draw again from the same spec.
@@ -112,7 +131,22 @@ export default function DataEditor({
         <button type="button" className={tabCls(pane === 'tables')} onClick={() => setPane('tables')}>
           Tables
         </button>
-        <span className="ml-auto flex gap-1.5">
+        <span className="ml-auto flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            className={btnCls}
+            onClick={() => onPreviewValues(defaultPreviewValues(template, typed))}
+          >
+            Fill with placeholders
+          </button>
+          <button
+            type="button"
+            className={btnCls}
+            disabled={Object.keys(typed).length === 0}
+            onClick={() => onPreviewValues({})}
+          >
+            Clear placeholders
+          </button>
           <button type="button" className={btnCls} onClick={() => setSampleTick((t) => t + 1)}>
             New sample
           </button>
@@ -190,6 +224,21 @@ export default function DataEditor({
 
                 <div className="mt-2 space-y-2">
                   {barcode && field.hint && <p className="text-xs text-slate-500">{field.hint}</p>}
+                  <label className="block text-xs text-slate-600">
+                    <span className="font-medium text-slate-700">Preview value</span>
+                    <input
+                      type="text"
+                      aria-label={`Preview value for ${field.name}`}
+                      className="mt-1 w-full rounded border border-slate-300 px-2 py-1 font-mono text-xs"
+                      value={typed[field.name] ?? ''}
+                      placeholder="leave empty to generate one"
+                      onChange={(e) => setTyped(field.name, e.target.value)}
+                    />
+                    <span className="mt-1 block text-slate-500">
+                      Only used by the preview, never printed. Saved with this label, so the preview looks the same next
+                      time.
+                    </span>
+                  </label>
                   <RuleRow
                     rule={rule}
                     spec={spec}

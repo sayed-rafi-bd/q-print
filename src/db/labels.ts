@@ -15,6 +15,7 @@
 
 import { and, count, desc, eq } from 'drizzle-orm';
 import type { Database } from './client';
+import { deletePreviewValues } from './preview';
 import { labels as labelsTable } from './schema';
 
 /** What the picker needs: enough to draw a row, not the whole template. */
@@ -160,7 +161,11 @@ export async function deleteLabel(db: Database, userId: string, slug: string): P
     .delete(labelsTable)
     .where(and(eq(labelsTable.userId, userId), eq(labelsTable.slug, slug)))
     .returning({ id: labelsTable.id });
-  return result.length > 0;
+  if (result.length === 0) return false;
+  // No foreign key reaches `label_preview` from `labels`, because a built-in has no row there at
+  // all. Cleared here rather than by the caller, so no path can leave it behind.
+  await deletePreviewValues(db, userId, slug);
+  return true;
 }
 
 /** How many labels an account has. Used to decide whether the one-time import should offer. */

@@ -1,10 +1,16 @@
 /**
  * The data the preview feeds to pdfme.
  *
- * With a fetched sample, the first records are used as they are. Without one, `api` fields have
- * nothing to read, so the engine prints their path as `‹path›`. That is fine in a text field, but
- * a barcode cannot encode it and pdfme rejects it, which used to make the whole preview fail.
- * Here such barcode fields get a value their format accepts instead, so the page still renders.
+ * Where a value comes from, highest first:
+ *
+ * 1. A placeholder the person typed for that field (`stored`).
+ * 2. A record fetched from the label's API in the Source pane.
+ * 3. The field's own rule, generated as it would be at print time.
+ * 4. For an `api` field with nothing to read: its path as `‹path›`. That is fine in a text field,
+ *    but a barcode cannot encode it and pdfme rejects it, which used to make the whole preview fail.
+ *    Those barcode fields get a value their format accepts instead, so the page still renders.
+ *
+ * Nothing here reaches a print job: `printRows.ts` builds those from the real records.
  */
 
 import type { Template } from '@pdfme/common';
@@ -32,24 +38,80 @@ export function barcodeStandIn(type: string): string {
   }
 }
 
+/** Field name to the value the person typed. The same shape as the stored row. */
+export type PreviewValues = Record<string, string>;
+
 export type PreviewData = {
   inputs: Record<string, string>[];
-  /** Names of barcode fields that show a made-up value because the API has not been fetched. */
+  /** Field names previewed with a value the person typed. */
+  typedFields: string[];
+  /**
+   * Barcode fields showing a made-up value, because neither a placeholder nor the API gave them one.
+   */
   standInBarcodes: string[];
 };
 
-/** Up to three pages of preview data; see the file comment for what a missing sample means. */
+/**
+ * Only the entries for fields the template still has. A field renamed or deleted in the Layout must
+ * not go on deciding what a page shows. An empty value is dropped too, so clearing one works.
+ */
+export function usableValues(template: Template, stored: PreviewValues | null | undefined): PreviewValues {
+  if (!stored) return {};
+  const names = new Set(templateFields(template).map((f) => f.name));
+  const kept: PreviewValues = {};
+  for (const [name, value] of Object.entries(stored)) {
+    if (names.has(name) && typeof value === 'string' && value !== '') kept[name] = value;
+  }
+  return kept;
+}
+
+/** Writes the typed values over every page. Placeholders are constant; rules still vary per page. */
+const applyTyped = (inputs: Record<string, string>[], typed: PreviewValues): void => {
+  for (const row of inputs) {
+    for (const [name, value] of Object.entries(typed)) row[name] = value;
+  }
+};
+
+/**
+ * A placeholder for every field, for the "Fill with placeholders" button.
+ *
+ * A barcode or QR field gets a value its format accepts, so the preview cannot fail on a page the
+ * person only wanted to look at; a text field gets something readable. Existing values are kept, so
+ * filling again does not throw away what was already typed.
+ */
+export function defaultPreviewValues(template: Template, current: PreviewValues = {}): PreviewValues {
+  const values: PreviewValues = { ...current };
+  for (const field of templateFields(template)) {
+    if (values[field.name] !== undefined && values[field.name] !== '') continue;
+    values[field.name] =
+      field.kind === 'barcode' || field.kind === 'qr' ? barcodeStandIn(field.type) : `${field.name} sample`;
+  }
+  return values;
+}
+
+/** Up to three pages of preview data; see the file comment for where each value comes from. */
 export function previewInputs(
   template: Template,
   spec: GeneratorSpec,
   sample: unknown[] | null | undefined,
+  stored: PreviewValues | null | undefined = null,
   pages = 3,
 ): PreviewData {
-  if (spec.source && sample && sample.length > 0) {
-    return { inputs: generateRowsFromRecords(spec, sample.slice(0, pages), 1), standInBarcodes: [] };
-  }
+  const typed = usableValues(template, stored);
+  const typedFields = Object.keys(typed);
+  const records = spec.source && sample && sample.length > 0 ? sample.slice(0, pages) : null;
 
-  const inputs = generateRows(spec, pages, { placeholders: Boolean(spec.source) });
+  let inputs: Record<string, string>[];
+  if (records) {
+    // Real records, with any typed value written over the fields it names.
+    inputs = generateRowsFromRecords(spec, records, 1);
+  } else {
+    inputs = generateRows(spec, pages, { placeholders: Boolean(spec.source) });
+  }
+  applyTyped(inputs, typed);
+
+  // A typed value is already a real value, so it is never one of these stand-ins; replacing is
+  // driven by what is left, not by whether anything at all was typed.
   const standIn = new Set<string>();
   if (spec.source) {
     for (const field of templateFields(template)) {
@@ -64,5 +126,6 @@ export function previewInputs(
       }
     }
   }
-  return { inputs, standInBarcodes: [...standIn] };
+
+  return { inputs, typedFields, standInBarcodes: [...standIn] };
 }

@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as client from '../apiClient';
 import { validateSpec } from '../generator/engine';
+import type { PreviewValues } from '../generator/previewInputs';
 import type { ApiSource, GeneratorSpec } from '../generator/spec';
 import DataEditor from './DataEditor';
 import { RuleRow } from './RuleEditor';
@@ -159,6 +160,7 @@ describe('the Data tab with an API source', () => {
     onOpenSource?: () => void;
   }) {
     const [s, setS] = useState(spec);
+    const [previewValues, setPreviewValues] = useState<PreviewValues>({});
     return (
       <DataEditor
         template={template}
@@ -167,6 +169,8 @@ describe('the Data tab with an API source', () => {
         onPreview={() => {}}
         sample={sample}
         onOpenSource={onOpenSource}
+        previewValues={previewValues}
+        onPreviewValues={setPreviewValues}
       />
     );
   }

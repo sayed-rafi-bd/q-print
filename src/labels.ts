@@ -3,6 +3,8 @@ import { BUILTINS, builtin, isBuiltin } from './builtinLabels';
 import { isBundle, templateSizeMm } from './bundle';
 import { getDb } from './db/client';
 import * as store from './db/labels';
+import type { PreviewValues } from './db/preview';
+import * as preview from './db/preview';
 import type { User } from './db/users';
 import { builtinSpec } from './generator/builtins';
 import { scaffoldSpec } from './generator/scaffold';
@@ -186,6 +188,9 @@ export async function createLabel(user: User, { name, widthMm, heightMm, from }:
     template: JSON.stringify(template),
     generator: JSON.stringify(generator),
   });
+  // A copy starts from the placeholder values of the label it came from, so a duplicate of one you
+  // were working on still previews as you left it.
+  if (from.kind === 'copy') await preview.copyPreviewValues(getDb(), user.id, from.id, id);
   return metaFrom(id, name.trim() || id, { widthMm, heightMm });
 }
 
@@ -226,9 +231,32 @@ export async function renameLabel(user: User, label: LabelId, name: string): Pro
 /** Removes one of the signed-in account's labels. Built-ins cannot be deleted, only reset. */
 export async function deleteLabel(user: User, label: LabelId): Promise<void> {
   if (isBuiltin(label)) throw new Error('A built-in label cannot be deleted. Use "Reset to default" instead.');
+  // store.deleteLabel also clears this label's preview values, which have no foreign key to it.
   if (!(await store.deleteLabel(getDb(), user.id, label))) {
     throw new Error(`There is no label called “${label}” on this account.`);
   }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Placeholder values for the preview. Design-time only; a print job never reads them.
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * The values this account typed for a label, so the preview is the same next time. Empty when there
+ * are none, which is also the case for a label nobody has touched.
+ */
+export function loadPreview(user: User, label: LabelId): Promise<PreviewValues> {
+  return preview.loadPreviewValues(getDb(), user.id, label).then((v) => v ?? {});
+}
+
+/** Saves the placeholder values. An empty object forgets them all. */
+export function savePreview(user: User, label: LabelId, values: PreviewValues): Promise<void> {
+  return preview.savePreviewValues(getDb(), user.id, label, values);
+}
+
+/** Forgets a label's placeholder values. */
+export function clearPreview(user: User, label: LabelId): Promise<void> {
+  return preview.deletePreviewValues(getDb(), user.id, label);
 }
 
 // ---------------------------------------------------------------------------------------------
