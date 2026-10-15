@@ -2,6 +2,7 @@ import { useState } from 'react';
 import NewLabelDialog from './NewLabelDialog';
 import { createLabel, deleteLabel, renameLabel, type LabelId, type LabelMeta, type NewLabel } from '../labels';
 import { useAuth } from '../auth/AuthProvider';
+import Modal from './Modal';
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -100,7 +101,7 @@ export default function LabelToolbar({ labels, value, disabled, onPick, onChange
           onChange={e => onPick(e.target.value)}
           className={selectCls + ' max-w-64'}>
           {labels.map(l => (
-            <option key={l.id} value={l.id}>{l.name}{l.builtin ? '' : ' (your label)'}</option>
+            <option key={l.id} value={l.id}>{l.name}</option>
           ))}
         </select>
 
@@ -119,16 +120,26 @@ export default function LabelToolbar({ labels, value, disabled, onPick, onChange
 
         {current?.builtin ? (
           <span className="text-xs text-slate-500">A built-in label; use “Reset to default” below.</span>
-        ) : confirmDelete ? (
-          <span className="flex items-center gap-2 text-sm text-slate-700">
-            Delete “{current?.name}”?
-            <button className={btnDangerCls} onClick={onDelete} disabled={busy}>Yes, delete</button>
-            <button className={btnPlainCls} onClick={() => setConfirmDelete(false)}>Cancel</button>
-          </span>
         ) : (
           <button className={btnDangerCls} onClick={() => setConfirmDelete(true)} disabled={off || busy}>Delete</button>
         )}
       </div>
+
+      {current && (
+        <Modal open={confirmDelete} title="Delete label"
+          onClose={() => setConfirmDelete(false)}
+          footer={<>
+            <button className={btnDangerCls} onClick={onDelete} disabled={busy}>
+              {busy ? 'Deleting…' : 'Yes, delete'}
+            </button>
+            <button className={btnPlainCls} onClick={() => setConfirmDelete(false)} disabled={busy}>Cancel</button>
+          </>}>
+          <p>
+            “{current.name}” will be removed from your account for good. There is no undo, and the
+            label is gone on every device you use this account on.
+          </p>
+        </Modal>
+      )}
 
       {renaming && current && (
         <form onSubmit={onRename} className="tab-enter flex flex-wrap items-center gap-2 text-sm text-slate-700">

@@ -272,7 +272,7 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
                 return (
                   <label key={o.value}
                          className={
-                           'rounded-lg border px-3 py-2 text-center text-sm transition ' +
+                           'pill rounded-lg border px-3 py-2 text-center text-sm transition ' +
                            (busy ? 'cursor-not-allowed opacity-60 ' : 'cursor-pointer ') +
                            (selected
                              ? 'border-indigo-600 bg-indigo-50 font-medium text-indigo-700 ring-1 ring-indigo-600'
@@ -298,7 +298,7 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
               return (
                 <label key={r}
                        className={
-                         'rounded-lg border px-3 py-2 text-center text-sm transition ' +
+                         'pill rounded-lg border px-3 py-2 text-center text-sm transition ' +
                          (busy ? 'cursor-not-allowed opacity-60 ' : 'cursor-pointer ') +
                          (selected
                            ? 'border-indigo-600 bg-indigo-50 font-medium text-indigo-700 ring-1 ring-indigo-600'

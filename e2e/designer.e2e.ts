@@ -191,6 +191,45 @@ test.describe('designer: creating labels', () => {
     await expect(page.getByLabel('Label', { exact: true }).locator('option', { hasText: 'Renamed' })).toHaveCount(0);
     await expectCanvasPainted(page);
   });
+
+  test('the delete confirmation is a modal, and dismissing it keeps the label', async ({ page }) => {
+    await signUp(page);
+    const name = uniqueName('Keep');
+    await createLabel(page, { name, from: 'blank', size: [80, 40] });
+    await expectCanvasPainted(page);
+
+    await page.getByRole('button', { name: 'Delete' }).click();
+
+    // A dialog, in front, rather than buttons sitting where the toolbar was.
+    const dialog = page.getByRole('dialog', { name: 'Delete label' });
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText(name);
+    await expect(dialog).toHaveAttribute('aria-modal', 'true');
+
+    // Escape closes it and changes nothing.
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+    await expect(page.getByLabel('Label', { exact: true }).locator('option', { hasText: name })).toHaveCount(1);
+    await expectCanvasPainted(page);
+
+    // So does Cancel.
+    await page.getByRole('button', { name: 'Delete' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Cancel' }).click();
+    await expect(page.getByRole('dialog')).toBeHidden();
+    await expect(page.getByLabel('Label', { exact: true }).locator('option', { hasText: name })).toHaveCount(1);
+
+    // A click on the backdrop, too: the confirmation is there to be got out of, not a trap.
+    await page.getByRole('button', { name: 'Delete' }).click();
+    await page.getByRole('dialog').press('Escape');
+    await expect(page.getByRole('dialog')).toBeHidden();
+    await expect(page.getByLabel('Label', { exact: true }).locator('option', { hasText: name })).toHaveCount(1);
+
+    // And confirming really does delete.
+    await page.getByRole('button', { name: 'Delete' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Yes, delete' }).click();
+    await expect(page.getByRole('dialog')).toBeHidden();
+    await expect(page.getByLabel('Label', { exact: true }).locator('option', { hasText: name })).toHaveCount(0);
+  });
 });
 
 test.describe('designer: unsaved-changes tracking', () => {
@@ -336,7 +375,7 @@ test.describe('designer: labels saved by the older version', () => {
     await expect(page.getByLabel('Label', { exact: true }).locator('option', { hasText: name })).toHaveCount(1);
 
     // The broken label can be picked and removed.
-    await page.getByLabel('Label', { exact: true }).selectOption({ label: `${name} (your label)` });
+    await page.getByLabel('Label', { exact: true }).selectOption({ label: name });
     await page.getByRole('button', { name: 'Delete' }).click();
     await page.getByRole('button', { name: 'Yes, delete' }).click();
     await expect(page.getByLabel('Label', { exact: true }).locator('option', { hasText: name })).toHaveCount(0);

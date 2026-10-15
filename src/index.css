@@ -163,17 +163,25 @@ body {
   50%      { background-position: 100% 50%; }
 }
 
-/* Soft hover/press for every ordinary button and pill */
-button:not(:disabled), label:has(input[type="radio"]) {
+/* Soft hover/press for ordinary buttons, and for the radio "pill" controls. The pill part is
+   deliberately opt-in through `.pill` rather than every label holding a radio: the New-label
+   dialog's "Start from" options are radio labels too, and a row of choices that lifts on hover
+   reads as jittery. */
+button:not(:disabled) {
   transition-property: transform, background-color, border-color, color, box-shadow, opacity;
   transition-duration: 0.18s;
 }
 button:not(:disabled):not(.btn-cute):hover { transform: translateY(-1px); }
 button:not(:disabled):not(.btn-cute):active { transform: scale(0.95); }
-label:has(input[type="radio"]):not(:has(input:disabled)):hover { transform: translateY(-1px) scale(1.03); }
+
+.pill {
+  transition-property: transform, background-color, border-color, color, box-shadow, opacity;
+  transition-duration: 0.18s;
+}
+.pill:hover:not(:has(input:disabled)) { transform: translateY(-1px) scale(1.03); }
 
 /* Selected radio pill pops */
-label:has(input[type="radio"]:checked) { animation: pill-pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.pill:has(input[type="radio"]:checked) { animation: pill-pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
 @keyframes pill-pop {
   0% { transform: scale(0.9); }
   60% { transform: scale(1.08); }
