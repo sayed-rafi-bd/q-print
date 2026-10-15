@@ -5,7 +5,9 @@
  * can be unit tested by injecting a seeded RNG and a fixed `now`.
  */
 
+import { checkSourceUrl, parsePath, readPath, toText } from './apiSource';
 import {
+  API_SOURCE_KEYS,
   asFieldRule,
   type FieldRule,
   type GeneratorSpec,
@@ -22,6 +24,10 @@ export const LIMITS = {
   maxTableRows: 5_000,
   /** Serialized size of a spec. */
   maxSpecBytes: 1024 * 1024,
+  /** Largest API response accepted. The Rust side enforces the same number (`http.rs`). */
+  maxResponseBytes: 5 * 1024 * 1024,
+  /** How long an API call may take. The Rust side enforces the same number (`http.rs`). */
+  fetchTimeoutMs: 15_000,
 };
 
 const UPPER = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -47,6 +53,11 @@ export type GenerateOptions = {
   now?: Date;
   /** Injectable so tests are deterministic. Must return a number in [0, 1). */
   rng?: () => number;
+  /**
+   * Lets an `api` rule that has no record print `‹path›` instead of throwing. Only for the editor's
+   * samples and the preview, never for a real print.
+   */
+  placeholders?: boolean;
 };
 
 /** One page's worth of state. */
@@ -59,6 +70,11 @@ type Page = {
   values: Record<string, string>;
   /** The row each table contributes to this page, chosen once so fields stay consistent. */
   tableRows: Map<string, string[]>;
+  /** The API record this page prints, for `api` rules. Undefined for a label with no data source. */
+  record?: unknown;
+  /** 1-based position of `record` in the response, for error messages. */
+  recordNumber?: number;
+  placeholders?: boolean;
 };
 
 /** A random integer in [min, max]. Tolerates an rng that returns exactly 1. */
@@ -205,10 +221,36 @@ const evaluate = (rule: FieldRule, page: Page, spec: GeneratorSpec): string => {
       return rule.pattern ? expandPattern(rule.pattern, page.rng, from) : from;
     }
 
+    case 'api': {
+      if (page.record === undefined) {
+        if (page.placeholders) return `‹${rule.path}›`;
+        throw new Error('this field needs data from the API.');
+      }
+      return toText(readPath(page.record, rule.path), rule.path);
+    }
+
     default:
       return '';
   }
 };
+
+/** Fills one page's fields in dependency order. An `api` failure names the record and the field. */
+const fillPage = (page: Page, order: string[], spec: GeneratorSpec): void => {
+  for (const name of order) {
+    const rule = spec.fields[name];
+    try {
+      page.values[name] = decorate(evaluate(rule, page, spec), rule);
+    } catch (e) {
+      if (rule.kind !== 'api') throw e;
+      const where = page.recordNumber ? `Record ${page.recordNumber}, field` : 'Field';
+      throw new Error(`${where} “${name}”: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+};
+
+/** True when any field reads from the API response. */
+const hasApiRules = (spec: GeneratorSpec): boolean =>
+  Object.values(spec?.fields ?? {}).some((rule) => asFieldRule(rule)?.kind === 'api');
 
 /**
  * Orders the fields so a `copy` always runs after the field it reads.
@@ -296,6 +338,49 @@ const checkDateFormat = (field: string, format: string, errors: string[]): void 
       `“${field}” does not understand ${stray.map((s) => `“${s}”`).join(', ')} in its date format. ` +
         'Use YYYY, YY, MM, DD, HH, mm or ss.',
     );
+  }
+};
+
+/** Validates the `source` block. Unknown keys are refused so a stray token can never ride along. */
+const checkSource = (source: unknown, errors: string[]): void => {
+  if (!source || typeof source !== 'object' || Array.isArray(source)) {
+    errors.push('The data source is not valid.');
+    return;
+  }
+  const s = source as Record<string, unknown>;
+  for (const key of Object.keys(s)) {
+    if (!(API_SOURCE_KEYS as readonly string[]).includes(key)) {
+      errors.push(`The data source has an unknown setting “${key}”. Access tokens are never saved in a label.`);
+    }
+  }
+  if (typeof s.url !== 'string') {
+    errors.push('Enter the URL to fetch the data from.');
+  } else {
+    errors.push(...checkSourceUrl(s.url));
+  }
+  if (s.listPath !== undefined) {
+    if (typeof s.listPath !== 'string') {
+      errors.push('The list path must be text.');
+    } else if (s.listPath.trim() !== '' && !parsePath(s.listPath)) {
+      errors.push(`The list path “${s.listPath}” is not valid. Use names separated by dots, like data.items.`);
+    }
+  }
+  if (s.bearerAuth !== undefined && typeof s.bearerAuth !== 'boolean') {
+    errors.push('The access token setting must be on or off.');
+  }
+  if (s.variables !== undefined) {
+    const vars = s.variables;
+    if (!vars || typeof vars !== 'object' || Array.isArray(vars)) {
+      errors.push('The URL variable settings are not valid.');
+    } else {
+      for (const [name, v] of Object.entries(vars)) {
+        const entry = v as { label?: unknown; default?: unknown } | null;
+        const bad = (x: unknown) => x !== undefined && typeof x !== 'string';
+        if (!entry || typeof entry !== 'object' || bad(entry.label) || bad(entry.default)) {
+          errors.push(`The settings for variable “${name}” are not valid.`);
+        }
+      }
+    }
   }
 };
 
@@ -390,10 +475,24 @@ export function validateSpec(spec: GeneratorSpec | null | undefined): string[] {
         }
         break;
 
+      case 'api':
+        if (typeof rule.path !== 'string' || rule.path.trim() === '') {
+          errors.push(`“${field}” needs a path into the API response.`);
+        } else if (!parsePath(rule.path)) {
+          errors.push(
+            `“${field}” has an invalid path “${rule.path}”. Use names separated by dots and [0] for a list ` +
+              'position, like items[0].name.',
+          );
+        }
+        if (!spec.source) errors.push(`“${field}” reads the API but this label has no URL.`);
+        break;
+
       default:
         break;
     }
   }
+
+  if (spec.source !== undefined) checkSource(spec.source, errors);
 
   errors.push(...resolveOrder(fields).errors);
   return errors;
@@ -412,14 +511,14 @@ export function assertValidSpec(spec: GeneratorSpec): void {
  * field is half-finished.
  */
 export function sampleField(spec: GeneratorSpec, field: string, opts: GenerateOptions = {}): string {
-  const { now = new Date(), rng = Math.random } = opts;
+  const { now = new Date(), rng = Math.random, placeholders } = opts;
   try {
-    return generateRows(spec, 1, { now, rng })[0]?.[field] ?? '';
+    return generateRows(spec, 1, { now, rng, placeholders })[0]?.[field] ?? '';
   } catch {
     const rule = asFieldRule(spec?.fields?.[field]);
     if (!rule) return '';
     try {
-      const page: Page = { now, rng, index: 0, values: {}, tableRows: new Map() };
+      const page: Page = { now, rng, index: 0, values: {}, tableRows: new Map(), placeholders };
       return decorate(evaluate(rule, page, spec), rule);
     } catch {
       return '';
@@ -436,16 +535,65 @@ export function sampleField(spec: GeneratorSpec, field: string, opts: GenerateOp
 export function generateRows(
   spec: GeneratorSpec,
   count: number,
-  { now = new Date(), rng = Math.random }: GenerateOptions = {},
+  { now = new Date(), rng = Math.random, placeholders }: GenerateOptions = {},
 ): Record<string, string>[] {
   assertValidSpec(spec);
   if (!Number.isInteger(count) || count < 1) throw new Error('A print job needs at least one page.');
   if (count > LIMITS.maxRows) throw new Error(`A print job is limited to ${LIMITS.maxRows} pages.`);
+  // No caller may print `undefined`: a label that reads the API has to go through the records.
+  if (!placeholders && hasApiRules(spec)) {
+    throw new Error('This label needs API data. Fetch the records and use generateRowsFromRecords.');
+  }
 
   const { order } = resolveOrder(spec.fields);
   return Array.from({ length: count }, (_, index) => {
-    const page: Page = { now, rng, index, values: {}, tableRows: new Map() };
-    for (const name of order) page.values[name] = decorate(evaluate(spec.fields[name], page, spec), spec.fields[name]);
+    const page: Page = { now, rng, index, values: {}, tableRows: new Map(), placeholders };
+    fillPage(page, order, spec);
     return { ...page.values };
   });
+}
+
+/**
+ * One row of data per page for a label with an API data source: every record is printed `copies`
+ * times, record by record (record 1 × n, then record 2 × n), so the copies of a label come out
+ * together. `sequence` rules keep counting up across the whole job.
+ *
+ * Throws before generating anything when the spec is invalid or the job is too big, and names the
+ * record, the field and the path when a record lacks a value.
+ */
+export function generateRowsFromRecords(
+  spec: GeneratorSpec,
+  records: unknown[],
+  copies: number,
+  { now = new Date(), rng = Math.random }: GenerateOptions = {},
+): Record<string, string>[] {
+  assertValidSpec(spec);
+  if (!Array.isArray(records) || records.length === 0) throw new Error('There are no records to print.');
+  if (!Number.isInteger(copies) || copies < 1) throw new Error('Each record needs at least one copy.');
+  const total = records.length * copies;
+  if (total > LIMITS.maxRows) {
+    throw new Error(
+      `${groupThousands(total)} pages would be printed (${groupThousands(records.length)} records x ` +
+        `${groupThousands(copies)} copies); the limit is ${groupThousands(LIMITS.maxRows)}.`,
+    );
+  }
+
+  const { order } = resolveOrder(spec.fields);
+  const rows: Record<string, string>[] = [];
+  records.forEach((record, r) => {
+    for (let c = 0; c < copies; c++) {
+      const page: Page = {
+        now,
+        rng,
+        index: rows.length,
+        values: {},
+        tableRows: new Map(),
+        record,
+        recordNumber: r + 1,
+      };
+      fillPage(page, order, spec);
+      rows.push({ ...page.values });
+    }
+  });
+  return rows;
 }

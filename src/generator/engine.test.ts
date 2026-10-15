@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { generateRows, LIMITS, sampleField, validateSpec } from './engine';
+import { generateRows, generateRowsFromRecords, LIMITS, sampleField, validateSpec } from './engine';
 import type { FieldRule, GeneratorSpec } from './spec';
 
 /** A small LCG, so a failing case can be reproduced exactly. */
@@ -412,3 +412,174 @@ describe('validateSpec', () => {
     expect(validateSpec({ version: 1 } as never).join('\n')).toMatch(/no fields/);
   });
 });
+
+describe('api rule', () => {
+  const source = { url: 'api.example.com/day/{day}' };
+  const withSource = (fields: Record<string, FieldRule>, extra: Partial<GeneratorSpec> = {}): GeneratorSpec => ({
+    version: 1,
+    source,
+    fields,
+    ...extra,
+  });
+  const apiSpec = withSource({ name: { kind: 'api', path: 'user.name' } });
+  const rec = (name: string) => ({ user: { name } });
+
+  it('prints the record’s value, with prefix, suffix and transforms', () => {
+    const s = withSource({
+      name: { kind: 'api', path: 'user.name', transforms: ['upper'], suffix: '様' },
+      price: { kind: 'api', path: 'price', prefix: '¥' },
+    });
+    expect(generateRowsFromRecords(s, [{ user: { name: 'aiko' }, price: 400 }], 1)).toEqual([
+      { name: 'AIKO様', price: '¥400' },
+    ]);
+  });
+
+  it('prints each record `copies` times, record by record', () => {
+    const rows = generateRowsFromRecords(apiSpec, [rec('A'), rec('B'), rec('C')], 2);
+    expect(rows.map((r) => r.name)).toEqual(['A', 'A', 'B', 'B', 'C', 'C']);
+  });
+
+  it('prints an object response as one record', () => {
+    expect(generateRowsFromRecords(apiSpec, [rec('Solo')], 3).map((r) => r.name)).toEqual(['Solo', 'Solo', 'Solo']);
+  });
+
+  it('keeps `sequence` counting across the whole job', () => {
+    const s = withSource({ n: { kind: 'sequence', start: 1 }, name: { kind: 'api', path: 'user.name' } });
+    const rows = generateRowsFromRecords(s, [rec('A'), rec('B')], 2);
+    expect(rows.map((r) => r.n)).toEqual(['1', '2', '3', '4']);
+  });
+
+  it('mixes api fields with random, table and copy fields', () => {
+    const s = withSource(
+      {
+        name: { kind: 'api', path: 'user.name' },
+        code: { kind: 'digits', length: 6 },
+        city: { kind: 'table', table: 't', column: 'city' },
+        again: { kind: 'copy', from: 'name', pattern: '{from}-{d2}' },
+      },
+      { tables: { t: { columns: ['city'], rows: [['Osaka']] } } },
+    );
+    const rows = generateRowsFromRecords(s, [rec('A'), rec('B')], 1, { rng: seededRng(5) });
+    expect(rows[0].name).toBe('A');
+    expect(rows[0].code).toMatch(/^\d{6}$/);
+    expect(rows[0].city).toBe('Osaka');
+    expect(rows[1].again).toMatch(/^B-\d{2}$/);
+  });
+
+  it('generates fresh random values for each copy, but shares the record’s api values', () => {
+    const s = withSource({ name: { kind: 'api', path: 'user.name' }, code: { kind: 'digits', length: 12 } });
+    const [a, b] = generateRowsFromRecords(s, [rec('A')], 2, { rng: seededRng(3) });
+    expect(a.name).toBe(b.name);
+    expect(a.code).not.toBe(b.code);
+  });
+
+  it('prints null as empty text and names the record when a path is missing', () => {
+    expect(generateRowsFromRecords(apiSpec, [{ user: { name: null } }], 1)).toEqual([{ name: '' }]);
+    expect(() => generateRowsFromRecords(apiSpec, [rec('A'), { user: {} }], 1)).toThrow(
+      /^Record 2, field “name”: “user.name” was not found/,
+    );
+    expect(() => generateRowsFromRecords(apiSpec, [{ user: { name: { x: 1 } } }], 1)).toThrow(
+      /^Record 1, field “name”: “user.name” points at an object/,
+    );
+  });
+
+  it('checks the size before generating anything', () => {
+    const records = Array.from({ length: 1200 }, () => rec('A'));
+    expect(() => generateRowsFromRecords(apiSpec, records, 10)).toThrow(
+      '12,000 pages would be printed (1,200 records x 10 copies); the limit is 10,000.',
+    );
+    const many = Array.from({ length: 5000 }, () => rec('A'));
+    expect(generateRowsFromRecords(apiSpec, many, 2)).toHaveLength(10_000);
+  });
+
+  it('rejects no records, a bad copy count and an invalid spec', () => {
+    expect(() => generateRowsFromRecords(apiSpec, [], 1)).toThrow(/no records/);
+    expect(() => generateRowsFromRecords(apiSpec, [rec('A')], 0)).toThrow(/at least one copy/);
+    expect(() => generateRowsFromRecords(apiSpec, [rec('A')], 1.5)).toThrow(/at least one copy/);
+    const broken = spec({ a: { kind: 'pick', values: [] } });
+    expect(() => generateRowsFromRecords(broken, [{}], 1)).toThrow(/nothing to pick/);
+  });
+
+  it('works for a label with no api fields too, repeating the records', () => {
+    const s = withSource({ a: { kind: 'fixed', value: 'x' } });
+    expect(generateRowsFromRecords(s, [{}, {}], 2)).toHaveLength(4);
+  });
+
+  it('makes generateRows refuse a spec that reads the API', () => {
+    expect(() => generateRows(apiSpec, 1)).toThrow(/needs API data/);
+  });
+
+  it('prints ‹path› in placeholder mode, for the editor and the preview', () => {
+    expect(generateRows(apiSpec, 2, { placeholders: true }).map((r) => r.name)).toEqual(['‹user.name›', '‹user.name›']);
+    expect(sampleField(apiSpec, 'name', { placeholders: true })).toBe('‹user.name›');
+    expect(sampleField(apiSpec, 'name')).toBe('');
+  });
+
+  it('leaves generateRows alone for a label that only has a source', () => {
+    const s = withSource({ a: { kind: 'fixed', value: 'x' } });
+    expect(generateRows(s, 2)).toEqual([{ a: 'x' }, { a: 'x' }]);
+  });
+});
+
+describe('validateSpec: api and source', () => {
+  const ok = (extra: Partial<GeneratorSpec> = {}): GeneratorSpec => ({
+    version: 1,
+    source: { url: 'api.example.com/day/{day}' },
+    fields: { a: { kind: 'api', path: 'x' } },
+    ...extra,
+  });
+
+  it('accepts a valid source and api field', () => {
+    expect(validateSpec(ok())).toEqual([]);
+    expect(
+      validateSpec(
+        ok({
+          source: {
+            url: 'https://api.example.com/{day}',
+            listPath: 'data.items',
+            bearerAuth: true,
+            variables: { day: { label: 'Day', default: '1' } },
+          },
+        }),
+      ),
+    ).toEqual([]);
+  });
+
+  it('allows a source with no api field', () => {
+    expect(validateSpec(ok({ fields: { a: { kind: 'fixed', value: 'x' } } }))).toEqual([]);
+  });
+
+  it('needs a non-empty, well-formed path', () => {
+    expect(validateSpec(ok({ fields: { a: { kind: 'api', path: '' } } }))).toEqual([
+      '“a” needs a path into the API response.',
+    ]);
+    expect(validateSpec(ok({ fields: { a: { kind: 'api', path: 'a..b' } } }))[0]).toMatch(
+      /“a” has an invalid path “a..b”/,
+    );
+  });
+
+  it('reports an api field on a label with no source', () => {
+    expect(validateSpec({ version: 1, fields: { a: { kind: 'api', path: 'x' } } })).toEqual([
+      '“a” reads the API but this label has no URL.',
+    ]);
+  });
+
+  it('reports a bad URL and a bad list path', () => {
+    expect(validateSpec(ok({ source: { url: 'file:///x' } }))[0]).toMatch(/Only http and https/);
+    expect(validateSpec(ok({ source: { url: 'https://u:p@x.com/' } }))[0]).toMatch(/access token/);
+    expect(validateSpec(ok({ source: { url: 'x.com', listPath: 'a..b' } }))[0]).toMatch(/list path “a..b”/);
+    expect(validateSpec(ok({ source: { url: 'x.com', bearerAuth: 'yes' as unknown as boolean } }))[0]).toMatch(
+      /on or off/,
+    );
+    expect(validateSpec(ok({ source: { url: 'x.com', variables: { d: { label: 3 } } as never } }))[0]).toMatch(
+      /variable “d”/,
+    );
+  });
+
+  it('refuses a token or any other unknown setting in the source', () => {
+    const problems = validateSpec(ok({ source: { url: 'x.com', token: 'secret' } as never }));
+    expect(problems[0]).toMatch(/unknown setting “token”/);
+    expect(problems[0]).not.toContain('secret');
+  });
+});
+

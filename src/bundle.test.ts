@@ -121,3 +121,39 @@ describe('templateSizeMm', () => {
     expect(templateSizeMm({ basePdf: 'A4' } as unknown as Template)).toBeNull();
   });
 });
+
+describe('a label with an API data source', () => {
+  const generator = {
+    version: 1 as const,
+    source: {
+      url: 'api.example.com/day/{day}',
+      listPath: 'data',
+      bearerAuth: true,
+      variables: { day: { label: 'Day', default: '1' } },
+    },
+    fields: { a: { kind: 'api' as const, path: 'user.name' } },
+  };
+
+  it('round-trips through a label file', () => {
+    const json = bundleJson(makeBundle('Api label', template, generator));
+    expect(parseBundle(json).bundle?.generator).toEqual(generator);
+  });
+
+  it('has no place for an access token in the exported file', () => {
+    const json = bundleJson(makeBundle('Api label', template, generator));
+    expect(json.toLowerCase()).not.toContain('token');
+    expect(Object.keys(generator.source).sort()).toEqual(['bearerAuth', 'listPath', 'url', 'variables']);
+  });
+
+  it('refuses a file that smuggles a token into the source', () => {
+    const withToken = { ...generator, source: { ...generator.source, token: 'abc' } };
+    const bad = makeBundle('Api label', template, withToken as never);
+    expect(() => parseBundle(bundleJson(bad))).toThrow(/unknown setting “token”/);
+  });
+
+  it('refuses an import whose URL is not usable', () => {
+    const bad = makeBundle('Api label', template, { ...generator, source: { url: 'file:///etc/passwd' } });
+    expect(() => parseBundle(bundleJson(bad))).toThrow(/Only http and https/);
+  });
+});
+

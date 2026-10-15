@@ -12,6 +12,7 @@ export const KIND_LABELS: Record<(typeof RULE_KINDS)[number], string> = {
   pattern: 'Pattern',
   sequence: 'Numbering',
   copy: 'Copy another field',
+  api: 'A value from the API response',
 };
 
 const base =
@@ -43,6 +44,8 @@ export function defaultRule(kind: FieldRule['kind'], tables: GeneratorSpec['tabl
       return { kind: 'sequence', start: 1, step: 1, pad: 0 };
     case 'copy':
       return { kind: 'copy', from: '' };
+    case 'api':
+      return { kind: 'api', path: '' };
     default:
       return { kind: 'fixed', value: '' };
   }
@@ -369,7 +372,8 @@ export function RuleRow({
             }
           >
             <option value="">— nothing, print the text as designed —</option>
-            {RULE_KINDS.map((k) => (
+            {/* `api` is not offered until the Source pane exists (Phase 4); an imported label can still carry it. */}
+            {RULE_KINDS.filter((k) => k !== 'api').map((k) => (
               <option key={k} value={k}>
                 {KIND_LABELS[k]}
               </option>

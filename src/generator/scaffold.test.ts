@@ -225,3 +225,27 @@ describe('barcodeProblem', () => {
     expect(barcodeHint('nope')).toBe('');
   });
 });
+
+describe('scaffoldSpec with an API data source', () => {
+  it('keeps the source and the api rules, and only fills in the gaps', () => {
+    const base: GeneratorSpec = {
+      version: 1,
+      source: { url: 'api.example.com/{day}', bearerAuth: true },
+      fields: { a: { kind: 'api', path: 'user.name' } },
+    };
+    const out = scaffoldSpec(blank([{ name: 'a', type: 'text' }, { name: 'b', type: 'text' }]), base);
+    expect(out.source).toEqual(base.source);
+    expect(out.fields.a).toEqual({ kind: 'api', path: 'user.name' });
+    expect(out.fields.b?.kind).toBe('pick');
+  });
+
+  it('keeps an api rule whose field was renamed, as an orphan', () => {
+    const base: GeneratorSpec = {
+      version: 1,
+      source: { url: 'x.com' },
+      fields: { gone: { kind: 'api', path: 'x' } },
+    };
+    expect(orphanRules(blank([{ name: 'a', type: 'text' }]), base)).toEqual(['gone']);
+  });
+});
+

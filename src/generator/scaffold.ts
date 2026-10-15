@@ -97,7 +97,8 @@ export function scaffoldSpec(template: Template, base?: GeneratorSpec): Generato
   for (const field of dataFields(template)) {
     if (!asFieldRule(fields[field.name])) fields[field.name] = defaultRuleFor(field);
   }
-  return { version: 1, tables: base?.tables, fields };
+  // The data source is kept as it is: scaffolding only fills in rules, it never touches where data comes from.
+  return { version: 1, tables: base?.tables, source: base?.source, fields };
 }
 
 /**

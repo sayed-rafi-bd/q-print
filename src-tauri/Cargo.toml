@@ -14,9 +14,19 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-# Plain HTTP only (no TLS) for IPP printing; keeps the Android build free of C/TLS dependencies.
-ureq = { version = "2", default-features = false }
+# IPP printing (direct.rs) and a label's API data source (http.rs). `tls` adds HTTPS with rustls and
+# the bundled Mozilla root certificates; `ring` compiles a little C, so Android needs the NDK's clang
+# (which the APK build already installs). The desktop-only table below adds the OS trust store.
+ureq = { version = "2", default-features = false, features = ["tls"] }
+url = "2"       # parsing the data source address, and checking where a redirect points
 base64 = "0.22"   # page bitmaps travel between the Kotlin plugin and Rust as Base64
+
+# On desktop, trust the operating system's certificate store as well, so a company proxy that
+# re-signs HTTPS traffic with its own root CA works. This REPLACES the bundled roots inside ureq,
+# and Android has no such store (it would find none and fail every request), so Android keeps the
+# bundled roots only. Cargo merges these features with the `tls` ones above on desktop builds.
+[target.'cfg(not(target_os = "android"))'.dependencies]
+ureq = { version = "2", default-features = false, features = ["native-certs"] }
 
 # The `printers` crate has no Android support, so only Windows uses it.
 [target.'cfg(windows)'.dependencies]
