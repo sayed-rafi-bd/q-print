@@ -89,11 +89,11 @@ function InfoTip({ text }: { text: React.ReactNode }) {
 }
 
 function Field({
-  label,
-  hint,
-  htmlFor,
-  children,
-}: {
+                 label,
+                 hint,
+                 htmlFor,
+                 children,
+               }: {
   label: string;
   hint?: React.ReactNode;
   htmlFor: string;
@@ -153,6 +153,8 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
   const [dpiNote, setDpiNote] = useState('');
   const [pages, setPages] = useState(3);
   const [busy, setBusy] = useState(false);
+  // The "Add a printer" section stays open until the user closes it, so more than one printer can be added.
+  const [addOpen, setAddOpen] = useState(true);
   const [error, setError] = useState('');
   // bumped on every successful print so the confetti burst replays
   const [celebrate, setCelebrate] = useState(0);
@@ -340,7 +342,11 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
         </Field>
 
         {caps.directPrinters && (
-          <details className="text-sm md:col-span-2" open={directNames.length === 0}>
+          <details
+            className="text-sm md:col-span-2"
+            open={addOpen}
+            onToggle={(e) => setAddOpen(e.currentTarget.open)}
+          >
             <summary className="cursor-pointer font-medium text-slate-700">Add a printer (no dialog)</summary>
             <PrintersPanel disabled={busy} onChanged={reloadPrinters} />
           </details>
