@@ -23,3 +23,6 @@ src-tauri/gen/android/keystore.properties
 # playwright
 test-results
 playwright-report
+
+# Screenshots from the e2e capture script, for judging the UI as rendered
+shots/

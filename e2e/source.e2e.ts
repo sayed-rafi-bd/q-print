@@ -50,7 +50,7 @@ test.describe('designer: testing against a real API', () => {
 
     // Give an address to test against. It is not part of the label.
     await dataTab(page);
-    await page.getByRole('button', { name: 'Fields', exact: true }).click();
+    await page.getByRole('tab', { name: 'Fields', exact: true }).click();
     const api = await openTestApi(page);
     await api.getByLabel('Address').fill('api.e2e.test/items/{id}');
     await api.getByLabel('id', { exact: true }).fill('42');
@@ -72,13 +72,14 @@ test.describe('designer: testing against a real API', () => {
     await page.reload();
     await designerReady(page);
     await dataTab(page);
-    await page.getByRole('button', { name: 'Fields', exact: true }).click();
+    await page.getByRole('tab', { name: 'Fields', exact: true }).click();
     await expect(fieldRow(page, 'note').getByLabel('Rule')).toHaveValue('api');
 
     const panel = await openTestApi(page);
     await expect(panel.getByLabel('Address')).toHaveValue(''); // typed per session, never saved
     await expect(panel.getByRole('status')).toHaveCount(0);
-    await expect(panel.getByText(/not saved with the label/)).toBeVisible();
+    // The panel that holds it says so, since the card itself stays quiet when nested.
+    await expect(page.getByText(/not saved with the label/)).toBeVisible();
 
     expect(errors).toEqual([]);
   });
@@ -89,7 +90,7 @@ test.describe('designer: testing against a real API', () => {
     await signUp(page);
     await createLabel(page, { name: 'Api mock', from: 'sample' });
     await dataTab(page);
-    await page.getByRole('button', { name: 'Fields', exact: true }).click();
+    await page.getByRole('tab', { name: 'Fields', exact: true }).click();
 
     const api = await openTestApi(page);
     await page.getByRole('button', { name: 'Use the sample API' }).click();
@@ -105,7 +106,7 @@ test.describe('designer: testing against a real API', () => {
     await signUp(page);
     await createLabel(page, { name: 'Api offered', from: 'sample' });
     await dataTab(page);
-    await page.getByRole('button', { name: 'Fields', exact: true }).click();
+    await page.getByRole('tab', { name: 'Fields', exact: true }).click();
 
     // A label may map a field to a record path whether or not anything has been fetched, because
     // the address is given at print time rather than stored with the label.
@@ -121,7 +122,7 @@ test.describe('designer: testing against a real API', () => {
     await signUp(page);
     await createLabel(page, { name: 'Api error', from: 'sample' });
     await dataTab(page);
-    await page.getByRole('button', { name: 'Fields', exact: true }).click();
+    await page.getByRole('tab', { name: 'Fields', exact: true }).click();
     const api = await openTestApi(page);
 
     await api.getByLabel('Address').fill('api.e2e.test/secure');
@@ -143,7 +144,7 @@ test.describe('designer: testing against a real API', () => {
     await signUp(page);
     await createLabel(page, { name: 'Api forget', from: 'sample' });
     await dataTab(page);
-    await page.getByRole('button', { name: 'Fields', exact: true }).click();
+    await page.getByRole('tab', { name: 'Fields', exact: true }).click();
     const api = await openTestApi(page);
     await api.getByLabel('Address').fill('api.e2e.test/items');
     await api.getByRole('button', { name: 'Check data' }).click();
@@ -165,7 +166,7 @@ test.describe('designer: testing against a real API', () => {
     await signUp(page);
     await createLabel(page, { name: 'Api preview', from: 'sample' });
     await dataTab(page);
-    await page.getByRole('button', { name: 'Fields', exact: true }).click();
+    await page.getByRole('tab', { name: 'Fields', exact: true }).click();
 
     // With an api field mapped but nothing fetched, the preview says where the values come from.
     const note = fieldRow(page, 'note');

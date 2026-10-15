@@ -34,6 +34,14 @@
   --color-emerald-50: #effcf6;
   --color-emerald-200: #bff0d8;
 
+  /* Danger, which the cute palette never had. The Designer has a
+     Delete button that used to be plain pink like everything else,
+     so it did not read as destructive at all. */
+  --color-danger-50: #fff4f2;
+  --color-danger-200: #f4b4ab;
+  --color-danger-600: #d92d20;
+  --color-danger-700: #b42318;
+
   --animate-float-a: float-a 14s ease-in-out infinite;
   --animate-float-b: float-b 18s ease-in-out infinite;
   --animate-float-c: float-c 22s ease-in-out infinite;
@@ -307,6 +315,220 @@ body {
 }
 .sparkle:nth-of-type(3) {
   animation-delay: 1.6s;
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Design tokens
+   Three sizes, so a label is not "12px here and 14px there". The
+   Designer used to reach for text-xs almost everywhere, which put
+   grey-on-pale labels at roughly 4:1 and made the whole panel look
+   washed out.
+   ────────────────────────────────────────────────────────────── */
+@theme {
+  /* 11px: a code-ish field name or a value, never a sentence. */
+  --text-label: 0.6875rem;
+  --text-label--line-height: 1.4;
+  /* 13px: the default for anything you have to read. */
+  --text-body: 0.8125rem;
+  --text-body--line-height: 1.5;
+  /* 15px: titles, field names, anything the eye lands on first. */
+  --text-lead: 0.9375rem;
+  --text-lead--line-height: 1.45;
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Components
+   The recurring shapes, in one place. This is what a component
+   library would have given us, without a dependency, a second
+   palette to fight, or bytes in the bundle this build worked to
+   shrink. Everything here is a plain class; nothing imports.
+   ────────────────────────────────────────────────────────────── */
+@layer components {
+  /* ── Buttons ── */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    border-radius: 9999px;
+    font-weight: 600;
+    white-space: nowrap;
+    /* 36px tall: still tappable on a phone, and the same height as
+       the inputs beside it, which is what made the old row look loose. */
+    padding: 0.375rem 0.875rem;
+    font-size: var(--text-body);
+    line-height: 1.25;
+  }
+  .btn-sm {
+    padding: 0.1875rem 0.625rem;
+    font-size: var(--text-label);
+  }
+  .btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+  }
+
+  .btn-primary {
+    background-color: var(--color-indigo-600);
+    color: white;
+    box-shadow: 0 1px 2px rgb(42 32 64 / 0.18);
+  }
+  .btn-primary:hover:not(:disabled) {
+    background-color: var(--color-indigo-700);
+  }
+
+  .btn-secondary {
+    background-color: white;
+    color: var(--color-slate-700);
+    border: 1px solid var(--color-slate-300);
+  }
+  .btn-secondary:hover:not(:disabled) {
+    background-color: var(--color-slate-50);
+    border-color: var(--color-slate-400);
+  }
+
+  /* Destructive, but quiet: a red outline reads as danger without
+     shouting louder than the Save button it sits beside. */
+  .btn-danger {
+    background-color: white;
+    color: var(--color-danger-700);
+    border: 1px solid var(--color-danger-200);
+  }
+  .btn-danger:hover:not(:disabled) {
+    background-color: var(--color-danger-50);
+    border-color: var(--color-danger-600);
+  }
+
+  .btn-ghost {
+    background-color: transparent;
+    color: var(--color-slate-600);
+  }
+  .btn-ghost:hover:not(:disabled) {
+    background-color: var(--color-slate-100);
+    color: var(--color-slate-800);
+  }
+
+  /* ── Inputs ── */
+  .field {
+    width: 100%;
+    min-width: 0;
+    border-radius: 0.5rem;
+    border: 1px solid var(--color-slate-300);
+    background-color: white;
+    padding: 0.4375rem 0.625rem;
+    font-size: var(--text-body);
+    color: var(--color-slate-800);
+  }
+  .field::placeholder {
+    color: var(--color-slate-400);
+  }
+  .field:focus {
+    border-color: var(--color-indigo-400);
+    outline: 2px solid var(--color-indigo-200);
+    outline-offset: -1px;
+  }
+  .field:disabled {
+    background-color: var(--color-slate-100);
+    cursor: not-allowed;
+  }
+
+  /* A number that is narrow enough to sit beside its label, and wide
+     enough that the spinner is not the only thing you can hit. */
+  .field-num {
+    width: 4.5rem;
+    text-align: center;
+  }
+
+  /* ── Cards and sections ── */
+  .card {
+    border-radius: 0.75rem;
+    border: 1px solid var(--color-slate-200);
+    background-color: white;
+  }
+  .card-quiet {
+    border-radius: 0.75rem;
+    border: 1px solid var(--color-slate-200);
+    background-color: var(--color-slate-50);
+  }
+
+  /* ── Tabs ── */
+  .tab {
+    border-radius: 9999px;
+    padding: 0.3125rem 0.875rem;
+    font-size: var(--text-body);
+    font-weight: 600;
+    color: var(--color-slate-500);
+    cursor: pointer;
+  }
+  .tab:hover {
+    background-color: var(--color-slate-100);
+    color: var(--color-slate-800);
+  }
+  .tab[aria-selected="true"] {
+    background-color: var(--color-indigo-500);
+    color: white;
+  }
+
+  /* ── Badges ── */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    border-radius: 9999px;
+    padding: 0.0625rem 0.5rem;
+    font-size: var(--text-label);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .badge-neutral {
+    background-color: var(--color-slate-100);
+    color: var(--color-slate-600);
+  }
+  .badge-accent {
+    background-color: var(--color-indigo-100);
+    color: var(--color-indigo-700);
+  }
+  .badge-warn {
+    background-color: #fef3c7;
+    color: #92400e;
+  }
+  /* Danger needs to be readable, not alarming: 4.5:1 on this tint. */
+  .badge-danger-soft {
+    background-color: var(--color-danger-50);
+    color: var(--color-danger-700);
+  }
+  .badge-danger {
+    background-color: #fee4e2;
+    color: var(--color-danger-700);
+  }
+
+  /* A field name in the Data tab: a monospace chip that reads as a
+     handle rather than as a value. */
+  .field-chip {
+    border-radius: 0.375rem;
+    background-color: var(--color-slate-100);
+    padding: 0.125rem 0.375rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: var(--text-label);
+    color: var(--color-slate-700);
+  }
+
+  /* ── Labels ──
+     The rule editor had "Fill with" wrapping onto three lines,
+     because the label and the control shared one flex row. Every
+     label now sits above its control and never wraps. */
+  .field-label {
+    display: block;
+    margin-bottom: 0.25rem;
+    font-size: var(--text-label);
+    font-weight: 600;
+    color: var(--color-slate-600);
+  }
+  .field-hint {
+    margin-top: 0.25rem;
+    font-size: var(--text-label);
+    color: var(--color-slate-500);
+  }
 }
 
 /* ── Interactive controls ── */

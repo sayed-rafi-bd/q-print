@@ -53,6 +53,7 @@ export default function TestApiSection({
           onChange={setApi}
           remembered={{}}
           copies={1}
+          variant="compact"
           onRecords={(records) => {
             setChecked(true);
             onSample(records);

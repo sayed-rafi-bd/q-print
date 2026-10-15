@@ -14,7 +14,7 @@ const saveButton = (page: Page) => page.getByRole('button', { name: 'Save', exac
 /** The Data tab, where each field has a "Preview value" box. */
 async function dataTab(page: Page) {
   await tabButton(page, 'Data').click();
-  await page.getByRole('button', { name: 'Fields', exact: true }).click();
+  await page.getByRole('tab', { name: 'Fields', exact: true }).click();
 }
 
 /** Opens a field's row in the Data tab. */
@@ -68,9 +68,9 @@ test.describe('designer: preview placeholders', () => {
     await expect(fieldRow(page, 'note').getByLabel('Preview value for note')).not.toHaveValue('');
     await expect(fieldRow(page, 'itemCode').getByLabel('Preview value for itemCode')).not.toHaveValue('');
 
-    await page.getByRole('button', { name: 'Clear placeholders' }).click();
+    await page.getByRole('button', { name: 'Clear' }).click();
     await expect(fieldRow(page, 'note').getByLabel('Preview value for note')).toHaveValue('');
-    await expect(page.getByRole('button', { name: 'Clear placeholders' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Clear' })).toBeDisabled();
   });
 
   test('a built-in label keeps placeholders too, though its rules stay read-only', async ({ page }) => {

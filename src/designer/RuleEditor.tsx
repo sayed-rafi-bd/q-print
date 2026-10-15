@@ -15,11 +15,10 @@ export const KIND_LABELS: Record<(typeof RULE_KINDS)[number], string> = {
   api: 'A value from the API response',
 };
 
-const base =
-  'rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm focus:border-indigo-500 focus:outline-none ' +
-  'focus:ring-1 focus:ring-indigo-200';
-const inputCls = `${base} w-full min-w-0`;
-const narrowCls = `${base} w-20`;
+// Every control in the Designer is 36px tall with a 8px radius, so a row of them lines up. The
+// shape itself lives in index.css; these two aliases just keep the JSX short.
+const inputCls = 'field';
+const narrowCls = 'field w-20 text-center';
 
 export function defaultRule(kind: FieldRule['kind'], tables: GeneratorSpec['tables']): FieldRule {
   const firstTable = Object.keys(tables ?? {})[0];
@@ -66,8 +65,8 @@ const Num = ({
   max?: number;
   width?: string;
 }) => (
-  <label className="flex items-center gap-1 text-xs text-slate-600">
-    <span className="whitespace-nowrap">{label}</span>
+  <label className="block">
+    <span className="field-label">{label}</span>
     <input
       type="number"
       aria-label={label}
@@ -103,52 +102,79 @@ export default function RuleEditor({
   // Changing the prefix/suffix/transforms must not lose the kind-specific part of the rule.
   const set = (patch: Partial<FieldRule>) => onChange({ ...rule, ...patch } as FieldRule);
 
+  /* A titled group, because these three apply to every rule kind and sit under the rule's own
+     settings. Each label is above its control, and the transforms become toggles rather than
+     tiny checkboxes with 11px text. */
   const common = (
-    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
-      <label className="flex items-center gap-1">
-        <span>Before</span>
-        <input
-          aria-label="Text before the value"
-          className={`${inputCls} w-24`}
-          value={rule.prefix ?? ''}
-          onChange={(e) => set({ prefix: e.target.value })}
-        />
-      </label>
-      <label className="flex items-center gap-1">
-        <span>After</span>
-        <input
-          aria-label="Text after the value"
-          className={`${inputCls} w-24`}
-          value={rule.suffix ?? ''}
-          onChange={(e) => set({ suffix: e.target.value })}
-        />
-      </label>
-      <span className="flex items-center gap-1">
-        Then
-        {(['digits-only', 'upper', 'lower'] as Transform[]).map((t) => (
-          <label key={t} className="flex items-center gap-0.5">
-            <input
-              type="checkbox"
-              checked={(rule.transforms ?? []).includes(t)}
-              onChange={(e) => {
-                const current = rule.transforms ?? [];
-                const next = e.target.checked ? [...current, t] : current.filter((x) => x !== t);
-                set({ transforms: next.length ? next : undefined });
-              }}
-            />
-            <span>{t === 'digits-only' ? 'digits only' : t}</span>
+    <fieldset className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+      <legend className="px-1 text-label font-semibold text-slate-500">Around the value</legend>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label className="field-label" htmlFor="rule-prefix">
+            Before
           </label>
-        ))}
-      </span>
-    </div>
+          <input
+            id="rule-prefix"
+            aria-label="Text before the value"
+            className={inputCls}
+            value={rule.prefix ?? ''}
+            onChange={(e) => set({ prefix: e.target.value })}
+          />
+        </div>
+        <div>
+          <label className="field-label" htmlFor="rule-suffix">
+            After
+          </label>
+          <input
+            id="rule-suffix"
+            aria-label="Text after the value"
+            className={inputCls}
+            value={rule.suffix ?? ''}
+            onChange={(e) => set({ suffix: e.target.value })}
+          />
+        </div>
+      </div>
+
+      <div className="mt-3">
+        <span className="field-label">Then</span>
+        <div className="flex flex-wrap gap-1.5">
+          {(['digits-only', 'upper', 'lower'] as Transform[]).map((t) => {
+            const on = (rule.transforms ?? []).includes(t);
+            return (
+              <label
+                key={t}
+                className={
+                  'pill flex cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-1 text-label font-medium transition ' +
+                  (on
+                    ? 'border-indigo-300 bg-indigo-100 text-indigo-700'
+                    : 'border-slate-300 bg-white text-slate-600 hover:border-slate-400')
+                }
+              >
+                <input
+                  type="checkbox"
+                  className="sr-only"
+                  checked={on}
+                  onChange={(e) => {
+                    const current = rule.transforms ?? [];
+                    const next = e.target.checked ? [...current, t] : current.filter((x) => x !== t);
+                    set({ transforms: next.length ? next : undefined });
+                  }}
+                />
+                {t === 'digits-only' ? 'digits only' : t}
+              </label>
+            );
+          })}
+        </div>
+      </div>
+    </fieldset>
   );
 
   let params: React.ReactNode = null;
   switch (rule.kind) {
     case 'fixed':
       params = (
-        <label className="block text-xs text-slate-600">
-          <span className="mb-1 block">Text to print</span>
+        <label className="block">
+          <span className="field-label">Text to print</span>
           <input
             aria-label="Fixed text"
             className={inputCls}
@@ -169,7 +195,7 @@ export default function RuleEditor({
           <Num label="From" value={rule.min} onChange={(min) => set({ min })} />
           <Num label="To" value={rule.max} onChange={(max) => set({ max })} />
           <Num label="Step" value={rule.step ?? 1} min={1} onChange={(step) => set({ step })} />
-          <label className="flex items-center gap-1 text-xs text-slate-600">
+          <label className="block">
             <span>As</span>
             <select
               aria-label="Number format"
@@ -188,12 +214,12 @@ export default function RuleEditor({
 
     case 'pick':
       params = (
-        <label className="block text-xs text-slate-600">
-          <span className="mb-1 block">One per line</span>
+        <label className="block">
+          <span className="field-label">One per line</span>
           <textarea
             aria-label="Values to pick from"
             rows={3}
-            className={`${inputCls} font-mono text-xs`}
+            className={`${inputCls} font-mono`}
             value={rule.values.join('\n')}
             onChange={(e) => set({ values: e.target.value.split('\n').filter((v) => v.length > 0) })}
           />
@@ -204,10 +230,10 @@ export default function RuleEditor({
     case 'table':
       params =
         tableNames.length === 0 ? (
-          <p className="text-xs text-amber-700">Add a table below first, then pick a column here.</p>
+          <p className="field-hint text-amber-700">Add a table below first, then pick a column here.</p>
         ) : (
           <div className="flex flex-wrap items-center gap-2">
-            <label className="flex items-center gap-1 text-xs text-slate-600">
+            <label className="block">
               <span>Table</span>
               <select
                 aria-label="Table"
@@ -225,7 +251,7 @@ export default function RuleEditor({
                 ))}
               </select>
             </label>
-            <label className="flex items-center gap-1 text-xs text-slate-600">
+            <label className="block">
               <span>Column</span>
               <select
                 aria-label="Column"
@@ -240,7 +266,7 @@ export default function RuleEditor({
                 ))}
               </select>
             </label>
-            <span className="text-xs text-slate-500">Fields reading the same table get the same row on a page.</span>
+            <span className="field-hint">Fields reading the same table get the same row on a page.</span>
           </div>
         );
       break;
@@ -258,7 +284,7 @@ export default function RuleEditor({
             value={rule.offsetDays?.[1] ?? 0}
             onChange={(to) => set({ offsetDays: [rule.offsetDays[0], to] })}
           />
-          <label className="flex items-center gap-1 text-xs text-slate-600">
+          <label className="block">
             <span>Format</span>
             <input
               aria-label="Date format"
@@ -267,15 +293,15 @@ export default function RuleEditor({
               onChange={(e) => set({ format: e.target.value })}
             />
           </label>
-          <span className="text-xs text-slate-500">YYYY MM DD, for example.</span>
+          <span className="field-hint">YYYY MM DD, for example.</span>
         </div>
       );
       break;
 
     case 'pattern':
       params = (
-        <label className="block text-xs text-slate-600">
-          <span className="mb-1 block">{`Anything else is printed as typed. {d3} digits, {D2} A-Z, {L2} a-z.`}</span>
+        <label className="block">
+          <span className="field-label">{`Anything else is printed as typed. {d3} digits, {D2} A-Z, {L2} a-z.`}</span>
           <input
             aria-label="Pattern"
             className={`${inputCls} font-mono`}
@@ -292,7 +318,7 @@ export default function RuleEditor({
           <Num label="Start" value={rule.start} min={0} onChange={(start) => set({ start })} />
           <Num label="Step" value={rule.step ?? 1} min={1} onChange={(step) => set({ step })} />
           <Num label="Pad to" value={rule.pad ?? 0} min={0} max={20} onChange={(pad) => set({ pad })} />
-          <span className="text-xs text-slate-500">Counts up per page, starting again on every print job.</span>
+          <span className="field-hint">Counts up per page, starting again on every print job.</span>
         </div>
       );
       break;
@@ -300,7 +326,7 @@ export default function RuleEditor({
     case 'copy':
       params = (
         <div className="flex flex-wrap items-center gap-2">
-          <label className="flex items-center gap-1 text-xs text-slate-600">
+          <label className="block">
             <span>From</span>
             <select
               aria-label="Field to copy"
@@ -318,7 +344,7 @@ export default function RuleEditor({
                 ))}
             </select>
           </label>
-          <label className="flex items-center gap-1 text-xs text-slate-600">
+          <label className="block">
             <span>Rebuild as</span>
             <input
               aria-label="Pattern to rebuild the copied value"
@@ -328,15 +354,15 @@ export default function RuleEditor({
               onChange={(e) => set({ pattern: e.target.value || undefined })}
             />
           </label>
-          <span className="text-xs text-slate-500">{`{from} is the copied value.`}</span>
+          <span className="field-hint">{`{from} is the copied value.`}</span>
         </div>
       );
       break;
 
     case 'api':
       params = (
-        <label className="block text-xs text-slate-600">
-          <span className="mb-1 block">
+        <label className="block">
+          <span className="field-label">
             Path in each record, such as user.name or items[0].id.
             {samplePaths.length === 0 && ' Fetch a sample in the Source tab to pick from the real paths.'}
           </span>
@@ -392,28 +418,31 @@ export function RuleRow({
   hasApi?: boolean;
 }) {
   return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <label className="flex items-center gap-1 text-xs text-slate-600">
-          <span>Fill with</span>
-          <select
-            aria-label="Rule"
-            disabled={locked}
-            className={`${inputCls} w-auto`}
-            value={rule?.kind ?? ''}
-            onChange={(e) =>
-              onChange(e.target.value ? defaultRule(e.target.value as FieldRule['kind'], spec.tables) : null)
-            }
-          >
-            <option value="">— nothing, print the text as designed —</option>
-            {/* `api` needs a data source to read from, so it is offered once the label has one (or already uses it). */}
-            {RULE_KINDS.filter((k) => k !== 'api' || hasApi || rule?.kind === 'api').map((k) => (
-              <option key={k} value={k}>
-                {KIND_LABELS[k]}
-              </option>
-            ))}
-          </select>
+    <div className="space-y-3">
+      {/* The label sits above its control rather than beside it. Sharing one flex row is what
+          made "Fill with" wrap onto three lines on a phone. */}
+      <div>
+        <label className="field-label" htmlFor="rule-kind">
+          Fill this field with
         </label>
+        <select
+          id="rule-kind"
+          aria-label="Rule"
+          disabled={locked}
+          className={inputCls}
+          value={rule?.kind ?? ''}
+          onChange={(e) =>
+            onChange(e.target.value ? defaultRule(e.target.value as FieldRule['kind'], spec.tables) : null)
+          }
+        >
+          <option value="">— nothing, print the text as designed —</option>
+          {/* `api` needs a data source to read from, so it is offered once the label has one (or already uses it). */}
+          {RULE_KINDS.filter((k) => k !== 'api' || hasApi || rule?.kind === 'api').map((k) => (
+            <option key={k} value={k}>
+              {KIND_LABELS[k]}
+            </option>
+          ))}
+        </select>
       </div>
       {rule && asFieldRule(rule) && (
         // A locked rule still shows its settings, so it can be read and copied into a duplicate.

@@ -4,8 +4,10 @@ import { Designer } from '@pdfme/ui';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from './auth/AuthProvider';
 import { DEFAULT_LABEL } from './builtinLabels';
+import { templateSizeMm } from './bundle';
 import { importLegacyLabels, shouldOfferImport } from './db/migrate';
 import DataEditor from './designer/DataEditor';
+import { fitZoom, MAX_ZOOM_PERCENT, pxPerMm, worthChanging } from './designer/fitToScreen';
 import LabelToolbar from './designer/LabelToolbar';
 import PreviewDialog from './designer/PreviewDialog';
 import { validateSpec } from './generator/engine';
@@ -40,16 +42,31 @@ function readSize(t: Template): { w: number; h: number } | null {
   return null;
 }
 
-const numCls =
-  'w-20 rounded-xl border border-slate-300 bg-white px-2 py-1 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200';
-const btnCls =
-  'cursor-pointer rounded-full px-4 py-1.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50';
+// The recurring shapes live in index.css under @layer components, so a button looks the same
+// everywhere. These two are here only to keep the JSX short.
+const btnCls = 'btn btn-secondary';
+const fieldCls = 'field';
+
+/** The two tabs, each with the one-line description shown beside them. */
+/** The zoom until one has been measured, and for a template with no page size. */
+const DEFAULT_ZOOM = 1;
+
+const TABS = [
+  ['layout', 'Layout', 'Where things sit on the page.'],
+  ['data', 'Data', 'What each field prints on every page.'],
+] as const;
 
 export default function DesignerPage() {
   const { user } = useAuth();
   const container = useRef<HTMLDivElement>(null);
   const designer = useRef<Designer | null>(null);
   const savedSnapshot = useRef<string>('');
+  // The zoom the designer was built with, and how wide a millimetre comes out on screen. The zoom is
+  // fixed at construction — see `zoomFor` — so these two decide when it has to be rebuilt.
+  const zoomRef = useRef(DEFAULT_ZOOM);
+  const canvasScale = useRef(0);
+  /** Set on unmount, so work that is still loading does not draw into a page that has gone. */
+  const gone = useRef(false);
   // The label whose layout is on screen. The ref mirrors the state so the async handlers below
   // always read the current one.
   const [labelId, setLabelId] = useState<LabelId>('');
@@ -89,6 +106,92 @@ export default function DesignerPage() {
   const previewDirty = JSON.stringify(previewValues) !== JSON.stringify(previewSaved);
   const dirty = layoutDirty || generatorDirty || previewDirty;
 
+  /**
+   * How wide one millimetre of label comes out on screen, measured once from the real page.
+   *
+   * Nothing here is assumed. It moves with the font, the pdfme version and the device pixel ratio, so
+   * it is read off a page that has actually rendered and then reused for every zoom calculation.
+   */
+  const measureScale = useCallback((template: Template) => {
+    const canvas = container.current?.querySelector('.pdfme-designer-canvas') as HTMLElement | null;
+    const wrapper = Array.from(canvas?.children ?? []).find((c) => /scale\(/.test(c.getAttribute('style') ?? ''));
+    const page = wrapper?.firstElementChild as HTMLElement | null;
+    if (!page) return;
+    const mm = templateSizeMm(template);
+    if (!mm) return;
+    const scale = new DOMMatrix(getComputedStyle(wrapper as HTMLElement).transform).a;
+    const width = page.getBoundingClientRect().width;
+    canvasScale.current = pxPerMm(width, mm.widthMm) * (Number.isFinite(scale) && scale > 0 ? scale : 1);
+  }, []);
+
+  /**
+   * Tears the designer down exactly once, whoever asks.
+   *
+   * pdfme throws if `destroy` is called on an instance that was already destroyed, and a rebuild
+   * followed by an unmount would do exactly that — the local `d` in the effect is the instance the
+   * rebuild replaced. Clearing the ref is what makes it idempotent.
+   */
+  const destroyDesigner = useCallback(() => {
+    const d = designer.current;
+    designer.current = null;
+    if (!d) return;
+    try {
+      d.destroy();
+    } catch {
+      // Already gone: unmounting after a rebuild is the normal case, not an error.
+    }
+  }, []);
+
+  /** The zoom this label should be drawn at, or `zoomRef.current` when it cannot be worked out. */
+  const zoomFor = useCallback((template: Template): number => {
+    const root = container.current;
+    const mm = templateSizeMm(template);
+    if (!root || !mm || canvasScale.current <= 0) return zoomRef.current;
+    const room = root.getBoundingClientRect();
+    if (room.width <= 0 || room.height <= 0) return zoomRef.current;
+    return fitZoom({ pageMm: mm, availablePx: room, pxPerMm: canvasScale.current });
+  }, []);
+
+  /**
+   * Rebuilds the designer at a different zoom.
+   *
+   * Necessary because pdfme takes `zoomLevel` only when it is constructed — see `zoomFor`. Called
+   * when a label needs a different one, which is rare, so the cost of a fresh mount is worth it. The
+   * layout is put back straight away, so nothing on screen appears to change but the size.
+   */
+  const rebuildAtZoom = useCallback(
+    async (template: Template) => {
+      const root = container.current;
+      if (!root) return;
+      const next = zoomFor(template);
+      if (!worthChanging(zoomRef.current, next)) return;
+      destroyDesigner();
+      zoomRef.current = next;
+      const font = await loadFont();
+      // The page may have moved on while the font was loading — signing out, or another label. Drawing
+      // into a container that is no longer on screen is how an already-destroyed instance gets used.
+      if (gone.current || !container.current) return;
+      const d = new Designer({
+        domContainer: root,
+        template,
+        plugins: { text, rectangle, ...barcodes },
+        options: {
+          font: { NotoSansJP: { data: font, fallback: true } },
+          lang: 'en',
+          zoomLevel: zoomRef.current,
+          maxZoom: MAX_ZOOM_PERCENT,
+        },
+      });
+      designer.current = d;
+      d.onChangeTemplate(() => {
+        setLayoutDirty(JSON.stringify(d!.getTemplate()) !== savedSnapshot.current);
+      });
+      savedSnapshot.current = JSON.stringify(template);
+      setLayoutDirty(false);
+    },
+    [zoomFor, destroyDesigner],
+  );
+
   /** Puts a label's template and generator into the designer. */
   const openLabel = useCallback(
     async (target: LabelMeta) => {
@@ -101,6 +204,9 @@ export default function DesignerPage() {
       setLabelId(target.id);
       setMeta(target);
       setLayoutDirty(false);
+      // A different page size usually wants a different zoom, and the zoom can only be set when the
+      // designer is built.
+      await rebuildAtZoom(template);
       setSize(readSize(template));
       setGenerator(gen);
       setGeneratorSaved(gen);
@@ -111,9 +217,20 @@ export default function DesignerPage() {
       setError('');
       setConfirmReset(false);
     },
-    [user],
+    [user, rebuildAtZoom],
   );
 
+  /**
+   * Show the whole label in the space the canvas has.
+   *
+   * pdfme scales a page down to fit its canvas but never up, so a 100 × 50 mm label sits as a small
+   * rectangle in a large dark area on a desktop screen. Measure what is actually on screen and set
+   * the zoom from that.
+   *
+   * It has to be driven by a ResizeObserver rather than an animation frame or a window listener: the
+   * canvas is 0 px tall while the page is coming up and again when the tab changes, and measuring
+   * then fits the page to a sliver and leaves it there.
+   */
   useEffect(() => {
     let cancelled = false;
     if (!user) return;
@@ -128,11 +245,19 @@ export default function DesignerPage() {
           // openLabel replaces it as soon as the real label is loaded.
           template: defaultLabelTemplate(DEFAULT_LABEL),
           plugins: { text, rectangle, ...barcodes },
-          options: { font: { NotoSansJP: { data: font, fallback: true } }, lang: 'en' },
+          options: {
+            font: { NotoSansJP: { data: font, fallback: true } },
+            lang: 'en',
+            // A percentage, not a multiplier: pdfme divides it by 100. Past 2× the detail stops
+            // being readable on a phone, so the fit never asks for more.
+            maxZoom: MAX_ZOOM_PERCENT,
+          },
         });
         designer.current = d;
         d.onChangeTemplate(() => {
           setLayoutDirty(JSON.stringify(d!.getTemplate()) !== savedSnapshot.current);
+          // The page may have changed size, so re-fit. Idempotent, so it costs nothing when it
+          // has not.
         });
         const registry = await listLabels(user);
         if (cancelled) return;
@@ -167,6 +292,7 @@ export default function DesignerPage() {
           if (cancelled) return false;
           setPreviewValues(values);
           setPreviewSaved(values);
+          measureScale(template);
           rememberLabel(user, meta.id);
           return true;
         };
@@ -179,16 +305,21 @@ export default function DesignerPage() {
           if (!(await attempt(fallback))) return;
         }
         setReady(true);
+        await rebuildAtZoom(d!.getTemplate());
       } catch (e) {
         if (!cancelled) setError(errMsg(e));
       }
     })();
+    gone.current = false;
     return () => {
       cancelled = true;
-      d?.destroy();
-      designer.current = null;
+      gone.current = true;
+      // Destroy whichever instance is live now, not the one this closure created: rebuilding swaps
+      // it, and pdfme refuses to destroy an instance that has already been destroyed. Signing out
+      // hits this, because the rebuild is still in flight while the page is unmounting.
+      destroyDesigner();
     };
-  }, [user]);
+  }, [user, measureScale, rebuildAtZoom, destroyDesigner]);
 
   const applySize = () => {
     const d = designer.current;
@@ -365,7 +496,10 @@ export default function DesignerPage() {
 
   return (
     <div className="relative flex h-full flex-col bg-white/90">
-      <div className="flex flex-wrap items-start gap-x-4 gap-y-2 border-b border-slate-200 px-4 py-2">
+      {/* The label identity and the save state, then the page size. Split in two so the actions a
+          person reaches for (Save, switch label) are on one line on a phone, where the old single
+          row wrapped into four and pushed every control below the fold. */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-slate-200 px-3 py-2 sm:px-4">
         <LabelToolbar
           labels={labels}
           value={labelId}
@@ -376,61 +510,55 @@ export default function DesignerPage() {
         />
 
         {size && (
-          <div className="flex items-center gap-2 text-sm text-slate-700">
-            <span className="font-medium">Page size</span>
+          <div className="order-last flex w-full items-center gap-2 sm:order-none sm:w-auto">
+            <span className="text-label font-semibold text-slate-500">Page size</span>
             <input
               aria-label="Width in mm"
               type="number"
               min={10}
-              className={numCls}
+              className={`${fieldCls} field-num`}
               value={size.w}
               disabled={!ready}
               onChange={(e) => setSize({ ...size, w: +e.target.value })}
             />
-            <span>×</span>
+            <span className="text-slate-400">×</span>
             <input
               aria-label="Height in mm"
               type="number"
               min={10}
-              className={numCls}
+              className={`${fieldCls} field-num`}
               value={size.h}
               disabled={!ready}
               onChange={(e) => setSize({ ...size, h: +e.target.value })}
             />
-            <span className="text-slate-500">mm</span>
+            <span className="text-label text-slate-500">mm</span>
             <button
               type="button"
               onClick={applySize}
               disabled={!ready || size.w < 10 || size.h < 10}
-              className={`${btnCls} border border-slate-300 text-slate-700 hover:bg-slate-50`}
+              className="btn btn-secondary btn-sm"
             >
               Apply
             </button>
           </div>
         )}
 
-        <div className="ml-auto flex items-center gap-3">
-          <span className="text-xs text-slate-500">
-            {generatorDirty && (
-              <span className="rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-800">✏️ data not saved</span>
-            )}
-            {dirty && (
-              <span className="ml-2 animate-pulse rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-800">
-                ✏️ unsaved changes
-              </span>
-            )}
-          </span>
+        <div className="ml-auto flex items-center gap-2">
+          {/* One state, not two. "data not saved" and "unsaved changes" said almost the same thing
+              and could not both be needed, so the generator-only case is named inside one badge. */}
+          {dirty && (
+            <span className="badge badge-warn" role="status">
+              <span aria-hidden="true">✏️</span>
+              {generatorDirty ? 'Data not saved' : 'Unsaved changes'}
+            </span>
+          )}
           {confirmReset ? (
             <>
               <span className="text-sm text-slate-700">Discard your template?</span>
               <button type="button" onClick={onReset} className={`${btnCls} bg-red-600 text-white hover:bg-red-500`}>
                 Yes, reset
               </button>
-              <button
-                type="button"
-                onClick={() => setConfirmReset(false)}
-                className={`${btnCls} border border-slate-300 text-slate-700 hover:bg-slate-50`}
-              >
+              <button type="button" onClick={() => setConfirmReset(false)} className={btnCls}>
                 Cancel
               </button>
             </>
@@ -440,7 +568,7 @@ export default function DesignerPage() {
               onClick={() => setConfirmReset(true)}
               disabled={!ready || !meta?.builtin}
               title={meta?.builtin ? undefined : 'A label of your own has no default to go back to'}
-              className={`${btnCls} border border-slate-300 text-slate-700 hover:bg-slate-50`}
+              className={btnCls}
             >
               Reset to default
             </button>
@@ -450,40 +578,36 @@ export default function DesignerPage() {
             onClick={onSave}
             disabled={!ready || !dirty || generatorProblems.length > 0}
             title={generatorProblems.length > 0 ? 'Fix the data generator first' : undefined}
-            className={`${btnCls} bg-indigo-600 text-white hover:bg-indigo-500`}
+            className="btn btn-primary"
           >
             Save
           </button>
         </div>
       </div>
 
-      <div className="flex items-center gap-1 border-b border-slate-200 px-4 py-1.5">
-        <button
-          type="button"
-          onClick={() => setTab('layout')}
-          className={
-            'cursor-pointer rounded-full px-3 py-1 text-xs font-semibold transition ' +
-            (tab === 'layout' ? 'bg-indigo-500 text-white' : 'text-slate-500 hover:bg-indigo-100')
-          }
-        >
-          Layout
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab('data')}
-          className={
-            'cursor-pointer rounded-full px-3 py-1 text-xs font-semibold transition ' +
-            (tab === 'data' ? 'bg-indigo-500 text-white' : 'text-slate-500 hover:bg-indigo-100')
-          }
-        >
-          Data{generatorDirty ? ' •' : ''}
-        </button>
-        <span className="ml-2 text-xs text-slate-400">
-          {tab === 'layout'
-            ? 'Where things sit on the page.'
-            : tab === 'source'
-              ? 'Where the data comes from.'
-              : 'What each field prints on every page.'}
+      {/* A real tab list, so a screen reader says which is selected and arrow keys work. The pills
+          only looked like tabs before. The hint sits outside the map because it describes the
+          current tab, not each one. */}
+      <div role="tablist" aria-label="Designer sections" className="flex items-center gap-1.5 px-3 pt-2 sm:px-4">
+        {TABS.map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            id={`tab-${id}`}
+            aria-selected={tab === id}
+            aria-controls={`panel-${id}`}
+            className="tab"
+            onClick={() => setTab(id)}
+          >
+            {label}
+            {id === 'data' && generatorDirty && (
+              <span className="ml-1.5 inline-block size-1.5 rounded-full bg-current align-middle" aria-hidden="true" />
+            )}
+          </button>
+        ))}
+        <span className="ml-2 hidden truncate text-body text-slate-500 sm:inline">
+          {TABS.find((t) => t[0] === tab)?.[2]}
         </span>
       </div>
 
@@ -557,6 +681,9 @@ export default function DesignerPage() {
         <div
           ref={container}
           data-testid="designer-canvas"
+          role="tabpanel"
+          id="panel-layout"
+          aria-labelledby="tab-layout"
           className={`absolute inset-0${tab === 'layout' ? '' : ' tab-hidden'}`}
         />
         {tab === 'layout' && !ready && !error && (
@@ -572,7 +699,7 @@ export default function DesignerPage() {
           </div>
         )}
         {tab === 'data' && (
-          <div className="absolute inset-0">
+          <div className="absolute inset-0" role="tabpanel" id="panel-data" aria-labelledby="tab-data">
             <DataEditor
               template={currentTemplate}
               spec={generator}

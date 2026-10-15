@@ -6,15 +6,13 @@ import { sampleField, validateSpec } from '../generator/engine';
 import { defaultPreviewValues, type PreviewValues, usableValues } from '../generator/previewInputs';
 import { dataFields, orphanRules, type TemplateField, templateFields } from '../generator/scaffold';
 import type { FieldRule, GeneratorSpec } from '../generator/spec';
-import { RuleRow } from './RuleEditor';
+import { KIND_LABELS, RuleRow } from './RuleEditor';
 import TableEditor from './TableEditor';
 import TestApiSection from './TestApiSection';
 
-const btnCls =
-  'cursor-pointer rounded-full border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-700 ' +
-  'transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50';
+const btnCls = 'btn btn-secondary';
 const tabCls = (on: boolean) =>
-  'cursor-pointer rounded-full px-3 py-1 text-xs font-semibold transition ' +
+  'cursor-pointer rounded-full px-3 py-1 text-body font-semibold transition ' +
   (on ? 'bg-indigo-500 text-white' : 'text-slate-500 hover:bg-indigo-100');
 
 type Props = {
@@ -124,34 +122,55 @@ export default function DataEditor({
   return (
     <div className="flex h-full flex-col overflow-auto bg-white/70 p-4">
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <h2 className="text-sm font-semibold text-slate-800">Data</h2>
-        <button type="button" className={tabCls(pane === 'fields')} onClick={() => setPane('fields')}>
-          Fields
-        </button>
-        <button type="button" className={tabCls(pane === 'tables')} onClick={() => setPane('tables')}>
-          Tables
-        </button>
-        <span className="ml-auto flex flex-wrap gap-1.5">
+        <h2 className="text-lead font-semibold text-slate-800">Data</h2>
+        <div role="tablist" aria-label="Data sections" className="flex items-center gap-1">
           <button
             type="button"
-            className={btnCls}
+            role="tab"
+            aria-selected={pane === 'fields'}
+            className={tabCls(pane === 'fields')}
+            onClick={() => setPane('fields')}
+          >
+            Fields
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={pane === 'tables'}
+            className={tabCls(pane === 'tables')}
+            onClick={() => setPane('tables')}
+          >
+            Tables
+          </button>
+        </div>
+        {/* Preview first: it is what you came here to check. The placeholder buttons are a
+            maintenance action and sit at the quieter end. */}
+        <span className="ml-auto flex flex-wrap items-center gap-1.5">
+          <button type="button" className="btn btn-primary btn-sm" onClick={onPreview}>
+            Preview label
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
             onClick={() => onPreviewValues(defaultPreviewValues(template, typed))}
           >
             Fill with placeholders
           </button>
           <button
             type="button"
-            className={btnCls}
+            className="btn btn-ghost btn-sm"
             disabled={Object.keys(typed).length === 0}
             onClick={() => onPreviewValues({})}
           >
-            Clear placeholders
+            Clear
           </button>
-          <button type="button" className={btnCls} onClick={() => setSampleTick((t) => t + 1)}>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => setSampleTick((t) => t + 1)}
+            title="Generate the values afresh, the way a new print would"
+          >
             New sample
-          </button>
-          <button type="button" className={btnCls} onClick={onPreview}>
-            Preview label
           </button>
         </span>
       </div>
@@ -198,65 +217,92 @@ export default function DataEditor({
             const barcodeError = barcode ? barcodeProblem(field.type, value) : null;
             const fieldProblems = problemsFor(field.name);
             const pathProblem = apiPathProblem(rule);
+            const previewed = typed[field.name] !== undefined;
             return (
-              <details key={field.name} className="rounded-xl border border-slate-200 bg-white px-3 py-2">
-                <summary className="flex cursor-pointer flex-wrap items-center gap-2 text-sm">
-                  <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-800">{field.name}</code>
-                  <span className="text-xs text-slate-400">{field.type}</span>
-                  {!rule && <span className="text-xs text-amber-700">prints its own text</span>}
-                  <span className="ml-auto flex items-center gap-2">
-                    {barcodeError && (
-                      <span className="rounded bg-red-100 px-1.5 py-0.5 text-xs font-medium text-red-700">
-                        ✕ {barcodeError}
-                      </span>
+              <details
+                key={field.name}
+                className="group rounded-xl border border-slate-200 bg-white transition-colors open:border-indigo-200 hover:border-slate-300"
+              >
+                {/* Name and sample on the left, status on the right, capped at a readable width.
+                    The value used to sit hard against the far edge with a hand's width of dead
+                    space after it, which meant the eye had to cross the screen to pair them. */}
+                <summary className="flex cursor-pointer items-center gap-3 px-3 py-2.5">
+                  <span className="flex min-w-0 flex-1 items-center gap-2.5">
+                    <span
+                      aria-hidden="true"
+                      className="shrink-0 text-slate-400 transition-transform group-open:rotate-90"
+                    >
+                      ▶
+                    </span>
+                    <code className="field-chip">{field.name}</code>
+                    <span className="shrink-0 text-label text-slate-500">{field.type}</span>
+                    {rule && !previewed && (
+                      <span className="badge badge-accent shrink-0">{KIND_LABELS[rule.kind]}</span>
                     )}
-                    <span className="max-w-56 truncate font-mono text-xs text-slate-600">{value || '—'}</span>
+                    {previewed && <span className="badge badge-neutral shrink-0">placeholder</span>}
+                    {!rule && <span className="badge badge-warn shrink-0">prints its own text</span>}
+                  </span>
+
+                  <span className="flex shrink-0 items-center gap-2">
+                    {barcodeError && <span className="badge badge-danger-soft">✕ {barcodeError}</span>}
+                    {fieldProblems.length > 0 && <span className="badge badge-danger-soft">problem</span>}
+                    <span className="max-w-40 truncate font-mono text-label text-slate-600 sm:max-w-56">
+                      {value || '—'}
+                    </span>
                   </span>
                 </summary>
 
-                <div className="mt-2 space-y-2">
-                  {barcode && field.hint && <p className="text-xs text-slate-500">{field.hint}</p>}
-                  <label className="block text-xs text-slate-600">
-                    <span className="font-medium text-slate-700">Preview value</span>
+                {/* Two columns on a wide screen, one on a phone. Everything is a label above its control, which
+                    is what stopped "Fill with" wrapping onto three lines. */}
+                <div className="grid gap-4 border-t border-slate-100 px-3 py-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <RuleRow
+                      rule={rule}
+                      spec={spec}
+                      fieldNames={allNames}
+                      samplePaths={samplePaths}
+                      locked={locked}
+                      onChange={(next) => setRule(field.name, next)}
+                    />
+                    {barcode && field.hint && <p className="field-hint">{field.hint}</p>}
+                    {pathProblem && <p className="field-hint text-amber-700">{pathProblem}</p>}
+                    {fieldProblems.length > 0 && (
+                      <ul className="list-inside list-disc text-label text-red-700">
+                        {fieldProblems.map((p) => (
+                          <li key={p}>{p}</li>
+                        ))}
+                      </ul>
+                    )}
+                    {rule && (
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        disabled={locked}
+                        onClick={() => setRule(field.name, null)}
+                      >
+                        Remove this rule
+                      </button>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="field-label" htmlFor={`preview-${field.name}`}>
+                      Preview value
+                    </label>
                     <input
+                      id={`preview-${field.name}`}
                       type="text"
                       aria-label={`Preview value for ${field.name}`}
-                      className="mt-1 w-full rounded border border-slate-300 px-2 py-1 font-mono text-xs"
+                      className="field font-mono"
                       value={typed[field.name] ?? ''}
                       placeholder="leave empty to generate one"
                       onChange={(e) => setTyped(field.name, e.target.value)}
                     />
-                    <span className="mt-1 block text-slate-500">
+                    <p className="field-hint">
                       Only used by the preview, never printed. Saved with this label, so the preview looks the same next
                       time.
-                    </span>
-                  </label>
-                  <RuleRow
-                    rule={rule}
-                    spec={spec}
-                    fieldNames={allNames}
-                    samplePaths={samplePaths}
-                    locked={locked}
-                    onChange={(next) => setRule(field.name, next)}
-                  />
-                  {pathProblem && <p className="text-xs text-amber-700">{pathProblem}</p>}
-                  {fieldProblems.length > 0 && (
-                    <ul className="list-inside list-disc text-xs text-red-700">
-                      {fieldProblems.map((p) => (
-                        <li key={p}>{p}</li>
-                      ))}
-                    </ul>
-                  )}
-                  {rule && (
-                    <button
-                      type="button"
-                      className={btnCls}
-                      disabled={locked}
-                      onClick={() => setRule(field.name, null)}
-                    >
-                      Remove this rule
-                    </button>
-                  )}
+                    </p>
+                  </div>
                 </div>
               </details>
             );

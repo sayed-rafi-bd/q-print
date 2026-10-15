@@ -56,6 +56,7 @@ export default function DataSourceCard({
   checked: providedChecked,
   onChecked,
   onRecords,
+  variant = 'full',
   disabled,
 }: {
   api: ApiState;
@@ -75,6 +76,12 @@ export default function DataSourceCard({
   onChecked?: (state: CheckState) => void;
   /** Given the records too, so the Designer can preview with them. Not used by the Print tab. */
   onRecords?: (records: unknown[]) => void;
+  /**
+   * `full` for the Print tab. `compact` when it is nested inside something that already explains
+   * itself: the Designer's "Test with a real API" panel, where a second heading and a second
+   * paragraph saying the same thing read as noise.
+   */
+  variant?: 'full' | 'compact';
   disabled?: boolean;
 }) {
   const names = urlVariables(api.url);
@@ -141,10 +148,14 @@ export default function DataSourceCard({
       aria-label="Data source"
       className="space-y-3 rounded-2xl border border-indigo-200 bg-indigo-50/60 p-4 md:col-span-2"
     >
-      <h2 className="text-sm font-semibold text-slate-800">Data source</h2>
-      <p className="text-xs text-slate-600">
-        This label reads its fields from a web API. Type the address to use — it is not saved with the label.
-      </p>
+      {variant === 'full' && (
+        <>
+          <h2 className="text-lead font-semibold text-slate-800">Data source</h2>
+          <p className="field-hint">
+            This label reads its fields from a web API. Type the address to use — it is not saved with the label.
+          </p>
+        </>
+      )}
 
       <div className="space-y-1">
         <label htmlFor="api-url" className="text-sm font-medium text-slate-700">

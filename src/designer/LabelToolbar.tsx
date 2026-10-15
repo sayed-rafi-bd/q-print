@@ -7,13 +7,10 @@ import NewLabelDialog from './NewLabelDialog';
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-const btnCls =
-  'cursor-pointer rounded-full px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50';
-const btnPlainCls = `${btnCls} border border-slate-300 text-slate-700 hover:bg-slate-50`;
-const btnDangerCls = `${btnCls} border border-red-300 text-red-700 hover:bg-red-50`;
-const selectCls =
-  'cursor-pointer rounded-xl border border-slate-300 bg-white px-2 py-1 text-sm focus:border-indigo-500 ' +
-  'focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:cursor-not-allowed disabled:bg-slate-100';
+// Shared shapes, defined once in index.css so a button looks the same in every panel.
+const btnPlainCls = 'btn btn-secondary';
+const btnDangerCls = 'btn btn-danger';
+const selectCls = 'field w-56 truncate cursor-pointer';
 
 type Props = {
   labels: LabelMeta[];
@@ -96,8 +93,11 @@ export default function LabelToolbar({ labels, value, disabled, onPick, onChange
 
   return (
     <div className="space-y-2">
+      {/* The picker on the left, then its actions in a tight group, then Delete pushed away to the far
+          end. It used to sit between Duplicate and the page size, where it read as one of four
+          equally-weighted row buttons. */}
       <div className="flex flex-wrap items-center gap-2">
-        <label htmlFor="designer-label" className="text-sm font-medium text-slate-700">
+        <label htmlFor="designer-label" className="text-body font-semibold text-slate-700">
           Label
         </label>
         <select
@@ -105,7 +105,7 @@ export default function LabelToolbar({ labels, value, disabled, onPick, onChange
           value={value}
           disabled={disabled}
           onChange={(e) => onPick(e.target.value)}
-          className={`${selectCls} w-64 truncate`}
+          className={`${selectCls} sm:w-64`}
         >
           {labels.map((l) => (
             <option key={l.id} value={l.id}>
@@ -148,9 +148,14 @@ export default function LabelToolbar({ labels, value, disabled, onPick, onChange
         </button>
 
         {current?.builtin ? (
-          <span className="text-xs text-slate-500">A built-in label; use “Reset to default” below.</span>
+          <span className="ml-auto text-label text-slate-500">A built-in label; use “Reset to default” below.</span>
         ) : (
-          <button type="button" className={btnDangerCls} onClick={() => setConfirmDelete(true)} disabled={off || busy}>
+          <button
+            type="button"
+            className={`${btnDangerCls} ml-auto`}
+            onClick={() => setConfirmDelete(true)}
+            disabled={off || busy}
+          >
             Delete
           </button>
         )}
@@ -180,8 +185,8 @@ export default function LabelToolbar({ labels, value, disabled, onPick, onChange
       )}
 
       {renaming && current && (
-        <form onSubmit={onRename} className="tab-enter flex flex-wrap items-center gap-2 text-sm text-slate-700">
-          <label htmlFor="rename-label" className="font-medium">
+        <form onSubmit={onRename} className="tab-enter flex flex-wrap items-center gap-2 text-body text-slate-700">
+          <label htmlFor="rename-label" className="font-semibold">
             Rename
           </label>
           <input
@@ -191,7 +196,7 @@ export default function LabelToolbar({ labels, value, disabled, onPick, onChange
             value={newName}
             maxLength={MAX_NAME}
             onChange={(e) => setNewName(e.target.value)}
-            className="w-64 rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+            className="field w-56"
           />
           <button type="submit" className={btnPlainCls} disabled={busy || !newName.trim()}>
             Save
