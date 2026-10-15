@@ -1,11 +1,13 @@
-import { useEffect, useId, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import {
   listPrinters, listSavedPrinters, printerResolutions, printLabels, NO_MARGINS,
   type Margins, type Orientation, type PrintReport, type Rotation, type Timings,
 } from './printApi';
 import { useCapabilities } from './capabilities';
 import TemplateTransfer from './TemplateTransfer';
-import { listLabels, loadLastLabel, rememberLabel, resolveLabel, type LabelId, type LabelMeta } from './labels';
+import { listLabels, loadLastLabel, rememberLabel, type LabelId, type LabelMeta } from './labels';
+import LabelPicker from './LabelPicker';
+import { pickLabelAfterReload } from './pickLabel';
 import { useAuth } from './auth/AuthProvider';
 import PrintersPanel from './PrintersPanel';
 import { Confetti, Mascot } from './Mascot';
@@ -91,6 +93,10 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
   const [labelsError, setLabelsError] = useState('');
   const [labelsReady, setLabelsReady] = useState(false);
   const [labelId, setLabelId] = useState<LabelId>('');
+  // Mirrored so `readLabels` can see the current choice without depending on it: a callback that
+  // depended on `labelId` would be a new function every time the label changed, and the effect
+  // below would re-read the database for a choice the user just made.
+  const labelRef = useRef<LabelId>('');
   const label = labels.find(l => l.id === labelId) ?? labels[0] ?? null;
   // The registry is read on mount, so there is no label for the first render, and none at all if
   // the folder could not be read. Every hint below derives from these rather than from `label`, so
@@ -135,31 +141,32 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
 
   // Labels are added, renamed and deleted in the Designer, which stays mounted beside this page, so
   // the list is read again every time this tab is opened. Reading it only once left a deleted label
-  // in the dropdown (and a new one missing) until the app was restarted.
-  useEffect(() => {
-    if (!user || !active) return;
-    let stale = false;
-    (async () => {
-      try {
-        const registry = await listLabels(user);
-        if (stale) return;
-        setLabels(registry);
-        // Keep the label that is selected if it still exists; otherwise the one remembered last
-        // time, unless that has been deleted too.
-        const wanted = loadLastLabel(user);
-        const target = registry.find(l => l.id === wanted) ?? await resolveLabel(user, wanted ?? '');
-        if (stale) return;
-        setLabelId(cur => (registry.some(l => l.id === cur) ? cur : target?.id ?? cur));
-        if (target) rememberLabel(user, target.id);
-        setLabelsError('');
-      } catch (e) {
-        if (!stale) setLabelsError(`Could not read your labels: ${errMsg(e)}`);
-      } finally {
-        if (!stale) setLabelsReady(true);
+  // in the dropdown (and a new one missing) until the app was restarted. The Reload labels button
+  // runs the same thing by hand, which is what covers a first attempt that failed.
+  const readLabels = useCallback(async (): Promise<string | null> => {
+    if (!user) return 'You are not signed in.';
+    try {
+      const registry = await listLabels(user);
+      setLabels(registry);
+      // Keep the label that is selected if it still exists; otherwise the one remembered last
+      // time, unless that has been deleted too.
+      const target = pickLabelAfterReload(registry, labelRef.current, loadLastLabel(user));
+      setLabelsError('');
+      setLabelsReady(true);
+      if (target) {
+        labelRef.current = target.id;
+        setLabelId(target.id);
+        rememberLabel(user, target.id);
       }
-    })();
-    return () => { stale = true; };
-  }, [user, active]);
+      return null;
+    } catch (e) {
+      const message = `Could not read your labels: ${errMsg(e)}`;
+      setLabelsError(message);
+      return message;
+    }
+  }, [user]);
+
+  useEffect(() => { readLabels(); }, [readLabels, active]);
 
   // Ask the driver which resolutions it supports whenever the printer changes.
   useEffect(() => {
@@ -222,16 +229,18 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
         )}
 
         <Field label="Label" htmlFor="label" hint={`Page size ${sizeText}. Each label keeps its own saved template.`}>
-          <select id="label" className={inputCls + ' cursor-pointer disabled:cursor-not-allowed'} value={labelId}
-                  disabled={busy || labels.length === 0}
-                  onChange={e => {
-                    const id = e.target.value as LabelId;
-                    setLabelId(id);
-                    if (user) rememberLabel(user, id);
-                    setResult(null);
-                  }}>
-            {labels.map(l => <option key={l.id} value={l.id}>{l.name} — {l.widthMm} × {l.heightMm} mm</option>)}
-          </select>
+          <LabelPicker
+            labels={labels}
+            value={labelId}
+            busy={busy}
+            disabled={!user}
+            onChange={id => {
+              setLabelId(id);
+              if (user) rememberLabel(user, id);
+              setResult(null);
+            }}
+            onReload={readLabels}
+          />
         </Field>
 
         <Field label="Printer" htmlFor="printer"
