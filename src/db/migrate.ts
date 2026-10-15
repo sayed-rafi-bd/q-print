@@ -1,10 +1,10 @@
-import { invoke } from '@tauri-apps/api/core';
-import { isTauri } from '../platform';
 import type { Template } from '@pdfme/common';
+import { invoke } from '@tauri-apps/api/core';
 import { isBundle, makeBundle } from '../bundle';
 import { scaffoldSpec } from '../generator/scaffold';
 import type { GeneratorSpec } from '../generator/spec';
 import { importLabel } from '../labels';
+import { isTauri } from '../platform';
 import { getDb } from './client';
 import { countLabels } from './labels';
 import type { User } from './users';
@@ -16,11 +16,19 @@ const doneKey = (user: User) => `q-print.labels.imported.${user.id}`;
 
 /** Has this account already been offered the import? */
 export const importAlreadyDone = (user: User): boolean => {
-  try { return localStorage.getItem(doneKey(user)) === '1'; } catch { return true; }
+  try {
+    return localStorage.getItem(doneKey(user)) === '1';
+  } catch {
+    return true;
+  }
 };
 
 const markDone = (user: User) => {
-  try { localStorage.setItem(doneKey(user), '1'); } catch { /* not critical */ }
+  try {
+    localStorage.setItem(doneKey(user), '1');
+  } catch {
+    /* not critical */
+  }
 };
 
 // Label files only ever existed on a desktop or Android device; a browser has none to rescue.
@@ -69,9 +77,7 @@ export async function importLegacyLabels(user: User): Promise<ImportResult> {
     try {
       const value: unknown = JSON.parse(file.json);
       // An old file is a label bundle; a bare template gets a generator made for it.
-      const bundle = isBundle(value)
-        ? value
-        : makeBundle(file.name, value as Template, { version: 1, fields: {} });
+      const bundle = isBundle(value) ? value : makeBundle(file.name, value as Template, { version: 1, fields: {} });
       const template = bundle.template as Template;
       const generator: GeneratorSpec = scaffoldSpec(template, bundle.generator);
 

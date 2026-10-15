@@ -5,13 +5,13 @@
  * migration runner the app uses, so a migration that is wrong fails here too.
  */
 
-import { createClient, type Client } from '@libsql/client';
-import { drizzle } from 'drizzle-orm/libsql';
 import { rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { type Client, createClient } from '@libsql/client';
+import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from './migrations';
-import { schema, type Database } from './schema';
+import { type Database, schema } from './schema';
 
 export type TestDb = {
   db: Database;
@@ -41,6 +41,6 @@ export function createEmptyDb(name: string): TestDb {
 /** A database with the app's migrations applied, which is what the tests query. */
 export async function createTestDb(name: string): Promise<TestDb> {
   const test = openFile(name);
-  await migrate({ execute: async stmt => test.client.execute(stmt) as never });
+  await migrate({ execute: async (stmt) => test.client.execute(stmt) as never });
   return test;
 }

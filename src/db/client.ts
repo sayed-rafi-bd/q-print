@@ -5,10 +5,10 @@
  * unreachable database produces a message a person can act on rather than a stack trace.
  */
 
-import { createClient, type Client } from '@libsql/client';
+import { type Client, createClient } from '@libsql/client';
 import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from './migrations';
-import { schema, type Database } from './schema';
+import { type Database, schema } from './schema';
 import type { Db } from './types';
 
 const URL = import.meta.env.VITE_TURSO_URL as string | undefined;
@@ -24,7 +24,7 @@ function newClient(): Client {
   if (!isDbConfigured()) {
     throw new Error(
       'The database is not set up. Copy .env.example to .env, fill in VITE_TURSO_URL and ' +
-      'VITE_TURSO_TOKEN, and restart the dev server.',
+        'VITE_TURSO_TOKEN, and restart the dev server.',
     );
   }
   // The WebView talks to Turso over HTTP, so the `libsql://` form has to be rewritten. A URL that
@@ -54,7 +54,7 @@ export function getDb(): Database {
  * migration is idempotent, so this is a cheap no-op once everything is applied.
  */
 export async function migrateDb(): Promise<string[]> {
-  return migrate({ execute: async stmt => getClient().execute(stmt) as never });
+  return migrate({ execute: async (stmt) => getClient().execute(stmt) as never });
 }
 
 /** Forgets the connection, so a later call picks up a changed URL. */
@@ -74,5 +74,4 @@ export function setDb(next: Database | null): void {
   connected = next;
 }
 
-export type { Database };
-export type { Db };
+export type { Database, Db };

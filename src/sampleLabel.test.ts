@@ -1,10 +1,10 @@
-import { describe, expect, it } from 'vitest';
-import { SAMPLE_LABEL_NAME, SAMPLE_SIZE, sampleSpec, sampleTemplate } from './sampleLabel';
-import { generateRows, validateSpec } from './generator/engine';
-import { barcodeProblem } from './generator/barcodeCheck';
-import { dataFields, orphanRules } from './generator/scaffold';
-import { templateSizeMm } from './bundle';
 import type { Template } from '@pdfme/common';
+import { describe, expect, it } from 'vitest';
+import { templateSizeMm } from './bundle';
+import { barcodeProblem } from './generator/barcodeCheck';
+import { generateRows, validateSpec } from './generator/engine';
+import { dataFields, orphanRules } from './generator/scaffold';
+import { SAMPLE_LABEL_NAME, SAMPLE_SIZE, sampleSpec, sampleTemplate } from './sampleLabel';
 
 const NOW = new Date(2026, 9, 14); // 2026-10-14
 
@@ -31,7 +31,11 @@ describe('the sample label', () => {
 
   it('gives every field in the template that can take data a rule', () => {
     // The whole point of the sample is that it prints, so nothing may be left unfilled.
-    expect(dataFields(template).map(f => f.name).sort()).toEqual(Object.keys(spec.fields).sort());
+    expect(
+      dataFields(template)
+        .map((f) => f.name)
+        .sort(),
+    ).toEqual(Object.keys(spec.fields).sort());
   });
 
   it('has no rule pointing at a field that is not there', () => {
@@ -74,14 +78,14 @@ describe('the sample label', () => {
 
   it('numbers the pages and repeats the barcode as text', () => {
     const rows = generateRows(spec, 4, { now: NOW, rng: seededRng(13) });
-    expect(rows.map(r => r.pageNo)).toEqual(['0001', '0002', '0003', '0004']);
+    expect(rows.map((r) => r.pageNo)).toEqual(['0001', '0002', '0003', '0004']);
     for (const row of rows) expect(row.itemCodeText).toBe(row.itemCode);
   });
 
   it('generates content its barcode can actually encode', () => {
     // The sample must not be the thing that fails a user's first print job.
-    const barcodes = dataFields(template).filter(f => f.kind === 'barcode' || f.kind === 'qr');
-    expect(barcodes.map(f => f.type)).toContain('code128');
+    const barcodes = dataFields(template).filter((f) => f.kind === 'barcode' || f.kind === 'qr');
+    expect(barcodes.map((f) => f.type)).toContain('code128');
     for (const row of generateRows(spec, 200, { now: NOW, rng: seededRng(17) })) {
       for (const field of barcodes) {
         expect(barcodeProblem(field.type, row[field.name]), `${field.name} = ${row[field.name]}`).toBeNull();

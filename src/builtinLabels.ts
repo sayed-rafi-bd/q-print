@@ -22,6 +22,6 @@ export const BUILTINS: BuiltinLabel[] = [
 /** The label chosen when nothing is remembered, and the one used if the choice has gone away. */
 export const DEFAULT_LABEL = BUILTINS[0].id;
 
-export const isBuiltin = (id: string): boolean => BUILTINS.some(b => b.id === id);
+export const isBuiltin = (id: string): boolean => BUILTINS.some((b) => b.id === id);
 
-export const builtin = (id: string): BuiltinLabel | null => BUILTINS.find(b => b.id === id) ?? null;
+export const builtin = (id: string): BuiltinLabel | null => BUILTINS.find((b) => b.id === id) ?? null;

@@ -26,8 +26,7 @@ const one = (s: GeneratorSpec, opts = {}) => generateRows(s, 1, { now: NOW, rng:
 
 describe('generateRows', () => {
   it('rejects a spec that does not validate', () => {
-    expect(() => generateRows(spec({ a: { kind: 'pick', values: [] } }), 1))
-      .toThrow(/nothing to pick from/);
+    expect(() => generateRows(spec({ a: { kind: 'pick', values: [] } }), 1)).toThrow(/nothing to pick from/);
   });
 
   it('rejects a page count outside the limit', () => {
@@ -55,7 +54,7 @@ describe('fixed, digits, pick', () => {
 
   it('picks one of the listed values', () => {
     const s = spec({ a: { kind: 'pick', values: ['x', 'y', 'z'] } });
-    const rows = generateRows(s, 50, { rng: seededRng(7) }).map(r => r.a);
+    const rows = generateRows(s, 50, { rng: seededRng(7) }).map((r) => r.a);
     expect(new Set(rows)).toEqual(new Set(['x', 'y', 'z']));
   });
 });
@@ -71,12 +70,18 @@ describe('int', () => {
   });
 
   it('reaches both ends of the range', () => {
-    const rows = new Set(generateRows(spec({ a: { kind: 'int', min: 1, max: 3 } }), 200, { rng: seededRng(5) }).map(r => r.a));
+    const rows = new Set(
+      generateRows(spec({ a: { kind: 'int', min: 1, max: 3 } }), 200, { rng: seededRng(5) }).map((r) => r.a),
+    );
     expect(rows).toEqual(new Set(['1', '2', '3']));
   });
 
   it('honours the step', () => {
-    const rows = new Set(generateRows(spec({ a: { kind: 'int', min: 100, max: 3900, step: 100 } }), 300, { rng: seededRng(9) }).map(r => r.a));
+    const rows = new Set(
+      generateRows(spec({ a: { kind: 'int', min: 100, max: 3900, step: 100 } }), 300, { rng: seededRng(9) }).map(
+        (r) => r.a,
+      ),
+    );
     for (const v of rows) expect(Number(v) % 100).toBe(0);
     expect(rows.has('3900')).toBe(true);
     expect(rows.has('100')).toBe(true);
@@ -84,8 +89,9 @@ describe('int', () => {
 
   it('rejects a range that is the wrong way round, rather than guessing', () => {
     // Swapping min and max would silently print a different range than the one on screen.
-    expect(() => generateRows(spec({ a: { kind: 'int', min: 9, max: 3 } }), 1))
-      .toThrow(/lowest value above its highest/);
+    expect(() => generateRows(spec({ a: { kind: 'int', min: 9, max: 3 } }), 1)).toThrow(
+      /lowest value above its highest/,
+    );
   });
 
   it('formats thousands and yen', () => {
@@ -106,7 +112,11 @@ describe('table', () => {
   const tables = {
     place: {
       columns: ['zip', 'city'],
-      rows: [['150-0021', 'Tokyo'], ['100-0005', 'Tokyo'], ['530-0001', 'Osaka']],
+      rows: [
+        ['150-0021', 'Tokyo'],
+        ['100-0005', 'Tokyo'],
+        ['530-0001', 'Osaka'],
+      ],
     },
   };
 
@@ -116,11 +126,18 @@ describe('table', () => {
   });
 
   it('gives every field reading the same table the same row for the whole page', () => {
-    const s = spec({
-      zip: { kind: 'table', table: 'place', column: 'zip' },
-      city: { kind: 'table', table: 'place', column: 'city' },
-    }, tables);
-    const expected = new Map<string, string>([['150-0021', 'Tokyo'], ['100-0005', 'Tokyo'], ['530-0001', 'Osaka']]);
+    const s = spec(
+      {
+        zip: { kind: 'table', table: 'place', column: 'zip' },
+        city: { kind: 'table', table: 'place', column: 'city' },
+      },
+      tables,
+    );
+    const expected = new Map<string, string>([
+      ['150-0021', 'Tokyo'],
+      ['100-0005', 'Tokyo'],
+      ['530-0001', 'Osaka'],
+    ]);
     for (const row of generateRows(s, 100, { rng: seededRng(13) })) {
       // The postcode and the city must always be the same place.
       expect(expected.get(row.zip)).toBe(row.city);
@@ -129,7 +146,7 @@ describe('table', () => {
 
   it('reuses one row per page but a different row across pages', () => {
     const s = spec({ city: { kind: 'table', table: 'place', column: 'city' } }, tables);
-    const rows = generateRows(s, 100, { rng: seededRng(17) }).map(r => r.city);
+    const rows = generateRows(s, 100, { rng: seededRng(17) }).map((r) => r.city);
     expect(new Set(rows).size).toBeGreaterThan(1);
   });
 });
@@ -153,8 +170,10 @@ describe('date', () => {
 
   it('picks within the offset range', () => {
     const s = spec({ a: { kind: 'date', offsetDays: [-10, 10], format: 'YYYY-MM-DD' } });
-    const rows = generateRows(s, 60, { now: new Date(2026, 5, 15), rng: seededRng(23) }).map(r => r.a);
-    const days = new Set(rows.map(v => Math.round((Date.parse(`${v}T00:00:00`) - Date.parse('2026-06-15T00:00:00')) / 86400000)));
+    const rows = generateRows(s, 60, { now: new Date(2026, 5, 15), rng: seededRng(23) }).map((r) => r.a);
+    const days = new Set(
+      rows.map((v) => Math.round((Date.parse(`${v}T00:00:00`) - Date.parse('2026-06-15T00:00:00')) / 86400000)),
+    );
     expect(Math.min(...days)).toBeGreaterThanOrEqual(-10);
     expect(Math.max(...days)).toBeLessThanOrEqual(10);
   });
@@ -181,8 +200,8 @@ describe('pattern', () => {
 describe('sequence', () => {
   it('counts up across pages and restarts on every run', () => {
     const s = spec({ a: { kind: 'sequence', start: 1 } });
-    const first = generateRows(s, 4, { rng: seededRng() }).map(r => r.a);
-    const second = generateRows(s, 4, { rng: seededRng(99) }).map(r => r.a);
+    const first = generateRows(s, 4, { rng: seededRng() }).map((r) => r.a);
+    const second = generateRows(s, 4, { rng: seededRng(99) }).map((r) => r.a);
     expect(first).toEqual(['1', '2', '3', '4']);
     // Restarts, and does not depend on the rng at all.
     expect(second).toEqual(first);
@@ -190,12 +209,15 @@ describe('sequence', () => {
 
   it('honours start, step and padding', () => {
     const s = spec({ a: { kind: 'sequence', start: 100, step: 5, pad: 6 } });
-    expect(generateRows(s, 3).map(r => r.a)).toEqual(['000100', '000105', '000110']);
+    expect(generateRows(s, 3).map((r) => r.a)).toEqual(['000100', '000105', '000110']);
   });
 
   it('does not truncate once it outgrows the padding', () => {
-    expect(generateRows(spec({ a: { kind: 'sequence', start: 8, pad: 2 } }), 3).map(r => r.a))
-      .toEqual(['08', '09', '10']);
+    expect(generateRows(spec({ a: { kind: 'sequence', start: 8, pad: 2 } }), 3).map((r) => r.a)).toEqual([
+      '08',
+      '09',
+      '10',
+    ]);
   });
 });
 
@@ -285,10 +307,13 @@ describe('sampleField', () => {
   });
 
   it('keeps a table-based sample consistent with its sibling fields', () => {
-    const s = spec({
-      zip: { kind: 'table', table: 't', column: 'zip' },
-      city: { kind: 'table', table: 't', column: 'city' },
-    }, { t: { columns: ['zip', 'city'], rows: [['150-0021', 'Tokyo']] } });
+    const s = spec(
+      {
+        zip: { kind: 'table', table: 't', column: 'zip' },
+        city: { kind: 'table', table: 't', column: 'city' },
+      },
+      { t: { columns: ['zip', 'city'], rows: [['150-0021', 'Tokyo']] } },
+    );
     expect(sampleField(s, 'zip', { rng: seededRng() })).toBe('150-0021');
     expect(sampleField(s, 'city', { rng: seededRng() })).toBe('Tokyo');
   });
@@ -298,19 +323,27 @@ describe('validateSpec', () => {
   const ok = (s: GeneratorSpec) => expect(validateSpec(s)).toEqual([]);
 
   it('accepts the built-in shapes', () => {
-    ok(spec({ a: { kind: 'fixed', value: '' }, b: { kind: 'digits', length: 1 }, c: { kind: 'pattern', pattern: '{d2}' } }));
+    ok(
+      spec({
+        a: { kind: 'fixed', value: '' },
+        b: { kind: 'digits', length: 1 },
+        c: { kind: 'pattern', pattern: '{d2}' },
+      }),
+    );
   });
 
   it('names the field in every message', () => {
-    const errors = validateSpec(spec({
-      good: { kind: 'fixed', value: 'x' },
-      pick: { kind: 'pick', values: [] },
-      digits: { kind: 'digits', length: 0 },
-      range: { kind: 'int', min: 9, max: 1 },
-      table: { kind: 'table', table: 'nope', column: 'c' },
-      pattern: { kind: 'pattern', pattern: '{q5}' },
-      copy: { kind: 'copy', from: 'missing' },
-    }));
+    const errors = validateSpec(
+      spec({
+        good: { kind: 'fixed', value: 'x' },
+        pick: { kind: 'pick', values: [] },
+        digits: { kind: 'digits', length: 0 },
+        range: { kind: 'int', min: 9, max: 1 },
+        table: { kind: 'table', table: 'nope', column: 'c' },
+        pattern: { kind: 'pattern', pattern: '{q5}' },
+        copy: { kind: 'copy', from: 'missing' },
+      }),
+    );
     expect(errors.join('\n')).toMatch(/“pick”/);
     expect(errors.join('\n')).toMatch(/“digits”/);
     expect(errors.join('\n')).toMatch(/“range”/);
@@ -320,10 +353,12 @@ describe('validateSpec', () => {
   });
 
   it('rejects a copy cycle instead of looping forever', () => {
-    const errors = validateSpec(spec({
-      a: { kind: 'copy', from: 'b' },
-      b: { kind: 'copy', from: 'a' },
-    }));
+    const errors = validateSpec(
+      spec({
+        a: { kind: 'copy', from: 'b' },
+        b: { kind: 'copy', from: 'a' },
+      }),
+    );
     expect(errors.join('\n')).toMatch(/circle/);
   });
 
@@ -332,10 +367,14 @@ describe('validateSpec', () => {
   });
 
   it('rejects a copy that throws the copied value away', () => {
-    expect(validateSpec(spec({
-      a: { kind: 'fixed', value: 'x' },
-      b: { kind: 'copy', from: 'a', pattern: '{d2}' },
-    })).join('\n')).toMatch(/without \{from\}/);
+    expect(
+      validateSpec(
+        spec({
+          a: { kind: 'fixed', value: 'x' },
+          b: { kind: 'copy', from: 'a', pattern: '{d2}' },
+        }),
+      ).join('\n'),
+    ).toMatch(/without \{from\}/);
   });
 
   it('rejects an unknown rule kind', () => {
@@ -343,17 +382,27 @@ describe('validateSpec', () => {
   });
 
   it('rejects a table with rows that do not line up with its columns', () => {
-    const errors = validateSpec(spec({ a: { kind: 'table', table: 't', column: 'c' } }, {
-      t: { columns: ['c', 'd'], rows: [['1'], ['1', '2']] },
-    }));
+    const errors = validateSpec(
+      spec(
+        { a: { kind: 'table', table: 't', column: 'c' } },
+        {
+          t: { columns: ['c', 'd'], rows: [['1'], ['1', '2']] },
+        },
+      ),
+    );
     expect(errors.join('\n')).toMatch(/row 1 has 1 values but there are 2 columns/);
   });
 
   it('rejects a table that is over the row limit', () => {
     const rows = Array.from({ length: LIMITS.maxTableRows + 1 }, (_, i) => [`${i}`]);
-    const errors = validateSpec(spec({ a: { kind: 'table', table: 't', column: 'c' } }, {
-      t: { columns: ['c'], rows },
-    }));
+    const errors = validateSpec(
+      spec(
+        { a: { kind: 'table', table: 't', column: 'c' } },
+        {
+          t: { columns: ['c'], rows },
+        },
+      ),
+    );
     expect(errors.join('\n')).toMatch(/over the limit of 5000/);
   });
 

@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { authErrorMessage, useAuth } from './AuthProvider';
 import { MAX_USERNAME } from '../db/users';
 import { Mascot } from '../Mascot';
+import { authErrorMessage, useAuth } from './AuthProvider';
 
 const inputCls =
   'w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 ' +
@@ -24,7 +24,8 @@ export default function LoginPage() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (busy) return;
-    setBusy(true); setError('');
+    setBusy(true);
+    setError('');
     try {
       await (mode === 'in' ? signIn(username, password) : signUp(username, password));
     } catch (err) {
@@ -35,7 +36,7 @@ export default function LoginPage() {
   };
 
   const swap = () => {
-    setMode(m => (m === 'in' ? 'up' : 'in'));
+    setMode((m) => (m === 'in' ? 'up' : 'in'));
     setError('');
   };
 
@@ -54,42 +55,68 @@ export default function LoginPage() {
 
         {!configured && (
           <p role="alert" className="mb-4 rounded-xl bg-amber-50 p-3 text-xs text-amber-900 ring-1 ring-amber-200">
-            The database is not configured. Copy <code>.env.example</code> to <code>.env</code>, fill in the
-            Turso URL and token, and restart the dev server.
+            The database is not configured. Copy <code>.env.example</code> to <code>.env</code>, fill in the Turso URL
+            and token, and restart the dev server.
           </p>
         )}
 
         <form onSubmit={submit} className="space-y-3">
           <div className="space-y-1">
-            <label htmlFor="username" className="text-sm font-medium text-slate-700">Username</label>
-            <input id="username" autoFocus autoComplete="username" value={username} maxLength={MAX_USERNAME}
-              disabled={busy || !configured} onChange={e => setUsername(e.target.value)}
-              className={inputCls} />
+            <label htmlFor="username" className="text-sm font-medium text-slate-700">
+              Username
+            </label>
+            <input
+              id="username"
+              autoFocus
+              autoComplete="username"
+              value={username}
+              maxLength={MAX_USERNAME}
+              disabled={busy || !configured}
+              onChange={(e) => setUsername(e.target.value)}
+              className={inputCls}
+            />
           </div>
 
           <div className="space-y-1">
-            <label htmlFor="password" className="text-sm font-medium text-slate-700">Password</label>
-            <input id="password" type="password" value={password}
+            <label htmlFor="password" className="text-sm font-medium text-slate-700">
+              Password
+            </label>
+            <input
+              id="password"
+              type="password"
+              value={password}
               autoComplete={mode === 'in' ? 'current-password' : 'new-password'}
-              disabled={busy || !configured} onChange={e => setPassword(e.target.value)}
-              className={inputCls} />
+              disabled={busy || !configured}
+              onChange={(e) => setPassword(e.target.value)}
+              className={inputCls}
+            />
             {mode === 'up' && <p className="text-xs text-slate-500">At least 4 characters.</p>}
           </div>
 
           {error && (
-            <p role="alert" className="alert-shake break-words rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700 ring-1 ring-red-200">
+            <p
+              role="alert"
+              className="alert-shake break-words rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700 ring-1 ring-red-200"
+            >
               {error}
             </p>
           )}
 
-          <button type="submit" disabled={busy || !configured || !username.trim() || !password}
-            className="w-full cursor-pointer rounded-full bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50">
+          <button
+            type="submit"
+            disabled={busy || !configured || !username.trim() || !password}
+            className="w-full cursor-pointer rounded-full bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+          >
             {busy ? 'Please wait…' : mode === 'in' ? 'Sign in' : 'Create account'}
           </button>
         </form>
 
-        <button onClick={swap} disabled={busy || !configured}
-          className="mt-3 w-full cursor-pointer rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">
+        <button
+          type="button"
+          onClick={swap}
+          disabled={busy || !configured}
+          className="mt-3 w-full cursor-pointer rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+        >
           {mode === 'in' ? 'Need an account? Sign up' : 'Already have an account? Sign in'}
         </button>
       </div>

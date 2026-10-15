@@ -9,9 +9,13 @@
 class MemoryStorage implements Storage {
   private map = new Map<string, string>();
 
-  get length(): number { return this.map.size; }
+  get length(): number {
+    return this.map.size;
+  }
 
-  clear(): void { this.map.clear(); }
+  clear(): void {
+    this.map.clear();
+  }
 
   getItem(key: string): string | null {
     return this.map.has(key) ? this.map.get(key)! : null;
@@ -21,9 +25,13 @@ class MemoryStorage implements Storage {
     return [...this.map.keys()][index] ?? null;
   }
 
-  removeItem(key: string): void { this.map.delete(key); }
+  removeItem(key: string): void {
+    this.map.delete(key);
+  }
 
-  setItem(key: string, value: string): void { this.map.set(key, String(value)); }
+  setItem(key: string, value: string): void {
+    this.map.set(key, String(value));
+  }
 }
 
 if (typeof globalThis.localStorage === 'undefined') {

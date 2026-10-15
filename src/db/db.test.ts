@@ -1,16 +1,24 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-
-import { createUser, findById, findByUsername, InvalidCredentialsError, verifyPassword, UsernameTakenError } from './users';
 import { countLabels, createLabel, deleteLabel, getLabel, listLabels, listSlugs, updateLabel } from './labels';
 import { isUniqueViolation } from './schema';
 import { createTestDb, type TestDb } from './testDb';
+import {
+  createUser,
+  findById,
+  findByUsername,
+  InvalidCredentialsError,
+  UsernameTakenError,
+  verifyPassword,
+} from './users';
 
 let test: TestDb;
 
 /** The real driver against a real SQLite file, built with the app's own migrations. */
 const db = () => test.db;
 
-beforeAll(async () => { test = await createTestDb('db'); });
+beforeAll(async () => {
+  test = await createTestDb('db');
+});
 
 afterAll(() => test.close());
 
@@ -48,7 +56,7 @@ describe('createUser', () => {
 
   it('names the account in the error, so the screen can point at it', async () => {
     await signUp('ann');
-    const error = await signUp('ann').catch(e => e as UsernameTakenError);
+    const error = await signUp('ann').catch((e) => e as UsernameTakenError);
     expect(error).toBeInstanceOf(UsernameTakenError);
     expect((error as UsernameTakenError).username).toBe('ann');
     expect((error as UsernameTakenError).message).toContain('already taken');
@@ -67,7 +75,7 @@ describe('createUser', () => {
     await signUp('ann', 'same');
     await signUp('bob', 'same');
     const { rows } = await test.client.execute('SELECT password_hash FROM users ORDER BY username');
-    const [a, b] = rows.map(r => (r as Record<string, string>).password_hash);
+    const [a, b] = rows.map((r) => (r as Record<string, string>).password_hash);
     expect(a).not.toBe(b);
   });
 
@@ -135,7 +143,9 @@ describe('labels', () => {
   it('stores a label and reads it back whole', async () => {
     const user = await signUp();
     await createLabel(db(), user.id, 'my-parcel', {
-      name: 'My parcel', template: labelJson(100), generator: '{"version":1,"fields":{}}',
+      name: 'My parcel',
+      template: labelJson(100),
+      generator: '{"version":1,"fields":{}}',
     });
     const fetched = await getLabel(db(), user.id, 'my-parcel');
     expect(fetched?.name).toBe('My parcel');
@@ -162,15 +172,17 @@ describe('labels', () => {
   it('refuses two labels with the same slug for one account', async () => {
     const user = await signUp();
     await createLabel(db(), user.id, 'a', { name: 'A', template: labelJson(100), generator: '{}' });
-    await expect(createLabel(db(), user.id, 'a', { name: 'B', template: labelJson(100), generator: '{}' }))
-      .rejects.toThrow();
+    await expect(
+      createLabel(db(), user.id, 'a', { name: 'B', template: labelJson(100), generator: '{}' }),
+    ).rejects.toThrow();
   });
 
   it('reports a duplicate slug as a unique violation, not some wrapped driver error', async () => {
     const user = await signUp();
     await createLabel(db(), user.id, 'a', { name: 'A', template: labelJson(100), generator: '{}' });
-    const error = await createLabel(db(), user.id, 'a', { name: 'B', template: labelJson(100), generator: '{}' })
-      .catch(e => e as unknown);
+    const error = await createLabel(db(), user.id, 'a', { name: 'B', template: labelJson(100), generator: '{}' }).catch(
+      (e) => e as unknown,
+    );
     // Drizzle puts the real reason in `cause`, two levels down, so a shallow match finds nothing.
     expect(isUniqueViolation(error)).toBe(true);
   });
@@ -211,7 +223,7 @@ describe('labels', () => {
     const user = await signUp();
     await createLabel(db(), user.id, 'a', { name: 'A', template: labelJson(100), generator: '{}' });
     const before = (await getLabel(db(), user.id, 'a'))!.updatedAt;
-    await new Promise(r => setTimeout(r, 5));
+    await new Promise((r) => setTimeout(r, 5));
     await updateLabel(db(), user.id, 'a', { name: 'A again' });
     expect((await getLabel(db(), user.id, 'a'))!.updatedAt > before).toBe(true);
   });

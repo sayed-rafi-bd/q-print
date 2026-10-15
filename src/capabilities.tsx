@@ -1,5 +1,5 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { createContext, type ReactNode, useContext, useEffect, useState } from 'react';
 import { isTauri } from './platform';
 
 export type Capabilities = {
@@ -38,10 +38,17 @@ export function CapabilitiesProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!isTauri()) return;
-    invoke<Capabilities>('capabilities').then(setCaps).catch(e => setError(e instanceof Error ? e.message : String(e)));
+    invoke<Capabilities>('capabilities')
+      .then(setCaps)
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
 
-  if (error) return <div role="alert" className="p-6 text-sm text-red-700 break-words">Could not read capabilities: {error}</div>;
+  if (error)
+    return (
+      <div role="alert" className="p-6 text-sm text-red-700 break-words">
+        Could not read capabilities: {error}
+      </div>
+    );
   if (!caps) return <div className="flex h-dvh items-center justify-center text-sm text-slate-500">Loading…</div>;
   return <CapabilitiesContext.Provider value={caps}>{children}</CapabilitiesContext.Provider>;
 }

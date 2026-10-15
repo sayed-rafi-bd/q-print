@@ -1,7 +1,14 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { getDb, isDbConfigured, migrateDb } from '../db/client';
 import { friendlyError } from '../db/schema';
-import { createUser, findById, InvalidCredentialsError, UsernameTakenError, verifyPassword, type User } from '../db/users';
+import {
+  createUser,
+  findById,
+  InvalidCredentialsError,
+  type User,
+  UsernameTakenError,
+  verifyPassword,
+} from '../db/users';
 
 const SESSION_KEY = 'q-print.userId';
 
@@ -89,37 +96,57 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!cancelled) setStatus('signed-out');
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [attempt]);
 
   const adopt = useCallback((next: User) => {
     setUser(next);
     setStatus('signed-in');
-    try { localStorage.setItem(SESSION_KEY, next.id); } catch { /* not critical: sign-in still works */ }
+    try {
+      localStorage.setItem(SESSION_KEY, next.id);
+    } catch {
+      /* not critical: sign-in still works */
+    }
   }, []);
 
-  const signIn = useCallback(async (username: string, password: string) => {
-    const found = await verifyPassword(getDb(), username, password);
-    if (!found) throw new Error('Wrong username or password.');
-    adopt(found);
-  }, [adopt]);
+  const signIn = useCallback(
+    async (username: string, password: string) => {
+      const found = await verifyPassword(getDb(), username, password);
+      if (!found) throw new Error('Wrong username or password.');
+      adopt(found);
+    },
+    [adopt],
+  );
 
-  const signUp = useCallback(async (username: string, password: string) => {
-    adopt(await createUser(getDb(), username, password));
-  }, [adopt]);
+  const signUp = useCallback(
+    async (username: string, password: string) => {
+      adopt(await createUser(getDb(), username, password));
+    },
+    [adopt],
+  );
 
   const signOut = useCallback(async () => {
-    try { localStorage.removeItem(SESSION_KEY); } catch { /* not critical */ }
+    try {
+      localStorage.removeItem(SESSION_KEY);
+    } catch {
+      /* not critical */
+    }
     setUser(null);
     setStatus('signed-out');
   }, []);
 
   const value = useMemo<AuthContextValue>(
     () => ({
-      status, user, signIn, signUp, signOut,
+      status,
+      user,
+      signIn,
+      signUp,
+      signOut,
       configured: isDbConfigured(),
       startupError,
-      retry: () => setAttempt(n => n + 1),
+      retry: () => setAttempt((n) => n + 1),
     }),
     [status, user, signIn, signUp, signOut, startupError],
   );

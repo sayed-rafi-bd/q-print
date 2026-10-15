@@ -7,8 +7,9 @@
    indigo → bubblegum pink / lavender, slate → soft plum-greys.
    ────────────────────────────────────────────────────────────── */
 @theme {
-  --font-sans: ui-rounded, "SF Pro Rounded", "Hiragino Maru Gothic ProN", "Nunito", "Quicksand",
-    "Segoe UI", system-ui, -apple-system, "Noto Sans JP", sans-serif;
+  --font-sans:
+    ui-rounded, "SF Pro Rounded", "Hiragino Maru Gothic ProN", "Nunito", "Quicksand", "Segoe UI", system-ui,
+    -apple-system, "Noto Sans JP", sans-serif;
 
   --color-indigo-50: #fff1f7;
   --color-indigo-100: #ffe0ee;
@@ -39,7 +40,11 @@
 }
 
 /* ── Page background: pastel gradient with slowly drifting blobs ── */
-html, body, #root { height: 100%; }
+html,
+body,
+#root {
+  height: 100%;
+}
 
 body {
   margin: 0;
@@ -62,144 +67,381 @@ body {
   filter: blur(60px);
   opacity: 0.55;
 }
-.blob-a { width: 26rem; height: 26rem; left: -6rem; top: -6rem; background: #ffc2dd; animation: var(--animate-float-a); }
-.blob-b { width: 22rem; height: 22rem; right: -5rem; top: 25%; background: #cdb8ff; animation: var(--animate-float-b); }
-.blob-c { width: 24rem; height: 24rem; left: 30%; bottom: -9rem; background: #b9e6ff; animation: var(--animate-float-c); }
+.blob-a {
+  width: 26rem;
+  height: 26rem;
+  left: -6rem;
+  top: -6rem;
+  background: #ffc2dd;
+  animation: var(--animate-float-a);
+}
+.blob-b {
+  width: 22rem;
+  height: 22rem;
+  right: -5rem;
+  top: 25%;
+  background: #cdb8ff;
+  animation: var(--animate-float-b);
+}
+.blob-c {
+  width: 24rem;
+  height: 24rem;
+  left: 30%;
+  bottom: -9rem;
+  background: #b9e6ff;
+  animation: var(--animate-float-c);
+}
 
-@keyframes float-a { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(60px, 40px) scale(1.12); } }
-@keyframes float-b { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(-50px, 60px) scale(0.92); } }
-@keyframes float-c { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(40px, -50px) scale(1.1); } }
+@keyframes float-a {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(60px, 40px) scale(1.12);
+  }
+}
+@keyframes float-b {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(-50px, 60px) scale(0.92);
+  }
+}
+@keyframes float-c {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(40px, -50px) scale(1.1);
+  }
+}
 
 /* Pretty scrollbars */
-* { scrollbar-width: thin; scrollbar-color: #e8b8d6 transparent; }
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #e8b8d6 transparent;
+}
 
-::selection { background: #ffc2dd; color: #55446a; }
+::selection {
+  background: #ffc2dd;
+  color: #55446a;
+}
 
 /* ── Entrance animations ── */
 @keyframes pop-in {
-  0%   { opacity: 0; transform: scale(0.88) translateY(14px); }
-  60%  { opacity: 1; transform: scale(1.03) translateY(-2px); }
-  100% { opacity: 1; transform: scale(1) translateY(0); }
+  0% {
+    opacity: 0;
+    transform: scale(0.88) translateY(14px);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.03) translateY(-2px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
 @keyframes rise {
-  from { opacity: 0; transform: translateY(14px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 @keyframes fade-in {
-  from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.card-in { animation: pop-in 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) backwards; }
+.card-in {
+  animation: pop-in 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+}
 
 /* Children of the main card rise in one after another. */
 /* "backwards" (not "both") so no transform lingers afterwards: a leftover transform would create a stacking
    context per child and hide the info tooltips behind the next field. */
-.stagger > * { animation: rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) backwards; }
-.stagger > *:nth-child(1)  { animation-delay: 0.10s; }
-.stagger > *:nth-child(2)  { animation-delay: 0.16s; }
-.stagger > *:nth-child(3)  { animation-delay: 0.22s; }
-.stagger > *:nth-child(4)  { animation-delay: 0.28s; }
-.stagger > *:nth-child(5)  { animation-delay: 0.34s; }
-.stagger > *:nth-child(6)  { animation-delay: 0.40s; }
-.stagger > *:nth-child(7)  { animation-delay: 0.46s; }
-.stagger > *:nth-child(8)  { animation-delay: 0.52s; }
-.stagger > *:nth-child(n+9) { animation-delay: 0.58s; }
+.stagger > * {
+  animation: rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+.stagger > *:nth-child(1) {
+  animation-delay: 0.1s;
+}
+.stagger > *:nth-child(2) {
+  animation-delay: 0.16s;
+}
+.stagger > *:nth-child(3) {
+  animation-delay: 0.22s;
+}
+.stagger > *:nth-child(4) {
+  animation-delay: 0.28s;
+}
+.stagger > *:nth-child(5) {
+  animation-delay: 0.34s;
+}
+.stagger > *:nth-child(6) {
+  animation-delay: 0.4s;
+}
+.stagger > *:nth-child(7) {
+  animation-delay: 0.46s;
+}
+.stagger > *:nth-child(8) {
+  animation-delay: 0.52s;
+}
+.stagger > *:nth-child(n + 9) {
+  animation-delay: 0.58s;
+}
 
 /* A tab's page fades in each time it becomes the active one. */
-.tab-enter { animation: fade-in 0.35s ease-out backwards; }
+.tab-enter {
+  animation: fade-in 0.35s ease-out backwards;
+}
 
 /* ── Mascot printer ── */
 @keyframes mascot-bounce {
-  0%, 100% { transform: translateY(0) rotate(-2deg); }
-  50%      { transform: translateY(-6px) rotate(2deg); }
+  0%,
+  100% {
+    transform: translateY(0) rotate(-2deg);
+  }
+  50% {
+    transform: translateY(-6px) rotate(2deg);
+  }
 }
 @keyframes paper-out {
-  0%, 100% { transform: translateY(0); }
-  50%      { transform: translateY(7px); }
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(7px);
+  }
 }
 @keyframes blink {
-  0%, 92%, 100% { transform: scaleY(1); }
-  96%           { transform: scaleY(0.1); }
+  0%,
+  92%,
+  100% {
+    transform: scaleY(1);
+  }
+  96% {
+    transform: scaleY(0.1);
+  }
 }
 @keyframes wiggle {
-  0%, 100% { transform: rotate(0deg); }
-  25% { transform: rotate(-8deg); }
-  75% { transform: rotate(8deg); }
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(-8deg);
+  }
+  75% {
+    transform: rotate(8deg);
+  }
 }
 @keyframes twinkle {
-  0%, 100% { opacity: 0.25; transform: scale(0.7) rotate(0deg); }
-  50%      { opacity: 1;    transform: scale(1.15) rotate(20deg); }
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.7) rotate(0deg);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15) rotate(20deg);
+  }
 }
 @keyframes printing-shake {
-  0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(-1.5px); }
-  75% { transform: translateX(1.5px); }
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-1.5px);
+  }
+  75% {
+    transform: translateX(1.5px);
+  }
 }
 
-.mascot { animation: mascot-bounce 3.2s ease-in-out infinite; transform-origin: 50% 90%; cursor: pointer; }
-.mascot:hover { animation: wiggle 0.5s ease-in-out infinite; }
-.mascot.is-busy { animation: printing-shake 0.18s linear infinite; }
-.mascot .paper { animation: paper-out 2.4s ease-in-out infinite; }
-.mascot.is-busy .paper { animation-duration: 0.7s; }
-.mascot .eye { transform-box: fill-box; transform-origin: center; animation: blink 4.5s infinite; }
-.sparkle { animation: twinkle 2.4s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
-.sparkle:nth-of-type(2) { animation-delay: 0.8s; }
-.sparkle:nth-of-type(3) { animation-delay: 1.6s; }
+.mascot {
+  animation: mascot-bounce 3.2s ease-in-out infinite;
+  transform-origin: 50% 90%;
+  cursor: pointer;
+}
+.mascot:hover {
+  animation: wiggle 0.5s ease-in-out infinite;
+}
+.mascot.is-busy {
+  animation: printing-shake 0.18s linear infinite;
+}
+.mascot .paper {
+  animation: paper-out 2.4s ease-in-out infinite;
+}
+.mascot.is-busy .paper {
+  animation-duration: 0.7s;
+}
+.mascot .eye {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: blink 4.5s infinite;
+}
+.sparkle {
+  animation: twinkle 2.4s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.sparkle:nth-of-type(2) {
+  animation-delay: 0.8s;
+}
+.sparkle:nth-of-type(3) {
+  animation-delay: 1.6s;
+}
 
 /* ── Interactive controls ── */
 .btn-cute {
   background-image: linear-gradient(135deg, #ff8cc4 0%, #e5388c 55%, #b86bff 100%);
   background-size: 200% 200%;
-  box-shadow: 0 6px 0 #b82a72, 0 10px 18px -6px rgb(229 56 140 / 0.55);
-  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.15s ease, background-position 0.6s ease;
+  box-shadow:
+    0 6px 0 #b82a72,
+    0 10px 18px -6px rgb(229 56 140 / 0.55);
+  transition:
+    transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.15s ease,
+    background-position 0.6s ease;
   animation: btn-glow 3s ease-in-out infinite;
 }
-.btn-cute:hover:not(:disabled) { transform: translateY(-2px) scale(1.01); background-position: 100% 50%; }
-.btn-cute:active:not(:disabled) { transform: translateY(5px); box-shadow: 0 1px 0 #b82a72, 0 4px 8px -4px rgb(229 56 140 / 0.5); }
-.btn-cute:disabled { background-image: none; box-shadow: none; animation: none; }
+.btn-cute:hover:not(:disabled) {
+  transform: translateY(-2px) scale(1.01);
+  background-position: 100% 50%;
+}
+.btn-cute:active:not(:disabled) {
+  transform: translateY(5px);
+  box-shadow:
+    0 1px 0 #b82a72,
+    0 4px 8px -4px rgb(229 56 140 / 0.5);
+}
+.btn-cute:disabled {
+  background-image: none;
+  box-shadow: none;
+  animation: none;
+}
 @keyframes btn-glow {
-  0%, 100% { background-position: 0% 50%; }
-  50%      { background-position: 100% 50%; }
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
 }
 
-/* Soft hover/press for every ordinary button and pill */
-button:not(:disabled), label:has(input[type="radio"]) {
+/* Soft hover/press for ordinary buttons, and for the radio "pill" controls. The pill part is
+   deliberately opt-in through `.pill` rather than every label holding a radio: the New-label
+   dialog's "Start from" options are radio labels too, and a row of choices that lifts on hover
+   reads as jittery. */
+button:not(:disabled) {
   transition-property: transform, background-color, border-color, color, box-shadow, opacity;
   transition-duration: 0.18s;
 }
-button:not(:disabled):not(.btn-cute):hover { transform: translateY(-1px); }
-button:not(:disabled):not(.btn-cute):active { transform: scale(0.95); }
-label:has(input[type="radio"]):not(:has(input:disabled)):hover { transform: translateY(-1px) scale(1.03); }
+button:not(:disabled):not(.btn-cute):hover {
+  transform: translateY(-1px);
+}
+button:not(:disabled):not(.btn-cute):active {
+  transform: scale(0.95);
+}
+
+.pill {
+  transition-property: transform, background-color, border-color, color, box-shadow, opacity;
+  transition-duration: 0.18s;
+}
+.pill:hover:not(:has(input:disabled)) {
+  transform: translateY(-1px) scale(1.03);
+}
 
 /* Selected radio pill pops */
-label:has(input[type="radio"]:checked) { animation: pill-pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.pill:has(input[type="radio"]:checked) {
+  animation: pill-pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
 @keyframes pill-pop {
-  0% { transform: scale(0.9); }
-  60% { transform: scale(1.08); }
-  100% { transform: scale(1); }
+  0% {
+    transform: scale(0.9);
+  }
+  60% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 /* Inputs gently grow when focused */
-input:focus, select:focus, textarea:focus { transition: box-shadow 0.2s ease, border-color 0.2s ease; }
+input:focus,
+select:focus,
+textarea:focus {
+  transition:
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
+}
 
 /* Details panels slide open */
-details[open] > :not(summary) { animation: fade-in 0.3s ease-out backwards; }
-summary { transition: color 0.15s ease; list-style-position: inside; }
-summary:hover { color: var(--color-indigo-600); }
+details[open] > :not(summary) {
+  animation: fade-in 0.3s ease-out backwards;
+}
+summary {
+  transition: color 0.15s ease;
+  list-style-position: inside;
+}
+summary:hover {
+  color: var(--color-indigo-600);
+}
 
 /* ── Feedback ── */
-.alert-shake { animation: shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) backwards, fade-in 0.3s ease-out backwards; }
-@keyframes shake {
-  10%, 90% { transform: translateX(-1px); }
-  20%, 80% { transform: translateX(3px); }
-  30%, 50%, 70% { transform: translateX(-6px); }
-  40%, 60% { transform: translateX(6px); }
+.alert-shake {
+  animation:
+    shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) backwards,
+    fade-in 0.3s ease-out backwards;
 }
-.result-in { animation: pop-in 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) backwards; }
+@keyframes shake {
+  10%,
+  90% {
+    transform: translateX(-1px);
+  }
+  20%,
+  80% {
+    transform: translateX(3px);
+  }
+  30%,
+  50%,
+  70% {
+    transform: translateX(-6px);
+  }
+  40%,
+  60% {
+    transform: translateX(6px);
+  }
+}
+.result-in {
+  animation: pop-in 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+}
 
 /* Confetti burst on success */
-.confetti { position: relative; height: 0; pointer-events: none; }
+.confetti {
+  position: relative;
+  height: 0;
+  pointer-events: none;
+}
 .confetti i {
   position: absolute;
   left: 50%;
@@ -211,18 +453,34 @@ summary:hover { color: var(--color-indigo-600); }
   animation-delay: var(--d, 0s);
 }
 @keyframes confetti-burst {
-  0%   { opacity: 0; transform: translate(-50%, 0) scale(0.4) rotate(0deg); }
-  15%  { opacity: 1; }
-  100% { opacity: 0; transform: translate(calc(-50% + var(--x)), var(--y)) scale(1) rotate(var(--r)); }
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 0) scale(0.4) rotate(0deg);
+  }
+  15% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--x)), var(--y)) scale(1) rotate(var(--r));
+  }
 }
 
 /* Tooltip bubble springs in */
-[role="tooltip"] { transform: translateY(-4px) scale(0.96); transition: all 0.18s cubic-bezier(0.34, 1.56, 0.64, 1); }
-.group:hover > [role="tooltip"], .group:focus-within > [role="tooltip"] { transform: translateY(0) scale(1); }
+[role="tooltip"] {
+  transform: translateY(-4px) scale(0.96);
+  transition: all 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.group:hover > [role="tooltip"],
+.group:focus-within > [role="tooltip"] {
+  transform: translateY(0) scale(1);
+}
 
 /* Respect people who prefer less motion */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
@@ -230,9 +488,15 @@ summary:hover { color: var(--color-indigo-600); }
 }
 
 /* List rows (saved / discovered printers) slide in */
-.rise-row { animation: rise 0.4s cubic-bezier(0.22, 1, 0.36, 1) backwards; }
+.rise-row {
+  animation: rise 0.4s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
 
 /* An inactive tab stays mounted (so unsaved Designer edits survive) but must be fully hidden. Plain
    `visibility: hidden` on the section is not enough: pdfme sets `visibility: visible` on its own
    elements, which would punch through and show its toolbar on the other tab. */
-.tab-hidden, .tab-hidden * { visibility: hidden !important; pointer-events: none !important; }
+.tab-hidden,
+.tab-hidden * {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}

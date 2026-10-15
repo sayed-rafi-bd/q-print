@@ -1,4 +1,4 @@
-package com.example.print_test
+package jp.co.keex.qprint
 
 import android.os.Bundle
 import androidx.activity.enableEdgeToEdge

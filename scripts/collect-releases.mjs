@@ -30,41 +30,56 @@ const copyOnly = args.includes('--copy');
 const dryRun = args.includes('--dry-run');
 const requested = args.filter((a) => !a.startsWith('--'));
 const ALL = ['windows', 'linux', 'android'];
-for (const p of requested) if (!ALL.includes(p)) { console.error(`Unknown platform "${p}". Use: ${ALL.join(', ')}`); process.exit(1); }
+for (const p of requested)
+  if (!ALL.includes(p)) {
+    console.error(`Unknown platform "${p}". Use: ${ALL.join(', ')}`);
+    process.exit(1);
+  }
 const platforms = requested.length ? requested : ALL;
 
 const version = JSON.parse(readFileSync(join(tauri, 'tauri.conf.json'), 'utf8')).version;
 const slug = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).name;
 
 /** Files directly inside `dir` (not recursive) with one of the extensions. */
-const filesIn = (dir, exts) => !existsSync(dir) ? [] :
-  readdirSync(dir, { withFileTypes: true })
-    .filter((e) => e.isFile() && exts.some((x) => e.name.endsWith(x)))
-    .map((e) => join(dir, e.name));
+const filesIn = (dir, exts) =>
+  !existsSync(dir)
+    ? []
+    : readdirSync(dir, { withFileTypes: true })
+        .filter((e) => e.isFile() && exts.some((x) => e.name.endsWith(x)))
+        .map((e) => join(dir, e.name));
 
 /** Files anywhere below `dir` with one of the extensions. */
-const walk = (dir, exts) => !existsSync(dir) ? [] :
-  readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
-    const p = join(dir, e.name);
-    return e.isDirectory() ? walk(p, exts) : exts.some((x) => e.name.endsWith(x)) ? [p] : [];
-  });
+const walk = (dir, exts) =>
+  !existsSync(dir)
+    ? []
+    : readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+        const p = join(dir, e.name);
+        return e.isDirectory() ? walk(p, exts) : exts.some((x) => e.name.endsWith(x)) ? [p] : [];
+      });
 
 // target/release/bundle, plus target/<triple>/release/bundle for `--target` builds.
 const target = join(tauri, 'target');
-const bundleRoots = [join(target, 'release', 'bundle'),
-  ...(existsSync(target) ? readdirSync(target, { withFileTypes: true })
-    .filter((e) => e.isDirectory()).map((e) => join(target, e.name, 'release', 'bundle')) : [])]
-  .filter(existsSync);
+const bundleRoots = [
+  join(target, 'release', 'bundle'),
+  ...(existsSync(target)
+    ? readdirSync(target, { withFileTypes: true })
+        .filter((e) => e.isDirectory())
+        .map((e) => join(target, e.name, 'release', 'bundle'))
+    : []),
+].filter(existsSync);
 
 const versioned = (files) => files.filter((f) => basename(f).includes(version));
-const desktop = (sub, exts) => versioned(bundleRoots.flatMap((r) => filesIn(join(r, sub), exts)))
-  .map((src) => ({ src, name: basename(src) }));
+const desktop = (sub, exts) =>
+  versioned(bundleRoots.flatMap((r) => filesIn(join(r, sub), exts))).map((src) => ({ src, name: basename(src) }));
 
 const sources = {
   windows: () => [...desktop('nsis', ['.exe']), ...desktop('msi', ['.msi'])],
   linux: () => [...desktop('deb', ['.deb']), ...desktop('rpm', ['.rpm']), ...desktop('appimage', ['.AppImage'])],
-  android: () => walk(join(tauri, 'gen', 'android', 'app', 'build', 'outputs'), ['.apk', '.aab'])
-    .map((src) => ({ src, name: `${slug}_${version}_${basename(src).replace(/^app-/, 'android-')}` })),
+  android: () =>
+    walk(join(tauri, 'gen', 'android', 'app', 'build', 'outputs'), ['.apk', '.aab']).map((src) => ({
+      src,
+      name: `${slug}_${version}_${basename(src).replace(/^app-/, 'android-')}`,
+    })),
 };
 
 let total = 0;
@@ -78,10 +93,12 @@ for (const platform of platforms) {
   }
   for (const { src, name } of found) {
     const dest = join(outDir, name);
-    console.log(`${platform}: ${dryRun ? 'would ' : ''}${copyOnly ? 'copy' : 'move'} ${src.slice(root.length + 1)} -> releases/${name}`);
+    console.log(
+      `${platform}: ${dryRun ? 'would ' : ''}${copyOnly ? 'copy' : 'move'} ${src.slice(root.length + 1)} -> releases/${name}`,
+    );
     if (!dryRun) {
       mkdirSync(outDir, { recursive: true });
-      cpSync(src, dest, { force: true });   // copy + delete also works across drives, unlike rename
+      cpSync(src, dest, { force: true }); // copy + delete also works across drives, unlike rename
       if (!copyOnly) rmSync(src);
     }
     total++;

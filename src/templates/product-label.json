@@ -175,12 +175,7 @@
   "basePdf": {
     "width": 190,
     "height": 160,
-    "padding": [
-      0,
-      0,
-      0,
-      0
-    ]
+    "padding": [0, 0, 0, 0]
   },
   "pdfmeVersion": "5.5.10"
 }

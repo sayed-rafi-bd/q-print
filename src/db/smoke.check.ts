@@ -6,19 +6,22 @@
  */
 
 import { afterAll, describe, expect, it } from 'vitest';
-import { getClient, getDb, isDbConfigured, setDb, resetDb, migrateDb } from './client';
-import { createUser, verifyPassword } from './users';
-import { createLabel, listLabels, loadLabel, saveLabel, deleteLabel } from '../labels';
-import { sampleSpec, sampleTemplate } from '../sampleLabel';
-import { scaffoldSpec } from '../generator/scaffold';
 import { generateRows, validateSpec } from '../generator/engine';
+import { scaffoldSpec } from '../generator/scaffold';
+import { createLabel, deleteLabel, listLabels, loadLabel, saveLabel } from '../labels';
+import { sampleSpec, sampleTemplate } from '../sampleLabel';
+import { getClient, getDb, isDbConfigured, migrateDb, resetDb, setDb } from './client';
 import type { User } from './users';
+import { createUser, verifyPassword } from './users';
 
 const USERNAME = `smoke-${Date.now()}`;
 let made: User | null = null;
 
 afterAll(async () => {
-  if (!made) { resetDb(); return; }
+  if (!made) {
+    resetDb();
+    return;
+  }
   try {
     for (const l of await listLabels(made)) {
       if (!l.builtin) await deleteLabel(made, l.id);
@@ -58,12 +61,15 @@ describe('against the real database', () => {
     const user = made!;
 
     await createLabel(user, {
-      name: 'Sample label', widthMm: 100, heightMm: 50, from: { kind: 'sample' },
+      name: 'Sample label',
+      widthMm: 100,
+      heightMm: 50,
+      from: { kind: 'sample' },
     });
 
-    const mine = (await listLabels(user)).filter(l => !l.builtin);
-    expect(mine.map(l => l.id)).toContain('sample-label');
-    expect(mine.find(l => l.id === 'sample-label')?.widthMm).toBe(100);
+    const mine = (await listLabels(user)).filter((l) => !l.builtin);
+    expect(mine.map((l) => l.id)).toContain('sample-label');
+    expect(mine.find((l) => l.id === 'sample-label')?.widthMm).toBe(100);
 
     const loaded = await loadLabel(user, 'sample-label');
     expect(validateSpec(loaded.generator)).toEqual([]);
@@ -78,7 +84,7 @@ describe('against the real database', () => {
 
     // A save over an existing label must update, not duplicate.
     await saveLabel(user, 'sample-label', 'Renamed', sampleTemplate(), scaffoldSpec(sampleTemplate(), sampleSpec()));
-    const after = (await listLabels(user)).filter(l => !l.builtin);
+    const after = (await listLabels(user)).filter((l) => !l.builtin);
     expect(after).toHaveLength(1);
     expect(after[0].name).toBe('Renamed');
   });
@@ -87,10 +93,14 @@ describe('against the real database', () => {
     const db = getDb();
     const other = await createUser(db, `${USERNAME}-b`, 'hunter3');
     try {
-      expect((await listLabels(other)).filter(l => !l.builtin)).toHaveLength(0);
+      expect((await listLabels(other)).filter((l) => !l.builtin)).toHaveLength(0);
       // Guessing a slug that exists on another account finds nothing and changes nothing.
-      expect(await saveLabel(other, 'sample-label', 'Hijacked', sampleTemplate(), sampleSpec()).then(() => true, () => false))
-        .toBe(true); // it creates their own, which is correct: slugs are per account
+      expect(
+        await saveLabel(other, 'sample-label', 'Hijacked', sampleTemplate(), sampleSpec()).then(
+          () => true,
+          () => false,
+        ),
+      ).toBe(true); // it creates their own, which is correct: slugs are per account
       expect((await loadLabel(made!, 'sample-label')).template).not.toBe('');
     } finally {
       await getClient().execute({ sql: 'DELETE FROM users WHERE id = ?', args: [other.id] });
