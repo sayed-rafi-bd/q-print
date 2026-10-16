@@ -177,7 +177,9 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
   const [apiLoadedFor, setApiLoadedFor] = useState('');
   const [busy, setBusy] = useState(false);
   // The "Add a printer" section stays open until the user closes it, so more than one printer can be added.
-  const [addOpen, setAddOpen] = useState(true);
+  // Closed by default: "Add a printer" is a thing most people do once, or never, and having it open
+  // on every visit added a panel to a page that is already long.
+  const [addOpen, setAddOpen] = useState(false);
   const [error, setError] = useState('');
   // bumped on every successful print so the confetti burst replays
   const [celebrate, setCelebrate] = useState(0);
@@ -788,56 +790,65 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
                 : '"Open dialog" ends when the system print preview is requested, not when you tap Print or paper comes out.'}
             </p>
 
-            <div className="space-y-1.5 border-t border-emerald-200 pt-3">
-              <p className="text-xs text-slate-600">
-                Transport:{' '}
-                <span className="rounded-full bg-emerald-200 px-2 py-0.5 font-medium text-emerald-900">
-                  {result.report.transport}
-                </span>{' '}
-                <span className="text-slate-500">({result.report.tool})</span>
-              </p>
-              {caps.paperSelect ? (
-                <>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-slate-600">
-                      Paper size{' '}
-                      <span className="font-medium text-slate-900">
-                        {result.report.paperRequested || '(driver default)'}
+            {/* The detailed report follows; collapsed by default, because most of the time only the
+                headline ("Sent X pages … to …") and the total time matter. */}
+            <details className="border-t border-emerald-200 pt-2 text-sm">
+              <summary className="cursor-pointer text-xs font-medium text-emerald-800">
+                Transport & paper report (for the next printer troubleshooting session)
+              </summary>
+              <div className="mt-2 space-y-1.5">
+                <p className="text-xs text-slate-600">
+                  Transport:{' '}
+                  <span className="rounded-full bg-emerald-200 px-2 py-0.5 font-medium text-emerald-900">
+                    {result.report.transport}
+                  </span>{' '}
+                  <span className="text-slate-500">({result.report.tool})</span>
+                </p>
+                {caps.paperSelect ? (
+                  <>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-slate-600">
+                        Paper size{' '}
+                        <span className="font-medium text-slate-900">
+                          {result.report.paperRequested || '(driver default)'}
+                        </span>
                       </span>
-                    </span>
-                    <span
-                      className={
-                        'rounded-full px-2 py-0.5 text-xs font-medium ' +
-                        (result.report.paperApplied ? 'bg-emerald-200 text-emerald-900' : 'bg-slate-200 text-slate-800')
-                      }
-                    >
-                      {result.report.paperApplied ? `sent to ${result.report.tool}` : 'driver default'}
-                    </span>
-                  </div>
+                      <span
+                        className={
+                          'rounded-full px-2 py-0.5 text-xs font-medium ' +
+                          (result.report.paperApplied
+                            ? 'bg-emerald-200 text-emerald-900'
+                            : 'bg-slate-200 text-slate-800')
+                        }
+                      >
+                        {result.report.paperApplied ? `sent to ${result.report.tool}` : 'driver default'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-600 break-words">{result.report.paperNote}</p>
+                  </>
+                ) : (
                   <p className="text-xs text-slate-600 break-words">{result.report.paperNote}</p>
-                </>
-              ) : (
-                <p className="text-xs text-slate-600 break-words">{result.report.paperNote}</p>
-              )}
-              {caps.orientationSelect && (
-                <p className="text-xs text-slate-600">
-                  Orientation: <span className="font-medium">{result.report.orientation}</span>
-                </p>
-              )}
-              {caps.dpiSelect && (
-                <p className="text-xs text-slate-600">
-                  Resolution:{' '}
-                  <span className="font-medium">
-                    {result.report.dpiRequested ? dpiLabel(result.report.dpiRequested) : 'printer default'}
-                  </span>
-                  {' — '}
-                  {result.report.dpiNote}
-                </p>
-              )}
-              <pre className="overflow-x-auto rounded-md bg-slate-900 p-2 text-xs text-slate-100">
-                {result.report.command}
-              </pre>
-            </div>
+                )}
+                {caps.orientationSelect && (
+                  <p className="text-xs text-slate-600">
+                    Orientation: <span className="font-medium">{result.report.orientation}</span>
+                  </p>
+                )}
+                {caps.dpiSelect && (
+                  <p className="text-xs text-slate-600">
+                    Resolution:{' '}
+                    <span className="font-medium">
+                      {result.report.dpiRequested ? dpiLabel(result.report.dpiRequested) : 'printer default'}
+                    </span>
+                    {' — '}
+                    {result.report.dpiNote}
+                  </p>
+                )}
+                <pre className="overflow-x-auto rounded-md bg-slate-900 p-2 text-xs text-slate-100">
+                  {result.report.command}
+                </pre>
+              </div>
+            </details>
           </section>
         )}
 
