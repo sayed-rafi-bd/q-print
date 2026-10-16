@@ -108,7 +108,9 @@ export default function GuidePage() {
             <li>
               Open the <strong>Print</strong> tab and choose the <strong>Label</strong>.
             </li>
-            <li>Choose the <strong>Printer</strong>. If yours is not listed, use “Add a printer”.</li>
+            <li>
+              Choose the <strong>Printer</strong>. If yours is not listed, use “Add a printer”.
+            </li>
             <li>
               Look at the <strong>Data source</strong> box.
               <ul className="mt-1 list-disc space-y-1 pl-5">
@@ -164,8 +166,8 @@ export default function GuidePage() {
 
         <h3 className="font-semibold text-slate-800">What the API should return</h3>
         <p>
-          JSON. Either a list of records (one label page per record) or a single record. For example, with the list
-          path set to <Code>data</Code>:
+          JSON. Either a list of records (one label page per record) or a single record. For example, with the list path
+          set to <Code>data</Code>:
         </p>
         <pre className="overflow-auto rounded-xl bg-slate-900 p-3 text-xs text-slate-100">{SAMPLE_RESPONSE}</pre>
         <p>
@@ -207,15 +209,16 @@ export default function GuidePage() {
           <li>Place and style the fields on the page: text, barcodes, QR codes, tables.</li>
           <li>
             In the <strong>Data</strong> tab, choose how each field gets its value. Choose the API option and enter the
-            path of the value inside a record (<Code>title</Code>, <Code>price.amount</Code>) for fields that come
-            from your system.
+            path of the value inside a record (<Code>title</Code>, <Code>price.amount</Code>) for fields that come from
+            your system.
           </li>
           <li>
-            Use <strong>Test with a real API</strong> to fetch a few records and preview the label with real values.
-            The address you type there is for testing only and is not saved with the label.
+            Use <strong>Test with a real API</strong> to fetch a few records and preview the label with real values. The
+            address you type there is for testing only and is not saved with the label.
           </li>
           <li>
-            <strong>Save</strong>. A label that has at least one API field will then ask for an address on the Print tab.
+            <strong>Save</strong>. A label that has at least one API field will then ask for an address on the Print
+            tab.
           </li>
         </Steps>
         <Note>
@@ -240,8 +243,8 @@ export default function GuidePage() {
             Check data, or look at the response, and correct the path.
           </li>
           <li>
-            <strong>Data source is greyed out but you expected an API</strong> — the label has no field set to read
-            from an API. Open it in the Designer and set the fields that should.
+            <strong>Data source is greyed out but you expected an API</strong> — the label has no field set to read from
+            an API. Open it in the Designer and set the fields that should.
           </li>
           <li>
             <strong>Nothing printed</strong> — check the printer name, and that the paper size matches the label.

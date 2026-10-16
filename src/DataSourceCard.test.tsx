@@ -174,9 +174,7 @@ describe('resolvedAddress', () => {
 
 describe('a label that does not read from an API', () => {
   it('still shows the address box, switched off, and says why', () => {
-    render(
-      <DataSourceCard api={emptyApi} onChange={() => {}} remembered={{}} copies={1} notUsed />,
-    );
+    render(<DataSourceCard api={emptyApi} onChange={() => {}} remembered={{}} copies={1} notUsed />);
     expect((screen.getByLabelText('Address') as HTMLInputElement).disabled).toBe(true);
     expect((screen.getByLabelText(/Where the list is/) as HTMLInputElement).disabled).toBe(true);
     expect((screen.getByRole('button', { name: 'Check data' }) as HTMLButtonElement).disabled).toBe(true);
@@ -185,9 +183,7 @@ describe('a label that does not read from an API', () => {
 
   it('makes no request when Check data is clicked', () => {
     const spy = vi.spyOn(client, 'fetchRecords');
-    render(
-      <DataSourceCard api={emptyApi} onChange={() => {}} remembered={{}} copies={1} notUsed />,
-    );
+    render(<DataSourceCard api={emptyApi} onChange={() => {}} remembered={{}} copies={1} notUsed />);
     fireEvent.click(screen.getByRole('button', { name: 'Check data' }));
     expect(spy).not.toHaveBeenCalled();
   });
