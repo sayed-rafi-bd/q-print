@@ -136,6 +136,17 @@ pnpm version:minor --tag     # 0.1.0 -> 0.2.0, commits "Release v0.2.0" and crea
 
 The other forms are `pnpm version:major`, `pnpm version:patch` and `pnpm version:set 1.2.3`. Add `--dry-run` to preview without writing. The script updates `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` and the app's entry in `src-tauri/Cargo.lock`, and it never pushes. Versions must be plain `x.y.z`, because the MSI installer does not accept suffixes such as `-beta`. To do it by hand instead, set the same version in those files (run `cargo check` in `src-tauri` to refresh the lock file), commit, and run `git tag v0.2.0`.
 
+**The tag has to agree with that version, and the release now refuses to build if it does not.** A mismatched tag still compiles: it just produces an installer named for one version, containing an app that reports another, and Windows then cannot tell whether the MSI is an upgrade. Nothing in the build would notice, so the `verify` job checks it before compiling anything, and fails with the command to run.
+
+To check before you push, which is the point of it being a script:
+
+```powershell
+pnpm version:check          # the tag on the current commit
+pnpm version:check v0.2.0   # a tag you have not pushed yet
+```
+
+Tagging by hand is fine as long as the version was already committed. What fails is tagging a commit whose version still says something else, which is how `v2.0.1` ended up on a build saying 1.4.0.
+
 3. Push the version commit and wait for `CI` on `main` to pass:
 
 ```powershell
@@ -293,6 +304,7 @@ One bug is open and blocks a trusted Android release: the debug APK shows an err
 - `base64: invalid input` in "Sign the APK": `ANDROID_KEYSTORE_BASE64` does not hold base64 text. Recreate it with the PowerShell command under "GitHub secrets" and paste it as one line.
 - `Missing repository secret ...` or `Add VITE_TURSO_URL and VITE_TURSO_TOKEN ...`: the named secret is empty or has a different name. Secret names are case-sensitive.
 - `Tag ... is not on main`: the tag points at a commit that is not on `main`. Merge to `main`, then delete and recreate the tag (`git tag -d v0.2.0`, `git push origin :refs/tags/v0.2.0`, `git tag v0.2.0`, `git push origin v0.2.0`).
+- `the tag says 0.2.0 but the app would be built as 1.4.0`: the commit was tagged without its version being committed. The message says which command to run. Do that, commit, then delete and recreate the tag the same way as above.
 - Re-running a failed run reuses the workflow file from the tagged commit. After fixing the workflow itself, recreate the tag on the fixed commit. After fixing only a secret, **Re-run failed jobs** is enough.
 
 **Common build errors**
