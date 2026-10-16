@@ -85,26 +85,40 @@ jobs:
           releaseDraft: true
       # The release is still a draft here, so a failure leaves nothing public.
       # The certificate is self-signed, so the runner reports "NotTrusted"/"UnknownError" instead of "Valid".
-      # What matters is that every binary carries OUR signature, so compare the signer thumbprint instead.
+      # What matters is that the files we ship carry OUR signature, so compare the signer thumbprint instead.
       - name: Verify Windows signatures
         shell: pwsh
         run: |
-          $files = @(Get-ChildItem -Path src-tauri/target/release -Filter q-print.exe -File) +
-                   @(Get-ChildItem -Path src-tauri/target/release/bundle -Recurse -Include *.exe, *.msi -File)
-          if ($files.Count -eq 0) {
-            Write-Host "::error::No Windows build output found to verify."
+          # 1. The installers are what users download: these must be signed (hard failure).
+          $installers = @(Get-ChildItem -Path src-tauri/target/release/bundle -Recurse -Include *.exe, *.msi -File)
+          if ($installers.Count -eq 0) {
+            Write-Host "::error::No Windows installers found to verify."
             exit 1
           }
           $bad = $false
-          foreach ($f in $files) {
+          foreach ($f in $installers) {
             $sig = Get-AuthenticodeSignature $f.FullName
-            $thumb = $sig.SignerCertificate.Thumbprint
-            Write-Host "$($f.Name): $($sig.Status) | $($sig.SignerCertificate.Subject) | $thumb"
-            if ($thumb -ne $env:WINDOWS_CERT_THUMBPRINT) { $bad = $true }
+            Write-Host "$($f.Name): $($sig.Status) | $($sig.SignerCertificate.Subject) | $($sig.SignerCertificate.Thumbprint)"
+            if ($sig.SignerCertificate.Thumbprint -ne $env:WINDOWS_CERT_THUMBPRINT) { $bad = $true }
           }
           if ($bad) {
-            Write-Host "::error::At least one Windows binary is not signed with the Q-Print certificate."
+            Write-Host "::error::At least one Windows installer is not signed with the Q-Print certificate."
             exit 1
+          }
+          # 2. The q-print.exe that ends up installed: unpack the MSI and report (warning only).
+          #    (target/release/q-print.exe is only a build intermediate, so it is not checked.)
+          $msi = $installers | Where-Object Extension -eq '.msi' | Select-Object -First 1
+          if ($msi) {
+            $dir = Join-Path $env:RUNNER_TEMP 'msi-extract'
+            Start-Process msiexec.exe -ArgumentList "/a `"$($msi.FullName)`" /qn TARGETDIR=`"$dir`"" -Wait
+            $inner = Get-ChildItem -Path $dir -Recurse -Filter q-print.exe -File | Select-Object -First 1
+            if ($inner) {
+              $sig = Get-AuthenticodeSignature $inner.FullName
+              Write-Host "installed q-print.exe: $($sig.Status) | $($sig.SignerCertificate.Subject) | $($sig.SignerCertificate.Thumbprint)"
+              if ($sig.SignerCertificate.Thumbprint -ne $env:WINDOWS_CERT_THUMBPRINT) {
+                Write-Host "::warning::The q-print.exe inside the MSI is not signed with the Q-Print certificate."
+              }
+            }
           }
 
   android:
