@@ -15,6 +15,7 @@
 
 import { and, count, desc, eq } from 'drizzle-orm';
 import type { Database } from './client';
+import { deletePreviewValues } from './preview';
 import { labels as labelsTable } from './schema';
 
 /** What the picker needs: enough to draw a row, not the whole template. */
@@ -44,6 +45,22 @@ export type LabelInput = {
 
 /** Largest a single label may be, matching what the backend used to accept. */
 export const MAX_LABEL_BYTES = 5 * 1024 * 1024;
+
+/**
+ * Refuses a label too big to store. A pdfme template carries embedded images as base64, so the
+ * Designer can grow one without the person noticing; the old backend refused it and the limit was
+ * lost when labels moved into the database. Importing a bundle is already capped by `bundle.ts`, so
+ * this covers editing in the Designer.
+ */
+const checkSize = (label: Partial<LabelInput>): void => {
+  const bytes = new TextEncoder().encode((label.template ?? '') + (label.generator ?? '')).length;
+  if (bytes > MAX_LABEL_BYTES) {
+    throw new Error(
+      `This label is ${(bytes / 1024 / 1024).toFixed(1)} MB; the limit is ` +
+        `${MAX_LABEL_BYTES / 1024 / 1024} MB. Try a smaller image.`,
+    );
+  }
+};
 
 /**
  * Reads a page size out of a stored template, falling back to a size that at least renders.
@@ -96,6 +113,7 @@ export async function getLabel(db: Database, userId: string, slug: string): Prom
 
 /** Stores a new label. Throws if this account already has one with that slug. */
 export async function createLabel(db: Database, userId: string, slug: string, label: LabelInput): Promise<StoredLabel> {
+  checkSize(label);
   const now = new Date().toISOString();
   const row: Row = {
     id: crypto.randomUUID(),
@@ -126,6 +144,7 @@ export async function updateLabel(
   if (patch.template !== undefined) values.template = patch.template;
   if (patch.generator !== undefined) values.generator = patch.generator;
   if (Object.keys(values).length === 0) return false;
+  checkSize({ template: values.template, generator: values.generator });
 
   const result = await db
     .update(labelsTable)
@@ -142,7 +161,11 @@ export async function deleteLabel(db: Database, userId: string, slug: string): P
     .delete(labelsTable)
     .where(and(eq(labelsTable.userId, userId), eq(labelsTable.slug, slug)))
     .returning({ id: labelsTable.id });
-  return result.length > 0;
+  if (result.length === 0) return false;
+  // No foreign key reaches `label_preview` from `labels`, because a built-in has no row there at
+  // all. Cleared here rather than by the caller, so no path can leave it behind.
+  await deletePreviewValues(db, userId, slug);
+  return true;
 }
 
 /** How many labels an account has. Used to decide whether the one-time import should offer. */

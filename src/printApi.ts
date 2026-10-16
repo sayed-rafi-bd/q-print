@@ -3,8 +3,8 @@ import { barcodes, rectangle, text } from '@pdfme/schemas';
 import { invoke } from '@tauri-apps/api/core';
 import { degrees, PDFDocument } from 'pdf-lib';
 import type { User } from './db/users';
-import { generateRows } from './generator/engine';
 import { type LabelId, loadLabel } from './labels';
+import { type ApiInput, buildRows } from './printRows';
 
 const FONT_URL = '/fonts/NotoSansJP-Regular.ttf';
 let fontCache: ArrayBuffer | null = null;
@@ -30,7 +30,8 @@ export type PrintReport = {
 /** Jobs with more pages than this are sent as a raw binary payload instead of a JSON number array. */
 const RAW_THRESHOLD_PAGES = 50;
 
-export type Timings = { data: number; pdf: number; print: number; total: number };
+/** `fetch` is the API call; it is 0 for a label without an API source. */
+export type Timings = { fetch: number; data: number; pdf: number; print: number; total: number };
 
 export const listPrinters = () => invoke<string[]>('list_printers');
 
@@ -127,14 +128,25 @@ export async function printLabels(opts: {
   rotate: Rotation;
   margins: Margins;
   dpi: string;
+  /** Copies of each record for a label with an API source; otherwise the number of pages. */
   pages: number;
-}): Promise<{ timings: Timings; report: PrintReport; templateSource: 'custom' | 'default' | 'custom label' }> {
+  /** Required when the label has an API source. */
+  api?: ApiInput;
+}): Promise<{
+  timings: Timings;
+  report: PrintReport;
+  templateSource: 'custom' | 'default' | 'custom label';
+  /** The real number of pages sent. */
+  pageCount: number;
+  /** API records read, or null when the label has no API source. */
+  records: number | null;
+}> {
   const t0 = performance.now();
 
   // 1. the label's template and generator. The rows are built here too, so nothing has to cross
   //    the IPC boundary just to be randomised.
   const { template, source, generator } = await loadLabel(opts.user, opts.label);
-  const rows = generateRows(generator, opts.pages);
+  const { rows, records, fetchMs } = await buildRows(generator, opts.pages, opts.api);
   const t1 = performance.now();
 
   // 2. one multi-page PDF: pdfme makes one page per input row
@@ -151,7 +163,7 @@ export async function printLabels(opts: {
   // 3. print (silent with scale-to-fit where the platform allows it, else the system dialog)
   const printOpts = { printer: opts.printer, paper: opts.paper, orientation: opts.orientation, dpi: opts.dpi };
   const report =
-    opts.pages > RAW_THRESHOLD_PAGES
+    rows.length > RAW_THRESHOLD_PAGES
       ? await invoke<PrintReport>('print_pdf_raw', pdf, {
           // header values must be ASCII; printer names may not be
           headers: { 'x-print-options': encodeURIComponent(JSON.stringify(printOpts)) },
@@ -160,8 +172,10 @@ export async function printLabels(opts: {
   const t3 = performance.now();
 
   return {
-    timings: { data: t1 - t0, pdf: t2 - t1, print: t3 - t2, total: t3 - t0 },
+    timings: { fetch: fetchMs, data: t1 - t0 - fetchMs, pdf: t2 - t1, print: t3 - t2, total: t3 - t0 },
     report,
     templateSource: source,
+    pageCount: rows.length,
+    records,
   };
 }

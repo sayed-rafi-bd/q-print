@@ -4,17 +4,15 @@ import { useAuth } from './auth/AuthProvider';
 import { isBuiltin } from './builtinLabels';
 import { bundleJson, makeBundle, parseBundle } from './bundle';
 import { scaffoldSpec } from './generator/scaffold';
+import { fitName } from './labelId';
 import { createLabel, type LabelId, loadLabel, saveLabel } from './labels';
 import { saveBuiltinTemplate } from './templateStore';
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-const btnBase =
-  'cursor-pointer rounded-full border px-3 py-1.5 text-sm font-medium transition ' +
-  'disabled:cursor-not-allowed disabled:opacity-50';
-// Colours are in separate variants so no element carries two conflicting colour utilities.
-const btnCls = `${btnBase} border-slate-300 text-slate-700 hover:bg-slate-50`;
-const btnPrimaryCls = `${btnBase} border-indigo-600 bg-indigo-600 text-white hover:bg-indigo-500`;
+// The shared button shapes from index.css, so the panel looks the same on the Designer and Print pages.
+const btnCls = 'btn btn-secondary';
+const btnPrimaryCls = 'btn btn-primary';
 
 /**
  * Moves a label between devices as JSON, so one designed on desktop can be used on Android.
@@ -111,7 +109,7 @@ export default function TemplateTransfer({
 
       if (parsed.bundle) {
         // A whole label. Imported as a new label of its own, so it cannot overwrite one by mistake.
-        const name = parsed.bundle.name.trim() || 'Imported label';
+        const name = fitName(parsed.bundle.name) || 'Imported label';
         const template = parsed.bundle.template as Template;
         const generator = scaffoldSpec(template, parsed.bundle.generator);
         const size = (template.basePdf as { width?: number; height?: number }) ?? {};
@@ -179,7 +177,7 @@ export default function TemplateTransfer({
             <input
               type="file"
               accept=".json,application/json"
-              className="block w-full text-sm text-slate-700"
+              className="block w-full text-body text-slate-700 file:mr-3 file:cursor-pointer file:rounded-full file:border file:border-slate-300 file:bg-white file:px-3 file:py-1.5 file:text-body file:font-semibold file:text-slate-700 hover:file:bg-slate-50"
               onChange={(e) => {
                 onFile(e.target.files?.[0]);
                 e.target.value = '';
@@ -193,7 +191,7 @@ export default function TemplateTransfer({
             spellCheck={false}
             placeholder={mode === 'import' ? 'Choose a .json file above or paste the label JSON here' : ''}
             onChange={(e) => setText(e.target.value)}
-            className="w-full rounded-xl border border-slate-300 bg-white p-2 font-mono text-xs text-slate-800"
+            className="field font-mono"
           />
           <div className="flex flex-wrap gap-2">
             {mode === 'export' ? (
@@ -212,7 +210,7 @@ export default function TemplateTransfer({
             )}
           </div>
           {mode === 'import' && (
-            <p className="text-xs text-slate-500">
+            <p className="field-hint mt-0">
               A full label file becomes a new label. A bare pdfme template replaces the layout of “{label}” and keeps
               its data generator.
             </p>
@@ -221,11 +219,11 @@ export default function TemplateTransfer({
       )}
 
       {error && (
-        <p role="alert" className="break-words text-xs text-red-700">
+        <p role="alert" className="break-words text-body text-red-700">
           {error}
         </p>
       )}
-      {message && <p className="break-words text-xs text-emerald-800">{message}</p>}
+      {message && <p className="break-words text-body text-emerald-800">{message}</p>}
     </div>
   );
 }

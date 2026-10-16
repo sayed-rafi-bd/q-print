@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { MAX_NAME } from '../labelId';
 import type { LabelId, LabelMeta, NewLabel } from '../labels';
 import { SAMPLE_LABEL_NAME, SAMPLE_SIZE } from '../sampleLabel';
 
@@ -16,13 +17,6 @@ const MIN_MM = 10;
 const MAX_MM = 1000;
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
-
-const btnCls =
-  'cursor-pointer rounded-full px-4 py-1.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50';
-const btnPrimaryCls = `${btnCls} bg-indigo-600 text-white hover:bg-indigo-500`;
-const btnPlainCls = `${btnCls} border border-slate-300 text-slate-700 hover:bg-slate-50`;
-const inputCls =
-  'rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200';
 
 type Props = {
   /** Labels that can be copied from; the new one starts with their layout and generator. */
@@ -96,107 +90,117 @@ export default function NewLabelDialog({ labels, onCreate, onClose }: Props) {
   ];
 
   return (
-    <form onSubmit={submit} className="tab-enter space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="space-y-1">
-        <label htmlFor="new-label-name" className="text-sm font-medium text-slate-700">
-          Name
-        </label>
-        <input
-          id="new-label-name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="My parcel label"
-          className={`${inputCls} w-full`}
-        />
-        <p className="text-xs text-slate-500">Shown in the label list. The file name is made from it.</p>
+    // A full-width panel. `@container` makes the two columns depend on the width of the panel itself
+    // rather than the window, so it still folds to one column when the Designer is squeezed.
+    <form
+      onSubmit={submit}
+      className="tab-enter @container w-full rounded-xl border border-slate-200 bg-white shadow-sm"
+    >
+      <div className="grid gap-x-8 gap-y-4 p-4 @2xl:grid-cols-2">
+        <div className="min-w-0 space-y-4">
+          <div>
+            <label htmlFor="new-label-name" className="field-label">
+              Name
+            </label>
+            <input
+              id="new-label-name"
+              // biome-ignore lint/a11y/noAutofocus: focus the field when this dialog opens
+              autoFocus
+              value={name}
+              maxLength={MAX_NAME}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="My parcel label"
+              className="field"
+            />
+            <p className="field-hint">
+              Shown in the label list, up to {MAX_NAME} characters ({Array.from(name).length}/{MAX_NAME}). The file name
+              is made from it.
+            </p>
+          </div>
+
+          <fieldset className="min-w-0">
+            <legend className="field-label">Size</legend>
+            <div className="flex flex-wrap gap-1.5">
+              {PRESETS.map((p) => (
+                <button
+                  key={p.label}
+                  type="button"
+                  aria-pressed={widthMm === p.widthMm && heightMm === p.heightMm}
+                  onClick={() => {
+                    setWidthMm(p.widthMm);
+                    setHeightMm(p.heightMm);
+                  }}
+                  className="btn btn-secondary btn-sm"
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <div className="mt-2 flex items-center gap-2 text-body text-slate-700">
+              <input
+                aria-label="Width in mm"
+                type="number"
+                min={MIN_MM}
+                max={MAX_MM}
+                value={widthMm}
+                onChange={(e) => setWidthMm(+e.target.value)}
+                className="field field-num"
+              />
+              <span aria-hidden="true">×</span>
+              <input
+                aria-label="Height in mm"
+                type="number"
+                min={MIN_MM}
+                max={MAX_MM}
+                value={heightMm}
+                onChange={(e) => setHeightMm(+e.target.value)}
+                className="field field-num"
+              />
+              <span className="text-slate-500">mm</span>
+            </div>
+            {!sizeOk && (
+              <p className="field-hint text-danger-700">
+                A label must be between {MIN_MM} and {MAX_MM} mm.
+              </p>
+            )}
+          </fieldset>
+        </div>
+
+        <fieldset className="min-w-0 space-y-2">
+          <legend className="field-label">Start from</legend>
+          {options.map((o) => (
+            <label key={o.value || 'blank'} className="flex cursor-pointer items-start gap-2 text-body text-slate-700">
+              <input
+                type="radio"
+                name="start-from"
+                value={o.value}
+                checked={from === o.value}
+                onChange={() => {
+                  setFrom(o.value);
+                  o.onPick?.();
+                }}
+                className="mt-1 shrink-0"
+              />
+              <span className="min-w-0">
+                <span className="block break-words">{o.label}</span>
+                <span className="field-hint mt-0 block">{o.hint}</span>
+              </span>
+            </label>
+          ))}
+        </fieldset>
       </div>
 
-      <fieldset className="space-y-2">
-        <legend className="text-sm font-medium text-slate-700">Size</legend>
-        <div className="flex flex-wrap gap-1.5">
-          {PRESETS.map((p) => (
-            <button
-              key={p.label}
-              type="button"
-              onClick={() => {
-                setWidthMm(p.widthMm);
-                setHeightMm(p.heightMm);
-              }}
-              className={
-                btnCls +
-                ' border border-slate-300 text-slate-700 hover:bg-slate-50' +
-                (widthMm === p.widthMm && heightMm === p.heightMm
-                  ? ' border-indigo-500 bg-indigo-50 text-indigo-700'
-                  : '')
-              }
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
-        <div className="flex items-center gap-2 text-sm text-slate-700">
-          <input
-            aria-label="Width in mm"
-            type="number"
-            min={MIN_MM}
-            max={MAX_MM}
-            value={widthMm}
-            onChange={(e) => setWidthMm(+e.target.value)}
-            className={`${inputCls} w-24`}
-          />
-          <span>×</span>
-          <input
-            aria-label="Height in mm"
-            type="number"
-            min={MIN_MM}
-            max={MAX_MM}
-            value={heightMm}
-            onChange={(e) => setHeightMm(+e.target.value)}
-            className={`${inputCls} w-24`}
-          />
-          <span className="text-slate-500">mm</span>
-        </div>
-        {!sizeOk && (
-          <p className="text-xs text-red-700">
-            A label must be between {MIN_MM} and {MAX_MM} mm.
-          </p>
-        )}
-      </fieldset>
-
-      <fieldset className="space-y-1.5">
-        <legend className="text-sm font-medium text-slate-700">Start from</legend>
-        {options.map((o) => (
-          <label key={o.value || 'blank'} className="flex cursor-pointer items-start gap-2 text-sm text-slate-700">
-            <input
-              type="radio"
-              name="start-from"
-              value={o.value}
-              checked={from === o.value}
-              onChange={() => {
-                setFrom(o.value);
-                o.onPick?.();
-              }}
-              className="mt-1"
-            />
-            <span>
-              <span className="block">{o.label}</span>
-              <span className="block text-xs text-slate-500">{o.hint}</span>
-            </span>
-          </label>
-        ))}
-      </fieldset>
-
       {error && (
-        <p role="alert" className="break-words text-xs text-red-700">
+        <p role="alert" className="break-words border-t border-red-200 bg-red-50 px-4 py-2 text-body text-red-700">
           {error}
         </p>
       )}
 
-      <div className="flex gap-2">
-        <button type="submit" className={btnPrimaryCls} disabled={busy || !sizeOk || !name.trim()}>
+      <div className="flex flex-wrap gap-2 border-t border-slate-100 px-4 py-3">
+        <button type="submit" className="btn btn-primary" disabled={busy || !sizeOk || !name.trim()}>
           {busy ? 'Creating…' : 'Create label'}
         </button>
-        <button type="button" className={btnPlainCls} onClick={onClose} disabled={busy}>
+        <button type="button" className="btn btn-secondary" onClick={onClose} disabled={busy}>
           Cancel
         </button>
       </div>

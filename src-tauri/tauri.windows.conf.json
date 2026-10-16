@@ -2,6 +2,13 @@
   "$schema": "https://schema.tauri.app/config/2",
   "bundle": {
     "targets": ["nsis", "msi"],
-    "externalBin": ["binaries/SumatraPDF"]
+    "externalBin": ["binaries/SumatraPDF"],
+    "publisher": "KEEX",
+    "windows": {
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "http://timestamp.digicert.com",
+      "tsp": true
+    }
   }
 }

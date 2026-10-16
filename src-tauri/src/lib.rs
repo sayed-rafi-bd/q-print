@@ -5,6 +5,8 @@ use tauri::Manager;
 mod legacy;
 // Direct network printing (IPP / raw socket) and the saved-printer store. Used by the Android backend.
 mod direct;
+// Fetching a label's API data source over HTTP(S).
+mod http;
 // Bitmap -> ZPL / TSPL / ESC-POS / CPCL / PWG raster encoders, for printers that cannot take a PDF.
 mod raster;
 
@@ -60,6 +62,16 @@ struct Capabilities {
     dpi_select: bool,
     printer_list: bool,       // false => show an "Add printer" UI
     direct_printers: bool,    // user can add network printers that print without a dialog
+}
+
+/// Fetches the JSON for a label's API data source. `bearer` is the optional access token; it is
+/// used for this one request and never stored or echoed back.
+#[tauri::command]
+async fn fetch_json(url: String, bearer: Option<String>) -> Result<String, String> {
+    // ureq is blocking, so keep it off the async runtime's threads.
+    tauri::async_runtime::spawn_blocking(move || http::fetch(&url, bearer.as_deref()))
+        .await
+        .map_err(|e| format!("The request was interrupted: {e}"))?
 }
 
 #[tauri::command]
@@ -305,6 +317,7 @@ pub fn run() {
     builder
         .invoke_handler(tauri::generate_handler![
             capabilities,
+            fetch_json,
             list_printers,
             list_saved_printers,
             save_printer,

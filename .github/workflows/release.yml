@@ -1,6 +1,6 @@
 name: Release
 
-# Push a tag such as v0.2.0 to build the Windows installers and an Android APK and attach them to a draft release.
+# Push a tag such as v0.2.0 to build the signed Windows installers and a signed Android APK and attach them to a draft release.
 # Releases are only built from commits that are on main: a tag pointing anywhere else fails the `verify-main` job.
 on:
   push:
@@ -49,6 +49,32 @@ jobs:
             exit 1
           fi
           printf 'VITE_TURSO_URL=%s\nVITE_TURSO_TOKEN=%s\n' "$VITE_TURSO_URL" "$VITE_TURSO_TOKEN" > .env
+      # Without a signature Windows shows "Unknown publisher" (UAC) and SmartScreen warnings.
+      # This imports the code-signing certificate and writes its thumbprint into tauri.windows.conf.json,
+      # so `tauri build` signs q-print.exe, the NSIS installer and the MSI. The repo copy keeps
+      # `certificateThumbprint: null`, so local builds still work (unsigned).
+      - name: Import Windows code-signing certificate
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          foreach ($v in 'WINDOWS_CERTIFICATE_BASE64', 'WINDOWS_CERTIFICATE_PASSWORD') {
+            if (-not (Get-Item "env:$v" -ErrorAction SilentlyContinue).Value) {
+              Write-Host "::error::Missing repository secret $v (Settings > Secrets and variables > Actions)."
+              exit 1
+            }
+          }
+          $pfx = Join-Path $env:RUNNER_TEMP 'codesign.pfx'
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_BASE64))
+          $password = ConvertTo-SecureString $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
+          $cert = Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password $password
+          Remove-Item $pfx -Force
+          Write-Host "Imported certificate: $($cert.Subject)"
+          $path = 'src-tauri/tauri.windows.conf.json'
+          $conf = Get-Content $path -Raw | ConvertFrom-Json
+          $conf.bundle.windows.certificateThumbprint = $cert.Thumbprint
+          $conf | ConvertTo-Json -Depth 10 | Set-Content $path -Encoding utf8
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -56,6 +82,26 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: "Q-Print ${{ github.ref_name }}"
           releaseDraft: true
+      # The release is still a draft here, so a failure leaves nothing public.
+      - name: Verify Windows signatures
+        shell: pwsh
+        run: |
+          $files = @(Get-ChildItem -Path src-tauri/target/release -Filter q-print.exe -File) +
+                   @(Get-ChildItem -Path src-tauri/target/release/bundle -Recurse -Include *.exe, *.msi -File)
+          if ($files.Count -eq 0) {
+            Write-Host "::error::No Windows build output found to verify."
+            exit 1
+          }
+          $bad = $false
+          foreach ($f in $files) {
+            $sig = Get-AuthenticodeSignature $f.FullName
+            Write-Host "$($f.Name): $($sig.Status) | $($sig.SignerCertificate.Subject)"
+            if ($sig.Status -ne 'Valid') { $bad = $true }
+          }
+          if ($bad) {
+            Write-Host "::error::At least one Windows binary is not validly signed."
+            exit 1
+          }
 
   android:
     # Wait for the Windows job so both attach to the same draft release instead of racing to create two.

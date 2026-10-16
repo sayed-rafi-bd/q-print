@@ -1,8 +1,18 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useAuth } from './auth/AuthProvider';
 import { useCapabilities } from './capabilities';
+import DataSourceCard, { type ApiState, type CheckState, emptyApi } from './DataSourceCard';
 import LabelPicker, { ReloadLabelsButton, useLabelReload } from './LabelPicker';
-import { type LabelId, type LabelMeta, listLabels, loadLastLabel, rememberLabel } from './labels';
+import {
+  type LabelId,
+  type LabelMeta,
+  listLabels,
+  loadApiValues,
+  loadLabel,
+  loadLastLabel,
+  rememberApiValues,
+  rememberLabel,
+} from './labels';
 import { Confetti, Mascot } from './Mascot';
 import PrintersPanel from './PrintersPanel';
 import { pickLabelAfterReload } from './pickLabel';
@@ -18,6 +28,7 @@ import {
   type Rotation,
   type Timings,
 } from './printApi';
+import { type ApiInput, missingInput, usesApi } from './printRows';
 import TemplateTransfer from './TemplateTransfer';
 
 const fmt = (ms: number) => (ms >= 1000 ? `${(ms / 1000).toFixed(2)} s` : `${Math.round(ms)} ms`);
@@ -152,6 +163,17 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
   const [resolutions, setResolutions] = useState<string[]>([]);
   const [dpiNote, setDpiNote] = useState('');
   const [pages, setPages] = useState(3);
+  // The address to read records from, the values its variables ask for and the token, all typed
+  // here per print and kept nowhere else. Empty until the person fills them in, and cleared when
+  // the label changes, so nothing leaks into the next print.
+  const [api, setApi] = useState<ApiState>(emptyApi);
+  const [apiValues, setApiValues] = useState<Record<string, string>>({});
+  /** True when the selected label's fields read from a record at all. */
+  const [needsApi, setNeedsApi] = useState(false);
+  const [checked, setChecked] = useState<CheckState>(null);
+  // The label whose generator has been read. Printing waits for it, so a label that needs an address
+  // can never be sent off before its Data source card has appeared.
+  const [apiLoadedFor, setApiLoadedFor] = useState('');
   const [busy, setBusy] = useState(false);
   // The "Add a printer" section stays open until the user closes it, so more than one printer can be added.
   const [addOpen, setAddOpen] = useState(true);
@@ -161,6 +183,9 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
   const [result, setResult] = useState<{
     label: string;
     pages: number;
+    /** API records and the copies of each; null for a label without an API source. */
+    records: number | null;
+    copies: number;
     printer: string;
     t: Timings;
     report: PrintReport;
@@ -174,18 +199,22 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
 
   // Reloads the printer list; `select` picks a printer (e.g. the one just saved), otherwise the
   // current choice is kept if it still exists.
-  const reloadPrinters = (select?: string) =>
-    Promise.all([listPrinters(), caps.directPrinters ? listSavedPrinters() : Promise.resolve([])])
-      .then(([p, saved]) => {
-        setPrinters(p);
-        setDirectNames(saved.map((s) => s.name));
-        setPrinter((cur) => (select && p.includes(select) ? select : p.includes(cur) ? cur : (p[0] ?? '')));
-      })
-      .catch((e) => setError(errMsg(e)));
+  const directPrinters = caps.directPrinters;
+  const reloadPrinters = useCallback(
+    (select?: string) =>
+      Promise.all([listPrinters(), directPrinters ? listSavedPrinters() : Promise.resolve([])])
+        .then(([p, saved]) => {
+          setPrinters(p);
+          setDirectNames(saved.map((s) => s.name));
+          setPrinter((cur) => (select && p.includes(select) ? select : p.includes(cur) ? cur : (p[0] ?? '')));
+        })
+        .catch((e) => setError(errMsg(e))),
+    [directPrinters],
+  );
 
   useEffect(() => {
     reloadPrinters();
-  }, [reloadPrinters]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [reloadPrinters]);
 
   // Labels are added, renamed and deleted in the Designer, which stays mounted beside this page, so
   // the list is read again every time this tab is opened. Reading it only once left a deleted label
@@ -214,9 +243,10 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
     }
   }, [user]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `active` is a deliberate trigger, re-read whenever this tab is shown
   useEffect(() => {
     readLabels();
-  }, [readLabels]);
+  }, [readLabels, active]);
   const { reload: reloadLabels, reloading: reloadingLabels, note: labelsNote } = useLabelReload(labels, readLabels);
 
   // Ask the driver which resolutions it supports whenever the printer changes.
@@ -241,13 +271,62 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
     };
   }, [printer, caps.dpiSelect]);
 
+  // Work out whether the selected label reads from a record, and offer back the values last typed
+  // for it. A late answer for a label that is no longer selected is ignored.
+  const selectedId = label?.id ?? '';
+  useEffect(() => {
+    setApi(emptyApi);
+    setApiValues({});
+    setChecked(null);
+    setNeedsApi(false);
+    if (!user || !selectedId) return;
+    let stale = false;
+    loadLabel(user, selectedId)
+      .then(({ generator }) => {
+        if (stale) return;
+        setNeedsApi(usesApi(generator));
+        setApiValues(loadApiValues(user, selectedId));
+        setApiLoadedFor(selectedId);
+      })
+      .catch(() => {
+        // Printing reports a label that cannot be read, so it must not stay blocked here.
+        if (!stale) setApiLoadedFor(selectedId);
+      });
+    return () => {
+      stale = true;
+    };
+  }, [user, selectedId]);
+
+  const apiReady = apiLoadedFor === selectedId;
+
+  /** What the person typed, as the shape `buildRows` takes. */
+  const apiInput: ApiInput | undefined = needsApi
+    ? {
+        url: api.url,
+        listPath: api.listPath || undefined,
+        bearerAuth: api.bearerAuth,
+        values: api.values,
+        token: api.token.trim() || undefined,
+      }
+    : undefined;
+
   const onPrint = async () => {
     if (!label || !user) return; // nothing selected yet; the button is disabled until there is one
     setBusy(true);
     setError('');
     setResult(null);
+    if (apiInput) {
+      // Checked before any request, so a blank field or a missing token costs nothing.
+      const missing = missingInput(apiInput);
+      if (missing) {
+        setError(missing);
+        setBusy(false);
+        return;
+      }
+      rememberApiValues(user, label.id, api.values);
+    }
     try {
-      const { timings, report, templateSource } = await printLabels({
+      const { timings, report, templateSource, pageCount, records } = await printLabels({
         user,
         label: label.id,
         printer,
@@ -257,8 +336,19 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
         margins,
         dpi,
         pages,
+        api: apiInput,
       });
-      setResult({ label: label.name, pages, printer, t: timings, report, source: templateSource, silent });
+      setResult({
+        label: label.name,
+        pages: pageCount,
+        records,
+        copies: pages,
+        printer,
+        t: timings,
+        report,
+        source: templateSource,
+        silent,
+      });
       setCelebrate((n) => n + 1);
     } catch (e) {
       setError(errMsg(e));
@@ -318,6 +408,9 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
               setLabelId(id);
               if (user) rememberLabel(user, id);
               setResult(null);
+              // Nothing typed for one label carries over to the next, token included.
+              setApi(emptyApi);
+              setChecked(null);
             }}
             note={labelsNote}
           />
@@ -340,6 +433,19 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
             ))}
           </select>
         </Field>
+
+        {/* Always shown, so it is clear where an address goes; switched off for a label that reads
+            nothing from an API. */}
+        <DataSourceCard
+          api={api}
+          onChange={setApi}
+          remembered={apiValues}
+          copies={pages}
+          checked={checked}
+          onChecked={setChecked}
+          disabled={busy}
+          notUsed={!needsApi}
+        />
 
         {caps.directPrinters && (
           <details className="text-sm md:col-span-2" open={addOpen} onToggle={(e) => setAddOpen(e.currentTarget.open)}>
@@ -519,7 +625,15 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
           </Field>
         )}
 
-        <Field label="Number of pages" htmlFor="pages" hint="One label per page, each with different data.">
+        <Field
+          label={needsApi ? 'Copies of each record' : 'Number of pages'}
+          htmlFor="pages"
+          hint={
+            needsApi
+              ? 'Every record is printed this many times, copies together. An object response counts as one record.'
+              : 'One label per page, each with different data.'
+          }
+        >
           <input
             id="pages"
             type="number"
@@ -534,7 +648,7 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
         <button
           type="button"
           onClick={onPrint}
-          disabled={!printer || busy || !label}
+          disabled={!printer || busy || !label || !apiReady}
           className="btn-cute flex w-full md:col-span-2 cursor-pointer items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-4 py-3 text-base font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
         >
           {busy && (
@@ -565,7 +679,9 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
               <span className="mr-1" aria-hidden="true">
                 🎉
               </span>
-              {result.silent ? 'Sent' : 'Opened the print dialog for'} {result.pages} page(s){' '}
+              {result.silent ? 'Sent' : 'Opened the print dialog for'} {result.pages} page(s)
+              {result.records !== null &&
+                ` (${result.records} ${result.records === 1 ? 'record' : 'records'} × ${result.copies} ${result.copies === 1 ? 'copy' : 'copies'})`}{' '}
               {result.silent ? 'to' : 'via'} <span className="font-medium">{result.printer}</span> using the{' '}
               <span className="font-medium">{result.label}</span> ({result.source} template)
             </p>
@@ -573,9 +689,10 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
               <span className="text-sm text-slate-600">Total time</span>
               <span className="text-2xl font-semibold text-slate-900">{fmt(result.t.total)}</span>
             </div>
-            <dl className="grid grid-cols-3 gap-2 text-center text-xs">
+            <dl className={`grid gap-2 text-center text-xs ${result.records !== null ? 'grid-cols-4' : 'grid-cols-3'}`}>
               {(
                 [
+                  ...(result.records !== null ? ([['Fetch', result.t.fetch]] as const) : []),
                   ['Data', result.t.data],
                   ['PDF build', result.t.pdf],
                   [result.silent ? 'Send to printer' : 'Open dialog', result.t.print],

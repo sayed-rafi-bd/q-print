@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   type DiscoveredPrinter,
   deletePrinter,
@@ -85,10 +85,13 @@ export default function PrintersPanel({
   const [found, setFound] = useState<DiscoveredPrinter[] | null>(null);
   const [devices, setDevices] = useState<PickableDevice[] | null>(null);
 
-  const refresh = () =>
-    listSavedPrinters()
-      .then(setSaved)
-      .catch((e) => setMsg({ ok: false, text: errMsg(e) }));
+  const refresh = useCallback(
+    () =>
+      listSavedPrinters()
+        .then(setSaved)
+        .catch((e) => setMsg({ ok: false, text: errMsg(e) })),
+    [],
+  );
   useEffect(() => {
     refresh();
   }, [refresh]);

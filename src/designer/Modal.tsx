@@ -16,6 +16,9 @@ type Props = {
  *
  * Closes on Escape and on a click outside, and takes focus when it opens so the keyboard goes to the
  * dialog rather than whatever was behind it.
+ *
+ * Never taller than the screen: the title and the buttons stay where they are and the body scrolls,
+ * so on a short phone in landscape the actions are still reachable.
  */
 export default function Modal({ open, title, onClose, children, footer }: Props) {
   const dialog = useRef<HTMLDivElement>(null);
@@ -38,6 +41,7 @@ export default function Modal({ open, title, onClose, children, footer }: Props)
   if (!open) return null;
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: backdrop click is a mouse convenience; Escape (document listener above) is the keyboard path
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       onMouseDown={(e) => {
@@ -52,11 +56,11 @@ export default function Modal({ open, title, onClose, children, footer }: Props)
         aria-modal="true"
         aria-label={title}
         tabIndex={-1}
-        className="tab-enter relative w-full max-w-md space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl outline-none"
+        className="tab-enter relative flex max-h-full w-full max-w-md flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl outline-none"
       >
-        <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
-        <div className="text-sm text-slate-600">{children}</div>
-        {footer && <div className="flex flex-wrap justify-end gap-2">{footer}</div>}
+        <h2 className="shrink-0 text-lg font-semibold text-slate-900">{title}</h2>
+        <div className="min-h-0 overflow-y-auto text-sm text-slate-600">{children}</div>
+        {footer && <div className="flex shrink-0 flex-wrap justify-end gap-2">{footer}</div>}
       </div>
     </div>
   );

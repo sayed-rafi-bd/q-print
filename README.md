@@ -354,6 +354,7 @@ The rules are a fixed, small set — there is no scripting:
 | Pattern | Text with `{d3}` digits, `{D2}` A–Z or `{L2}` a–z mixed in, e.g. `A{d12}A`. |
 | Numbering | Counts up per page, restarting on every print job. |
 | Copy another field | Another field's value on the same page, optionally rebuilt with a pattern where `{from}` is the copied value. |
+| A value from the API response | A value read from a web API record, such as `user.name`. The label stores only the path; you give the address when you print (see [Data from a web API](#data-from-a-web-api)). |
 
 Every rule can also add text before and after the value, and run it through *digits only*,
 *upper* or *lower*. Problems (a range the wrong way round, a rule pointing at a table that is not
@@ -363,6 +364,69 @@ before it reaches a print job. **Preview label** renders the real page with pdfm
 
 A built-in label's rules ship with the app, so the Data tab is read-only for them; **Duplicate**
 gives you an editable copy with the same layout and the same rules.
+
+The built-in **Product label** is a worked example that prints with nothing typed and nothing fetched.
+Its rules are fixed values and generated numbers, so it works offline on a first run. Duplicate it to
+map the fields to a real API.
+
+### Data from a web API
+
+Instead of random data, a label can print real records from a web API. **The label stores only which
+path of a record each field needs. The address is yours to type, when you print** — so it is not saved
+with the label, does not travel in an export file, and is not remembered between sessions. A label
+can therefore never send a request to a host you did not just choose, even one imported from someone
+else.
+
+**While designing** (Data tab):
+
+1. Open **Test with a real API** and type the address, with a `{name}` wherever a value will be given,
+   for example `api.example.com/day/{day}/count/{count}/logs`. Without `http://` or `https://` it is
+   called over https.
+2. Optional: a **list path** for responses such as `{ "data": [ ... ] }` (enter `data`), and
+   **Send an access token**.
+3. Press **Check data**. The record count and the first record are shown. **Forget these records**
+   puts it back to nothing.
+4. For each field choose **A value from the API response** and give its path, for example `user.name`
+   or `items[0].id`. Prefix, suffix and the *digits only / upper / lower* options work as for any
+   other rule. **Preview label** then shows the fetched records.
+
+Alternatively, type a **Preview value** per field and no address at all: that is stored with the label,
+so the preview is the same next time you open it. Placeholders are never printed — a print job always
+uses real records.
+
+**When printing**, a label that has at least one API field shows a **Data source** card under the label
+picker. It asks for the address, shows the exact address that will be called (host in bold), the
+values its variables ask for, and the access token if you tick **Send an access token**. **Check data**
+is optional: it reports "12 records found" and the first record. The *Number of pages* field becomes
+**Copies of each record**.
+
+- An **object** response is one record; an **array** response is one record per item.
+- Every record is printed once per copy, grouped by record: record 1 × n, then record 2 × n.
+  `Numbering` rules keep counting across the whole job. Other random rules still give each copy a
+  fresh value; only the API values are shared by the copies of a record.
+- The job is limited to 10,000 pages in total (records × copies), checked before anything is built.
+
+| JSON value | Printed as |
+| ---------- | ---------- |
+| text | as is |
+| number, true/false | `42`, `true` |
+| `null` | empty |
+| missing key | an error naming the record, the field and the path; nothing is printed |
+| object or list | an error: pick a field inside it |
+
+**Rules of the request:** GET only, JSON only. Values typed for the variables are URL-encoded
+(`2026/10/15` becomes `2026%2F10%2F15`). In the apps the request is made by Rust (no CORS), waits at
+most 15 seconds, accepts at most 5 MB, and follows redirects only to the same address. In a browser
+(the web build) the server has to allow the page's origin (CORS), which is only a concern when
+developing.
+
+**The access token** is typed at print time, kept in memory for that one request, and is never saved in the
+database, in a label file, in a report or in an error message. It is refused over plain `http://` and
+is never remembered between runs. The values typed for the variables are not secret and are remembered
+per label and account.
+
+A label that uses an API cannot be imported by an older version of the app: it refuses the unknown
+rule instead of printing it wrongly.
 
 ### Label files and moving one between devices
 
@@ -378,9 +442,12 @@ A label file is JSON:
 }
 ```
 
-Export writes this whole file, so the receiving device produces the same data, not just the same
-picture. Import accepts it (creating a new label) and still accepts a bare pdfme template, which
-replaces the selected label's layout and keeps its data rules.
+A field that reads from a record is `{ "kind": "api", "path": "user.name" }`. That is the whole of it:
+no address and no token, because both belong to the person printing. Export writes this whole file, so
+the receiving device produces the same data, not just the same picture. Import accepts it (creating a
+new label) and still accepts a bare pdfme template, which replaces the selected label's layout and
+keeps its data rules. A file written before addresses moved to print time still imports; its stored
+address is dropped.
 
 To add a label to the app itself rather than to your own copy: put its template under
 `src/templates/`, add it to `BUILTINS` in `src/builtinLabels.ts` and `BUILTIN_IDS` in
@@ -416,10 +483,13 @@ Phones cannot use the Designer, but they can print anything imported this way.
   rotate the content to match the stock and set the paper in the dialog or in the printer's own settings.
 
 ## Large jobs
-Jobs of more than 50 pages are sent from the frontend to Rust as a raw binary payload (`print_pdf_raw`) instead
+Jobs of more than 50 pages (counted after records × copies, for a label with an API source) are sent from the frontend to Rust as a raw binary payload (`print_pdf_raw`) instead
 of a JSON number array, which is much faster on a phone.
 
 ## Test order
+**Web API labels:** on each platform, a label with a real https API with and without a bearer token, a wrong
+token (401), a slow or unreachable host (timeout), one record (an object response), and 100 records × 3 copies.
+
 **Windows:** virtual printer (Microsoft Print to PDF), 1 page -> check PDF -> 5 pages (different data) ->
 real printer -> `pnpm tauri build` and repeat.
 

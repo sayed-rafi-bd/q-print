@@ -67,6 +67,8 @@ export default function LoginPage() {
             </label>
             <input
               id="username"
+              // biome-ignore lint/a11y/noAutofocus: focus the field when the sign-in page opens
+              autoFocus
               autoComplete="username"
               value={username}
               maxLength={MAX_USERNAME}

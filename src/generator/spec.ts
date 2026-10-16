@@ -53,6 +53,16 @@ export type FieldRule = Common &
      * copied value and the other tokens are random, e.g. `{from}-{d1}-{d2}`.
      */
     | { kind: 'copy'; from: string; pattern?: string }
+    /**
+     * A value from an API record. `path` is relative to the record (the response object, or one item
+     * of a response array): dot-separated keys plus `[n]` list positions, such as `user.name` or
+     * `items[0].id`.
+     *
+     * A label says only which path it needs. Where the records come from is not part of the label:
+     * the person gives an address at print time, or in the Designer to test a preview. See
+     * {@link ApiRequest}.
+     */
+    | { kind: 'api'; path: string }
   );
 
 export type GeneratorSpec = {
@@ -63,7 +73,18 @@ export type GeneratorSpec = {
 };
 
 /** Every `kind`, in the order the UI offers them. */
-export const RULE_KINDS = ['fixed', 'digits', 'int', 'pick', 'table', 'date', 'pattern', 'sequence', 'copy'] as const;
+export const RULE_KINDS = [
+  'fixed',
+  'digits',
+  'int',
+  'pick',
+  'table',
+  'date',
+  'pattern',
+  'sequence',
+  'copy',
+  'api',
+] as const;
 
 /** A label plus the generator that fills it, as stored in `labels/<id>.json` and exported. */
 export type LabelBundle = {

@@ -8,7 +8,7 @@
 
 import { sql } from 'drizzle-orm';
 import type { LibSQLDatabase } from 'drizzle-orm/libsql';
-import { index, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { index, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 export const users = sqliteTable('users', {
   id: text('id').primaryKey(),
@@ -54,7 +54,39 @@ export const labels = sqliteTable(
   ],
 );
 
-export const schema = { users, labels };
+/**
+ * The values a person typed to see what a label will look like, kept per account so the preview is
+ * the same the next time they open the Designer.
+ *
+ * `label_id` is a slug for a label of their own, or a built-in id such as `product`. Built-in labels
+ * have no row in `labels` at all (their layout is on the device, their generator ships in the app),
+ * which is why this is a table of its own rather than a column on `labels`, and why there is no
+ * foreign key to it: deleting a label clears its preview data from `deleteLabel` instead.
+ */
+export const labelPreview = sqliteTable(
+  'label_preview',
+  {
+    /** Every read and write is filtered by this, so preview data cannot leak between accounts. */
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** A slug from `labels`, or a built-in id. Primary with `user_id`, so there is one per label. */
+    labelId: text('label_id').notNull(),
+    /** JSON object of template field name to the value to preview. `{ "itemBarcode": "4901..." }` */
+    // Named `values_json`, not `values`: `VALUES` is an SQLite keyword and makes a hand-written
+    // `UPDATE ... SET values = ?` a syntax error. Drizzle quotes its own SQL, but the footgun is
+    // not worth carrying.
+    valuesJson: text('values_json').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.labelId] }),
+    // Every read is "this user's preview data for this label", which is exactly this index.
+    index('label_preview_by_user').on(table.userId),
+  ],
+);
+
+export const schema = { users, labels, labelPreview };
 
 /** A database typed against this schema. */
 export type Database = LibSQLDatabase<typeof schema>;

@@ -56,6 +56,8 @@ The release workflow reads these repository secrets (GitHub: Settings > Secrets 
 | `ANDROID_KEYSTORE_PASSWORD`  | The keystore password                                                 |
 | `ANDROID_KEY_ALIAS`          | The key alias, for example `upload`                                   |
 | `ANDROID_KEY_PASSWORD`       | The key password                                                      |
+| `WINDOWS_CERTIFICATE_BASE64` | The code-signing certificate (`.pfx`), base64-encoded, as one line    |
+| `WINDOWS_CERTIFICATE_PASSWORD` | The `.pfx` password                                                 |
 
 Create the keystore value in PowerShell. A `.jks` file is binary, so it looks like random characters in a text editor; the secret must hold its base64 text instead:
 
@@ -65,11 +67,57 @@ Create the keystore value in PowerShell. A `.jks` file is binary, so it looks li
 
 Paste the result into `ANDROID_KEYSTORE_BASE64`. Do not use `certutil -encode`: it adds header lines that the workflow cannot decode. Check that the passwords and alias match the keystore with `keytool -list -keystore "$HOME\upload-keystore.jks"`.
 
+### Windows code signing ("Unknown publisher")
+
+An unsigned installer makes Windows show **Unknown publisher** in the UAC prompt and a SmartScreen warning. The `windows` job fixes this by importing the certificate, putting its thumbprint into `src-tauri/tauri.windows.conf.json` and letting `tauri build` sign `q-print.exe`, the NSIS installer and the MSI. A final step checks every signature and fails the run if one is not `Valid`.
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("$HOME\codesign.pfx")) | Set-Clipboard
+```
+
+Paste the result into `WINDOWS_CERTIFICATE_BASE64`. Notes:
+
+- `bundle.publisher` in `tauri.windows.conf.json` is the name shown in Apps > Installed apps. The name in the UAC prompt comes from the certificate subject, so keep the two the same.
+- Local `pnpm build:windows` stays unsigned because the committed config has `certificateThumbprint: null`.
+- A new OV/EV certificate cannot be exported as a `.pfx` (the key lives on a hardware token or cloud HSM). If yours is one of those, replace the import step with your provider's tool and set `bundle.windows.signCommand` instead.
+- SmartScreen reputation: an OV certificate can still show a warning for the first downloads. An EV certificate removes it immediately.
+
+### Getting a `.pfx` certificate
+
+A `.pfx` file holds the code-signing certificate and its private key. Since mid-2023, newly issued OV and EV certificates must keep the key on a hardware token or in a cloud service, so the CA will not hand you a `.pfx` for those. Pick the case that matches you:
+
+**1. You already have a certificate on your PC.** Press Win+R, run `certmgr.msc` and open Personal > Certificates. Right-click the code-signing certificate, then All Tasks > Export. Choose "Yes, export the private key", then "Personal Information Exchange (.pfx)", set a password and save the file (for example `codesign.pfx`). If "Export the private key" is greyed out, the key is non-exportable or on a token, and you cannot make a `.pfx`.
+
+**2. A self-signed certificate, for testing the workflow only.** Other PCs do not trust it, so it does not fix "Unknown publisher" for users, and the "Verify Windows signatures" step fails because the status is not `Valid` (relax that check for a test run).
+
+```powershell
+$cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=KEEX" `
+  -CertStoreLocation Cert:\CurrentUser\My -NotAfter (Get-Date).AddYears(2)
+$pw = Read-Host -AsSecureString "PFX password"
+Export-PfxCertificate -Cert $cert -FilePath "$HOME\codesign.pfx" -Password $pw
+```
+
+**3. A trusted certificate for real distribution.** These all use a signing command or action instead of a `.pfx`, so replace the "Import Windows code-signing certificate" step in `release.yml` and set `bundle.windows.signCommand` in `tauri.windows.conf.json`:
+
+- Azure Artifact Signing (formerly Trusted Signing): low monthly cost, made for GitHub Actions. It needs identity validation, and availability depends on country and organization type, so check that it accepts your company.
+- A commercial CA (DigiCert, Sectigo, SSL.com, Certum): identity validation is required, and the key ships on a USB token or in the CA's cloud service. SSL.com eSigner and DigiCert KeyLocker both have CI options.
+
+Keep the `.pfx` and its password somewhere safe, keep the file out of git, and delete the local copy when you no longer need it.
+
+### Adding the Windows secrets on GitHub
+
+1. Create the base64 text (command above). It lands in your clipboard as one line.
+2. On GitHub open the repository, then Settings > Secrets and variables > Actions.
+3. New repository secret: name `WINDOWS_CERTIFICATE_BASE64`, paste the clipboard text, Add secret.
+4. New repository secret: name `WINDOWS_CERTIFICATE_PASSWORD`, type the `.pfx` password, Add secret.
+5. Check the names. They are case-sensitive, and a typo stops the Windows job with `Missing repository secret ...`.
+6. Push a version tag from `main` (see the checklist below). In the run log, "Import Windows code-signing certificate" prints the certificate subject and "Verify Windows signatures" lists `Valid` for each file.
+
 ## Release checklist
 
 A release is a version bump, a tag and a review of the draft.
 
-1. Confirm the latest `CI` run on `main` is green (frontend build, Rust checks, debug APK). Note that every job in `ci.yml` is currently disabled with `if: false`, so there is no run to check until those lines are removed.
+1. Confirm the latest `CI` run on `main` is green (lint, unit tests, frontend build, Rust checks, debug APK, e2e). Note that every job in `ci.yml` is currently disabled with `if: false`, so there is no run to check until those lines are removed.
 2. Bump the version, commit it and create the tag, all from `main`. Pick major, minor or patch:
 
 ```powershell
@@ -164,6 +212,14 @@ adb logcat -c
 # open the app so the error appears, then:
 adb logcat -d -s RustStdoutStderr AndroidRuntime chromium
 ```
+
+## Labels that read a web API
+
+- **Compatibility:** a label whose generator uses the `api` rule cannot be imported by an older version of the app. The older app does not know the rule and refuses the import with an "unknown rule" message instead of printing it wrongly. Labels made before this feature open and print the same in the new version. No database migration is involved.
+- **Breaking change, no data migration needed:** a label no longer stores its API address. The address, its list path and its access token are typed on the Print tab instead, and are never saved. A label that read from an API therefore prints only once you give it an address. An exported label file from an earlier build still imports — its stored `source` entry is dropped, since nothing reads it now.
+- **HTTPS from Rust:** the app makes the request in Rust (`src-tauri/src/http.rs`) with `ureq` and its `tls` feature, which pulls in `rustls` and `ring` (C code in the Android NDK build). If an Android build breaks after a dependency update, look here first.
+- **Before publishing a draft, on each platform you ship (Windows, Android):** print a label that reads a real https API with and without a bearer token, try a wrong token (expect "HTTP 401 ... Check the access token."), an unreachable host (expect a clear message within about 15 seconds), a one-record (object) response, and 100 records × 3 copies.
+- **The token** is never stored or exported. If a report or log ever shows one, treat it as a bug.
 
 ## Known issues and troubleshooting
 

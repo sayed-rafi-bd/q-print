@@ -1,13 +1,15 @@
 import { checkTemplate, type Template } from '@pdfme/common';
 import { BUILTINS, builtin, isBuiltin } from './builtinLabels';
-import { isBundle, makeBundle, templateSizeMm } from './bundle';
+import { isBundle, templateSizeMm } from './bundle';
 import { getDb } from './db/client';
 import * as store from './db/labels';
+import type { PreviewValues } from './db/preview';
+import * as preview from './db/preview';
 import type { User } from './db/users';
 import { builtinSpec } from './generator/builtins';
 import { scaffoldSpec } from './generator/scaffold';
-import type { GeneratorSpec, LabelBundle } from './generator/spec';
-import { isValidId, slugify } from './labelId';
+import type { GeneratorSpec } from './generator/spec';
+import { isValidId, nameProblem, slugify } from './labelId';
 import { sampleSpec, sampleTemplate } from './sampleLabel';
 import {
   assertUsableTemplate,
@@ -132,6 +134,8 @@ export async function saveLabel(
 
 /** Creates a label and saves it, ready to open in the Designer. */
 export async function createLabel(user: User, { name, widthMm, heightMm, from }: NewLabel): Promise<LabelMeta> {
+  const tooLong = nameProblem(name);
+  if (tooLong) throw new Error(tooLong);
   const existing = await listLabels(user);
   const id = slugify(
     name,
@@ -149,7 +153,7 @@ export async function createLabel(user: User, { name, widthMm, heightMm, from }:
 
     case 'copy': {
       if (isBuiltin(from.id)) {
-        template = structuredClone(builtin(from.id)?.defaultTemplate);
+        template = structuredClone(builtin(from.id)!.defaultTemplate);
         generator = builtinSpec(from.id);
       } else {
         const content = await loadLabel(user, from.id);
@@ -184,6 +188,9 @@ export async function createLabel(user: User, { name, widthMm, heightMm, from }:
     template: JSON.stringify(template),
     generator: JSON.stringify(generator),
   });
+  // A copy starts from the placeholder values of the label it came from, so a duplicate of one you
+  // were working on still previews as you left it.
+  if (from.kind === 'copy') await preview.copyPreviewValues(getDb(), user.id, from.id, id);
   return metaFrom(id, name.trim() || id, { widthMm, heightMm });
 }
 
@@ -214,7 +221,8 @@ export async function importLabel(
 export async function renameLabel(user: User, label: LabelId, name: string): Promise<void> {
   if (isBuiltin(label)) throw new Error('A built-in label cannot be renamed.');
   const trimmed = name.trim();
-  if (!trimmed) throw new Error('A label needs a name.');
+  const problem = nameProblem(trimmed);
+  if (problem) throw new Error(problem);
   if (!(await store.updateLabel(getDb(), user.id, label, { name: trimmed }))) {
     throw new Error(`There is no label called “${label}” on this account.`);
   }
@@ -223,9 +231,30 @@ export async function renameLabel(user: User, label: LabelId, name: string): Pro
 /** Removes one of the signed-in account's labels. Built-ins cannot be deleted, only reset. */
 export async function deleteLabel(user: User, label: LabelId): Promise<void> {
   if (isBuiltin(label)) throw new Error('A built-in label cannot be deleted. Use "Reset to default" instead.');
+  // store.deleteLabel also clears this label's preview values, which have no foreign key to it.
   if (!(await store.deleteLabel(getDb(), user.id, label))) {
     throw new Error(`There is no label called “${label}” on this account.`);
   }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Placeholder values for the preview. Design-time only; a print job never reads them.
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * The values this account typed for a label, so the preview is the same next time. Empty when there
+ * are none, which is also the case for a label nobody has touched.
+ */
+export function loadPreview(user: User, label: LabelId): Promise<PreviewValues> {
+  return preview.loadPreviewValues(getDb(), user.id, label).then((v) => v ?? {});
+}
+
+/**
+ * Saves the placeholder values. An empty object forgets them all, which is how the Data tab's
+ * "Clear placeholders" works.
+ */
+export function savePreview(user: User, label: LabelId, values: PreviewValues): Promise<void> {
+  return preview.savePreviewValues(getDb(), user.id, label, values);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -251,14 +280,39 @@ export function rememberLabel(user: User, label: LabelId) {
   }
 }
 
+/**
+ * The values last typed for a label's URL variables, per account and label, so a repeat print does
+ * not start from nothing.
+ *
+ * Deliberately not remembered: the address itself, and the access token. The address is never kept,
+ * so a print can only ever go to a host the person typed this session, and the variables cannot be
+ * offered until they have been.
+ */
+const valuesKey = (user: User, label: LabelId) => `q-print.api.${user.id}.${label}`;
+
+export function loadApiValues(user: User, label: LabelId): Record<string, string> {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(valuesKey(user, label)) ?? '{}');
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    return Object.fromEntries(Object.entries(parsed).filter(([, v]) => typeof v === 'string')) as Record<
+      string,
+      string
+    >;
+  } catch {
+    return {};
+  }
+}
+
+export function rememberApiValues(user: User, label: LabelId, values: Record<string, string>) {
+  try {
+    localStorage.setItem(valuesKey(user, label), JSON.stringify(values));
+  } catch {
+    /* not critical */
+  }
+}
+
 // ---------------------------------------------------------------------------------------------
 // Export / import
 // ---------------------------------------------------------------------------------------------
-
-/** The whole label as a file: its layout and the generator that fills it. */
-export const exportBundle = async (user: User, label: LabelId, name: string): Promise<LabelBundle> => {
-  const { template, generator } = await loadLabel(user, label);
-  return makeBundle(name, template, generator);
-};
 
 export { isBundle };

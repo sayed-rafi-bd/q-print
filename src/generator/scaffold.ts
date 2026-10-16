@@ -97,6 +97,7 @@ export function scaffoldSpec(template: Template, base?: GeneratorSpec): Generato
   for (const field of dataFields(template)) {
     if (!asFieldRule(fields[field.name])) fields[field.name] = defaultRuleFor(field);
   }
+  // A label carries no address, so there is nothing here but rules and tables to keep.
   return { version: 1, tables: base?.tables, fields };
 }
 

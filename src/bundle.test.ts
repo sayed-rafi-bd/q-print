@@ -68,9 +68,9 @@ describe('bundles', () => {
   it('round-trips through text', () => {
     const back = parseBundle(bundleJson(bundle));
     expect(back.bundle).toBeDefined();
-    expect(back.bundle?.name).toBe('My parcel');
-    expect(back.bundle?.generator).toEqual(bundle.generator);
-    expect(isTemplate(back.bundle?.template)).toBe(true);
+    expect(back.bundle!.name).toBe('My parcel');
+    expect(back.bundle!.generator).toEqual(bundle.generator);
+    expect(isTemplate(back.bundle!.template)).toBe(true);
   });
 
   it('survives a round trip through the JSON the backend would store', () => {
@@ -119,5 +119,35 @@ describe('templateSizeMm', () => {
     expect(templateSizeMm({ schemas: [] } as unknown as Template)).toBeNull();
     expect(templateSizeMm({ basePdf: { width: 0, height: 10 } } as unknown as Template)).toBeNull();
     expect(templateSizeMm({ basePdf: 'A4' } as unknown as Template)).toBeNull();
+  });
+});
+
+describe('a label that reads from an API', () => {
+  const generator = {
+    version: 1 as const,
+    fields: { a: { kind: 'api' as const, path: 'user.name' } },
+  };
+
+  it('round-trips through a label file', () => {
+    const json = bundleJson(makeBundle('Api label', template, generator));
+    expect(parseBundle(json).bundle?.generator).toEqual(generator);
+  });
+
+  it('carries no address and no token: both are given at print time', () => {
+    const json = bundleJson(makeBundle('Api label', template, generator));
+    expect(json.toLowerCase()).not.toContain('token');
+    expect(json.toLowerCase()).not.toContain('api.example.com');
+    expect(Object.keys(generator).sort()).toEqual(['fields', 'version']);
+  });
+
+  it('imports a label that was saved with an address on it, dropping the address', () => {
+    // A file written before addresses moved to print time still opens: the address it names is
+    // simply not used, because the print screen asks for one.
+    const old = {
+      ...generator,
+      source: { url: 'api.example.com/day/{day}', listPath: 'data', bearerAuth: true },
+    };
+    const text = JSON.stringify({ ...makeBundle('Api label', template, generator), generator: old });
+    expect(parseBundle(text).bundle?.generator).toEqual(generator);
   });
 });
