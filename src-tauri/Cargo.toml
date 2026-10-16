@@ -1,6 +1,6 @@
 [package]
 name = "q-print"
-version = "1.4.0"
+version = "2.0.1"
 edition = "2021"
 
 [lib]

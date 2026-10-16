@@ -1,7 +1,7 @@
 {
   "name": "q-print",
   "private": true,
-  "version": "1.4.0",
+  "version": "2.0.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -33,7 +33,8 @@
     "version:major": "node scripts/bump-version.mjs major",
     "version:minor": "node scripts/bump-version.mjs minor",
     "version:patch": "node scripts/bump-version.mjs patch",
-    "version:set": "node scripts/bump-version.mjs"
+    "version:set": "node scripts/bump-version.mjs",
+    "version:check": "node scripts/check-release-tag.mjs"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",
