@@ -171,3 +171,30 @@ describe('resolvedAddress', () => {
     expect(a.rest).toContain('/day/x/count/{count}');
   });
 });
+
+describe('a label that does not read from an API', () => {
+  it('still shows the address box, switched off, and says why', () => {
+    render(
+      <DataSourceCard api={emptyApi} onChange={() => {}} remembered={{}} copies={1} notUsed />,
+    );
+    expect((screen.getByLabelText('Address') as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByLabelText(/Where the list is/) as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Check data' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId('api-not-used').textContent).toMatch(/does not read from an API/);
+  });
+
+  it('makes no request when Check data is clicked', () => {
+    const spy = vi.spyOn(client, 'fetchRecords');
+    render(
+      <DataSourceCard api={emptyApi} onChange={() => {}} remembered={{}} copies={1} notUsed />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Check data' }));
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('is an ordinary, active card when the label does use an API', () => {
+    render(<Harness />);
+    expect((screen.getByLabelText('Address') as HTMLInputElement).disabled).toBe(false);
+    expect(screen.queryByTestId('api-not-used')).toBeNull();
+  });
+});

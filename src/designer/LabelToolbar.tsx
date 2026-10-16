@@ -10,7 +10,7 @@ const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 // Shared shapes, defined once in index.css so a button looks the same in every panel.
 const btnPlainCls = 'btn btn-secondary';
 const btnDangerCls = 'btn btn-danger';
-const selectCls = 'field w-56 truncate cursor-pointer';
+const btnDangerSolidCls = 'btn btn-danger-solid';
 
 type Props = {
   labels: LabelMeta[];
@@ -91,28 +91,32 @@ export default function LabelToolbar({ labels, value, disabled, onPick, onChange
       onChanged();
     });
 
+  // A fragment, so the picker group and the two panels are siblings in the page header's wrapping
+  // row. The panels are `basis-full` and `order-last`: they drop onto their own line across the whole
+  // header instead of being squeezed into a column beside the picker. They stay *before* the page's
+  // Save/Reset group in the document, so the Rename form's Save is the first "Save" a script finds.
   return (
-    <div className="space-y-2">
-      {/* The picker on the left, then its actions in a tight group, then Delete pushed away to the far
-          end. It used to sit between Duplicate and the page size, where it read as one of four
-          equally-weighted row buttons. */}
-      <div className="flex flex-wrap items-center gap-2">
-        <label htmlFor="designer-label" className="text-body font-semibold text-slate-700">
-          Label
-        </label>
-        <select
-          id="designer-label"
-          value={value}
-          disabled={disabled}
-          onChange={(e) => onPick(e.target.value)}
-          className={`${selectCls} sm:w-64`}
-        >
-          {labels.map((l) => (
-            <option key={l.id} value={l.id}>
-              {l.name}
-            </option>
-          ))}
-        </select>
+    <>
+      {/* The picker on the left, then its actions in a tight group, then Delete at the end. */}
+      <div className="flex min-w-0 flex-wrap items-center gap-2 max-sm:w-full">
+        <div className="flex min-w-0 items-center gap-2 max-sm:w-full">
+          <label htmlFor="designer-label" className="text-body font-semibold text-slate-700">
+            Label
+          </label>
+          <select
+            id="designer-label"
+            value={value}
+            disabled={disabled}
+            onChange={(e) => onPick(e.target.value)}
+            className="field min-w-0 flex-1 cursor-pointer truncate sm:w-64 sm:flex-none"
+          >
+            {labels.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.name}
+              </option>
+            ))}
+          </select>
+        </div>
 
         <button
           type="button"
@@ -148,14 +152,9 @@ export default function LabelToolbar({ labels, value, disabled, onPick, onChange
         </button>
 
         {current?.builtin ? (
-          <span className="ml-auto text-label text-slate-500">A built-in label; use “Reset to default” below.</span>
+          <span className="text-label text-slate-500">A built-in label; use “Reset to default”.</span>
         ) : (
-          <button
-            type="button"
-            className={`${btnDangerCls} ml-auto`}
-            onClick={() => setConfirmDelete(true)}
-            disabled={off || busy}
-          >
+          <button type="button" className={btnDangerCls} onClick={() => setConfirmDelete(true)} disabled={off || busy}>
             Delete
           </button>
         )}
@@ -168,7 +167,7 @@ export default function LabelToolbar({ labels, value, disabled, onPick, onChange
           onClose={() => setConfirmDelete(false)}
           footer={
             <>
-              <button type="button" className={btnDangerCls} onClick={onDelete} disabled={busy}>
+              <button type="button" className={btnDangerSolidCls} onClick={onDelete} disabled={busy}>
                 {busy ? 'Deleting…' : 'Yes, delete'}
               </button>
               <button type="button" className={btnPlainCls} onClick={() => setConfirmDelete(false)} disabled={busy}>
@@ -185,7 +184,10 @@ export default function LabelToolbar({ labels, value, disabled, onPick, onChange
       )}
 
       {renaming && current && (
-        <form onSubmit={onRename} className="tab-enter flex flex-wrap items-center gap-2 text-body text-slate-700">
+        <form
+          onSubmit={onRename}
+          className="tab-enter order-last flex w-full basis-full flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-body text-slate-700 shadow-sm"
+        >
           <label htmlFor="rename-label" className="font-semibold">
             Rename
           </label>
@@ -196,9 +198,9 @@ export default function LabelToolbar({ labels, value, disabled, onPick, onChange
             value={newName}
             maxLength={MAX_NAME}
             onChange={(e) => setNewName(e.target.value)}
-            className="field w-56"
+            className="field min-w-0 flex-1 sm:max-w-sm"
           />
-          <button type="submit" className={btnPlainCls} disabled={busy || !newName.trim()}>
+          <button type="submit" className="btn btn-primary" disabled={busy || !newName.trim()}>
             Save
           </button>
           <button type="button" className={btnPlainCls} onClick={() => setRenaming(false)}>
@@ -207,7 +209,11 @@ export default function LabelToolbar({ labels, value, disabled, onPick, onChange
         </form>
       )}
 
-      {creating && <NewLabelDialog labels={labels} onCreate={onCreate} onClose={() => setCreating(false)} />}
-    </div>
+      {creating && (
+        <div className="order-last w-full basis-full">
+          <NewLabelDialog labels={labels} onCreate={onCreate} onClose={() => setCreating(false)} />
+        </div>
+      )}
+    </>
   );
 }

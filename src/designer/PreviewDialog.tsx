@@ -8,10 +8,6 @@ import { loadFont } from '../printApi';
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-const btnCls =
-  'cursor-pointer rounded-full border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 ' +
-  'transition hover:bg-slate-50';
-
 type Props = {
   template: Template;
   spec: GeneratorSpec;
@@ -69,37 +65,61 @@ export default function PreviewDialog({ template, spec, sample = null, previewVa
     };
   }, [template, spec, sample, typed]);
 
+  // Escape closes it, like the confirmation dialogs. Capturing, so it runs before pdfme's own handlers.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => document.removeEventListener('keydown', onKeyDown, true);
+  }, [onClose]);
+
   return (
-    <div className="absolute inset-0 z-20 flex flex-col bg-white/95" role="dialog" aria-label="Label preview">
-      <div className="flex items-center gap-2 border-b border-slate-200 px-4 py-2">
-        <span className="text-sm font-semibold text-slate-800">Preview</span>
-        <span className="text-xs text-slate-500">
+    // Fixed to the screen rather than to the page, so it is exactly one screen tall however far the
+    // Designer behind it has been scrolled. The header stays put (Close is always reachable) and
+    // the notices scroll inside their own band, leaving the rest of the height to the pages.
+    <div
+      className="fixed inset-0 z-50 flex flex-col bg-white"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Label preview"
+    >
+      <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-slate-200 px-4 py-2">
+        <h2 className="text-body font-semibold text-slate-800">Preview</h2>
+        <span className="min-w-0 flex-1 text-label text-slate-500">
           {typedCount > 0
             ? `Three pages, with your placeholder value in ${typedCount} field(s).`
             : real
               ? `The first ${Math.min(3, sample?.length ?? 0)} record(s) of the fetched sample.`
               : 'Three pages of freshly generated data.'}
         </span>
-        <button type="button" className={`${btnCls} ml-auto`} onClick={onClose}>
+        <button type="button" className="btn btn-secondary ml-auto" onClick={onClose}>
           Close
         </button>
       </div>
 
-      {standIns && (
-        <p className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900">
-          {typedCount > 0
-            ? `Fields without a placeholder of your own show their path, since the API has not been fetched.`
-            : 'No sample has been fetched, so fields that read the API show their path.'}
-          {standInBarcodes.length > 0 &&
-            ` Barcode field(s) ${standInBarcodes.join(', ')} show a made-up value, since a barcode cannot show a path.`}{' '}
-          Type a placeholder value in the Data tab, or fetch a sample in the Source pane.
-        </p>
-      )}
+      {(standIns || error) && (
+        <div className="max-h-[30dvh] shrink-0 overflow-y-auto">
+          {standIns && (
+            <p className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-body text-amber-900">
+              {typedCount > 0
+                ? `Fields without a placeholder of your own show their path, since the API has not been fetched.`
+                : 'No sample has been fetched, so fields that read the API show their path.'}
+              {standInBarcodes.length > 0 &&
+                ` Barcode field(s) ${standInBarcodes.join(', ')} show a made-up value, since a barcode cannot show a path.`}{' '}
+              Type a placeholder value in the Data tab, or fetch a sample in the Source pane.
+            </p>
+          )}
 
-      {error && (
-        <p role="alert" className="border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
-          {error}
-        </p>
+          {error && (
+            <p role="alert" className="break-words border-b border-red-200 bg-red-50 px-4 py-2 text-body text-red-700">
+              {error}
+            </p>
+          )}
+        </div>
       )}
 
       <div className="relative min-h-0 flex-1">

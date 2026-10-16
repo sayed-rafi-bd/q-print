@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from 'react';
 import { AuthProvider, useAuth } from './auth/AuthProvider';
 import LoginPage from './auth/LoginPage';
 import { useCapabilities } from './capabilities';
+import GuidePage from './GuidePage';
 import PrintPage from './PrintPage';
 
 // The Designer is the heaviest part of the front end by a wide margin — pdfme's editor and the UI
@@ -9,7 +10,7 @@ import PrintPage from './PrintPage';
 // demand keeps it out of the initial download on every phone, and only on the tab that needs it.
 const DesignerPage = lazy(() => import('./DesignerPage'));
 
-type Tab = 'print' | 'designer';
+type Tab = 'print' | 'designer' | 'guide';
 
 // pdfme's Designer needs a large, pointer-driven screen. On Android it is tablet-only.
 const DESIGNER_MIN_WIDTH = 768;
@@ -34,9 +35,12 @@ function Workspace() {
   const printAvailable = !web;
 
   const [chosen, setChosen] = useState<Tab>(web ? 'designer' : 'print');
-  const tab: Tab = web ? 'designer' : designerAvailable ? chosen : 'print';
+  // The Guide is available everywhere. A tab that is not offered on this device falls back to the
+  // first one that is, so resizing a window never leaves a blank page.
+  const offered: Record<Tab, boolean> = { print: printAvailable, designer: designerAvailable, guide: true };
+  const tab: Tab = offered[chosen] ? chosen : printAvailable ? 'print' : 'designer';
   const tabCls = (t: Tab) =>
-    'cursor-pointer rounded-full px-5 py-1.5 text-sm font-semibold transition ' +
+    'cursor-pointer rounded-full px-3 py-1.5 text-sm font-semibold transition sm:px-5 ' +
     (tab === t
       ? 'bg-indigo-500 text-white shadow-md shadow-indigo-300/60'
       : 'text-slate-500 hover:bg-indigo-100 hover:text-indigo-700');
@@ -69,29 +73,37 @@ function Workspace() {
         <div className="blob blob-c" />
       </div>
 
-      <nav className="relative z-10 flex items-center gap-2 border-b border-slate-200/70 bg-white/60 px-4 py-2 backdrop-blur-md">
+      {/* Wraps rather than overflows: the tabs keep their size, and the sign-in group drops to its own
+          line when there is no room beside them. Inside it the name is what gives way (it truncates)
+          while Sign out never shrinks, so it cannot be pushed off the screen. */}
+      <nav className="relative z-10 flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-slate-200/70 bg-white/60 px-4 py-2 backdrop-blur-md">
         {printAvailable && (
-          <button type="button" className={tabCls('print')} onClick={() => setChosen('print')}>
+          <button type="button" className={`${tabCls('print')} shrink-0`} onClick={() => setChosen('print')}>
             🖨️ Print
           </button>
         )}
         {designerAvailable && (
-          <button type="button" className={tabCls('designer')} onClick={() => setChosen('designer')}>
+          <button type="button" className={`${tabCls('designer')} shrink-0`} onClick={() => setChosen('designer')}>
             🎨 Designer
           </button>
         )}
-        <span className="ml-auto text-xs text-slate-500">
-          Signed in as <span className="font-semibold text-slate-700">{user.username}</span>
-        </span>
-        <button
-          type="button"
-          onClick={() => {
-            void signOut();
-          }}
-          className="cursor-pointer rounded-full border border-slate-300 px-3 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-50"
-        >
-          Sign out
+        <button type="button" className={`${tabCls('guide')} shrink-0`} onClick={() => setChosen('guide')}>
+          📖 Guide
         </button>
+        <div className="ml-auto flex min-w-0 max-w-full items-center gap-2">
+          <span className="min-w-0 truncate text-xs text-slate-500" title={user.username}>
+            Signed in as <span className="font-semibold text-slate-700">{user.username}</span>
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              void signOut();
+            }}
+            className="shrink-0 cursor-pointer rounded-full border border-slate-300 px-3 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-50"
+          >
+            Sign out
+          </button>
+        </div>
       </nav>
       {/* Both pages stay mounted so unsaved designer edits survive switching tabs; once the
           Designer chunk has been loaded once, `lazy` keeps it. */}
@@ -102,12 +114,19 @@ function Workspace() {
           </section>
         )}
         {designerAvailable && (
-          <section className={`absolute inset-0 ${tab === 'designer' ? 'tab-enter' : 'tab-hidden'}`}>
+          // The Designer scrolls vertically on a short screen (its canvas has a minimum height); sideways
+          // it never does, so a wide child cannot give the whole page a horizontal scrollbar.
+          <section
+            className={`absolute inset-0 overflow-x-hidden overflow-y-auto ${tab === 'designer' ? 'tab-enter' : 'tab-hidden'}`}
+          >
             <Suspense fallback={<DesignerLoading />}>
               <DesignerPage />
             </Suspense>
           </section>
         )}
+        <section className={`absolute inset-0 overflow-auto ${tab === 'guide' ? 'tab-enter' : 'tab-hidden'}`}>
+          <GuidePage />
+        </section>
       </div>
     </div>
   );

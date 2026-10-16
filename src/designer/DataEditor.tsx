@@ -9,11 +9,10 @@ import type { FieldRule, GeneratorSpec } from '../generator/spec';
 import { KIND_LABELS, RuleRow } from './RuleEditor';
 import TableEditor from './TableEditor';
 import TestApiSection from './TestApiSection';
+import { tabListKeyDown } from './tabKeys';
 
 const btnCls = 'btn btn-secondary';
-const tabCls = (on: boolean) =>
-  'cursor-pointer rounded-full px-3 py-1 text-body font-semibold transition ' +
-  (on ? 'bg-indigo-500 text-white' : 'text-slate-500 hover:bg-indigo-100');
+const PANES = ['fields', 'tables'] as const;
 
 type Props = {
   template: Template;
@@ -120,32 +119,34 @@ export default function DataEditor({
   const problemsFor = (name: string) => problems.filter((p) => p.startsWith(`“${name}”`));
 
   return (
-    <div className="flex h-full flex-col overflow-auto bg-white/70 p-4">
-      <div className="mb-3 flex flex-wrap items-center gap-2">
+    <div className="flex min-w-0 flex-1 flex-col bg-white/70 p-4">
+      <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2">
         <h2 className="text-lead font-semibold text-slate-800">Data</h2>
-        <div role="tablist" aria-label="Data sections" className="flex items-center gap-1">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={pane === 'fields'}
-            className={tabCls(pane === 'fields')}
-            onClick={() => setPane('fields')}
-          >
-            Fields
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={pane === 'tables'}
-            className={tabCls(pane === 'tables')}
-            onClick={() => setPane('tables')}
-          >
-            Tables
-          </button>
+        <div
+          role="tablist"
+          aria-label="Data sections"
+          className="flex items-center gap-1"
+          onKeyDown={(e) => tabListKeyDown(e, PANES, pane, setPane)}
+        >
+          {PANES.map((id) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              id={`data-tab-${id}`}
+              aria-selected={pane === id}
+              aria-controls={`data-pane-${id}`}
+              tabIndex={pane === id ? 0 : -1}
+              className="tab"
+              onClick={() => setPane(id)}
+            >
+              {id === 'fields' ? 'Fields' : 'Tables'}
+            </button>
+          ))}
         </div>
         {/* Preview first: it is what you came here to check. The placeholder buttons are a
             maintenance action and sit at the quieter end. */}
-        <span className="ml-auto flex flex-wrap items-center gap-1.5">
+        <div className="ml-auto flex flex-wrap items-center gap-1.5">
           <button type="button" className="btn btn-primary btn-sm" onClick={onPreview}>
             Preview label
           </button>
@@ -172,13 +173,13 @@ export default function DataEditor({
           >
             New sample
           </button>
-        </span>
+        </div>
       </div>
 
       {problems.length > 0 && (
         <div
           role="alert"
-          className="mb-3 space-y-1 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700"
+          className="mb-3 space-y-1 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-body text-red-700"
         >
           <p className="font-medium">
             {problems.length === 1
@@ -194,17 +195,17 @@ export default function DataEditor({
       )}
 
       {locked && (
-        <p className="mb-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+        <p className="card-quiet mb-3 px-3 py-2 text-body text-slate-600">
           This is a built-in label, so its data rules ship with the app and cannot be changed here. Use{' '}
           <strong>Duplicate</strong> above to get a copy you can edit, layout and data alike.
         </p>
       )}
 
       {pane === 'fields' && (
-        <div className="space-y-2">
+        <div role="tabpanel" id="data-pane-fields" aria-labelledby="data-tab-fields" className="min-w-0 space-y-2">
           <TestApiSection sample={sample} onSample={onSample} />
           {fields.length === 0 && (
-            <p className="text-sm text-slate-500">
+            <p className="text-body text-slate-500">
               This template has no fields that can take data. Add text or a barcode field in the Layout tab, and it will
               show up here.
             </p>
@@ -221,20 +222,20 @@ export default function DataEditor({
             return (
               <details
                 key={field.name}
-                className="group rounded-xl border border-slate-200 bg-white transition-colors open:border-indigo-200 hover:border-slate-300"
+                className="group card transition-colors open:border-indigo-200 hover:border-slate-300"
               >
                 {/* Name and sample on the left, status on the right, capped at a readable width.
                     The value used to sit hard against the far edge with a hand's width of dead
                     space after it, which meant the eye had to cross the screen to pair them. */}
-                <summary className="flex cursor-pointer items-center gap-3 px-3 py-2.5">
-                  <span className="flex min-w-0 flex-1 items-center gap-2.5">
+                <summary className="flex cursor-pointer flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5">
+                  <span className="flex min-w-0 flex-1 basis-48 flex-wrap items-center gap-x-2.5 gap-y-1">
                     <span
                       aria-hidden="true"
                       className="shrink-0 text-slate-400 transition-transform group-open:rotate-90"
                     >
                       ▶
                     </span>
-                    <code className="field-chip">{field.name}</code>
+                    <code className="field-chip break-all">{field.name}</code>
                     <span className="shrink-0 text-label text-slate-500">{field.type}</span>
                     {rule && !previewed && (
                       <span className="badge badge-accent shrink-0">{KIND_LABELS[rule.kind]}</span>
@@ -243,65 +244,70 @@ export default function DataEditor({
                     {!rule && <span className="badge badge-warn shrink-0">prints its own text</span>}
                   </span>
 
-                  <span className="flex shrink-0 items-center gap-2">
-                    {barcodeError && <span className="badge badge-danger-soft">✕ {barcodeError}</span>}
+                  <span className="flex min-w-0 max-w-full items-center gap-2">
+                    {barcodeError && (
+                      <span className="badge badge-danger-soft whitespace-normal">✕ {barcodeError}</span>
+                    )}
                     {fieldProblems.length > 0 && <span className="badge badge-danger-soft">problem</span>}
-                    <span className="max-w-40 truncate font-mono text-label text-slate-600 sm:max-w-56">
+                    <span className="min-w-0 max-w-56 truncate font-mono text-label text-slate-600">
                       {value || '—'}
                     </span>
                   </span>
                 </summary>
 
-                {/* Two columns on a wide screen, one on a phone. Everything is a label above its control, which
-                    is what stopped "Fill with" wrapping onto three lines. */}
-                <div className="grid gap-4 border-t border-slate-100 px-3 py-3 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <RuleRow
-                      rule={rule}
-                      spec={spec}
-                      fieldNames={allNames}
-                      samplePaths={samplePaths}
-                      locked={locked}
-                      onChange={(next) => setRule(field.name, next)}
-                    />
-                    {barcode && field.hint && <p className="field-hint">{field.hint}</p>}
-                    {pathProblem && <p className="field-hint text-amber-700">{pathProblem}</p>}
-                    {fieldProblems.length > 0 && (
-                      <ul className="list-inside list-disc text-label text-red-700">
-                        {fieldProblems.map((p) => (
-                          <li key={p}>{p}</li>
-                        ))}
-                      </ul>
-                    )}
-                    {rule && (
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm"
-                        disabled={locked}
-                        onClick={() => setRule(field.name, null)}
-                      >
-                        Remove this rule
-                      </button>
-                    )}
-                  </div>
+                {/* Two columns when the *panel* is wide enough, one when it is not — a container query, so
+                    it follows the Designer's width and not the window's. Everything is a label above its
+                    control, which is what stopped "Fill with" wrapping onto three lines. */}
+                <div className="@container border-t border-slate-100">
+                  <div className="grid gap-4 px-3 py-3 @xl:grid-cols-2">
+                    <div className="min-w-0 space-y-2">
+                      <RuleRow
+                        rule={rule}
+                        spec={spec}
+                        fieldNames={allNames}
+                        samplePaths={samplePaths}
+                        locked={locked}
+                        onChange={(next) => setRule(field.name, next)}
+                      />
+                      {barcode && field.hint && <p className="field-hint">{field.hint}</p>}
+                      {pathProblem && <p className="field-hint text-amber-700">{pathProblem}</p>}
+                      {fieldProblems.length > 0 && (
+                        <ul className="list-inside list-disc text-label text-red-700">
+                          {fieldProblems.map((p) => (
+                            <li key={p}>{p}</li>
+                          ))}
+                        </ul>
+                      )}
+                      {rule && (
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          disabled={locked}
+                          onClick={() => setRule(field.name, null)}
+                        >
+                          Remove this rule
+                        </button>
+                      )}
+                    </div>
 
-                  <div>
-                    <label className="field-label" htmlFor={`preview-${field.name}`}>
-                      Preview value
-                    </label>
-                    <input
-                      id={`preview-${field.name}`}
-                      type="text"
-                      aria-label={`Preview value for ${field.name}`}
-                      className="field font-mono"
-                      value={typed[field.name] ?? ''}
-                      placeholder="leave empty to generate one"
-                      onChange={(e) => setTyped(field.name, e.target.value)}
-                    />
-                    <p className="field-hint">
-                      Only used by the preview, never printed. Saved with this label, so the preview looks the same next
-                      time.
-                    </p>
+                    <div className="min-w-0">
+                      <label className="field-label" htmlFor={`preview-${field.name}`}>
+                        Preview value
+                      </label>
+                      <input
+                        id={`preview-${field.name}`}
+                        type="text"
+                        aria-label={`Preview value for ${field.name}`}
+                        className="field font-mono"
+                        value={typed[field.name] ?? ''}
+                        placeholder="leave empty to generate one"
+                        onChange={(e) => setTyped(field.name, e.target.value)}
+                      />
+                      <p className="field-hint">
+                        Only used by the preview, never printed. Saved with this label, so the preview looks the same
+                        next time.
+                      </p>
+                    </div>
                   </div>
                 </div>
               </details>
@@ -309,20 +315,20 @@ export default function DataEditor({
           })}
 
           {orphans.length > 0 && (
-            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
-              <h3 className="text-sm font-semibold text-amber-900">Rules for fields that are gone</h3>
-              <p className="mt-1 text-xs text-amber-800">
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
+              <h3 className="text-body font-semibold text-amber-900">Rules for fields that are gone</h3>
+              <p className="mt-1 text-body text-amber-800">
                 A field was renamed or deleted in the Layout. These rules are kept until you move or remove them, so the
                 work is not lost.
               </p>
-              <ul className="mt-2 space-y-1">
+              <ul className="mt-2 space-y-2">
                 {orphans.map((name) => (
-                  <li key={name} className="flex flex-wrap items-center gap-2 text-xs">
-                    <code className="rounded bg-white/70 px-1.5 py-0.5 text-slate-800">{name}</code>
-                    <label className="flex items-center gap-1">
+                  <li key={name} className="flex flex-wrap items-center gap-2 text-body">
+                    <code className="field-chip bg-white/70 break-all">{name}</code>
+                    <label className="flex items-center gap-2">
                       <span className="text-amber-800">Move to</span>
                       <select
-                        className="rounded border border-slate-300 px-1.5 py-0.5 text-xs"
+                        className="field w-auto"
                         value=""
                         disabled={locked}
                         onChange={(e) => e.target.value && moveRule(name, e.target.value)}
@@ -337,7 +343,12 @@ export default function DataEditor({
                           ))}
                       </select>
                     </label>
-                    <button type="button" className={btnCls} disabled={locked} onClick={() => dropRule(name)}>
+                    <button
+                      type="button"
+                      className={`${btnCls} btn-sm`}
+                      disabled={locked}
+                      onClick={() => dropRule(name)}
+                    >
                       Delete rule
                     </button>
                   </li>
@@ -348,7 +359,11 @@ export default function DataEditor({
         </div>
       )}
 
-      {pane === 'tables' && <TableEditor spec={spec} onChange={onChange} readOnly={locked} />}
+      {pane === 'tables' && (
+        <div role="tabpanel" id="data-pane-tables" aria-labelledby="data-tab-tables" className="min-w-0">
+          <TableEditor spec={spec} onChange={onChange} readOnly={locked} />
+        </div>
+      )}
     </div>
   );
 }

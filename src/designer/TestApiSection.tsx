@@ -26,28 +26,47 @@ export default function TestApiSection({
   const fetched = checked && sample !== null;
 
   return (
-    <details open={fetched} className="mb-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-      <summary className="cursor-pointer text-sm font-medium text-slate-700">
+    // One bordered panel. The Data source form inside it is the `compact` variant, which draws no
+    // border or background of its own: a card inside a card read as noise.
+    <details open={fetched} className="card-quiet mb-3 px-3 py-2.5">
+      <summary className="cursor-pointer text-body font-medium text-slate-700">
         Test with a real API
         {fetched && (
-          <span className="ml-2 text-xs font-normal text-emerald-700">{(sample ?? []).length} record(s) fetched</span>
+          <span className="ml-2 text-label font-normal text-emerald-700">
+            {(sample ?? []).length} record(s) fetched
+          </span>
         )}
       </summary>
 
-      <p className="mt-2 text-xs text-slate-600">
-        Give an address to fetch records from, so the preview shows real values instead of your placeholders. This is
-        not saved with the label, which keeps only which path of a record each field needs.
-      </p>
+      <div className="mt-3 space-y-3">
+        <p className="field-hint mt-0">
+          Give an address to fetch records from, so the preview shows real values instead of your placeholders. This is
+          not saved with the label, which keeps only which path of a record each field needs.
+        </p>
 
-      <button
-        type="button"
-        className="mt-2 cursor-pointer rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
-        onClick={() => setApi({ ...emptyApi, url: MOCK_PRODUCTS_URL, listPath: MOCK_LIST_PATH })}
-      >
-        Use the sample API
-      </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() => setApi({ ...emptyApi, url: MOCK_PRODUCTS_URL, listPath: MOCK_LIST_PATH })}
+          >
+            Use the sample API
+          </button>
+          {fetched && (
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => {
+                onSample(null);
+                setApi(emptyApi);
+                setChecked(false);
+              }}
+            >
+              Forget these records
+            </button>
+          )}
+        </div>
 
-      <div className="mt-2">
         <DataSourceCard
           api={api}
           onChange={setApi}
@@ -60,20 +79,6 @@ export default function TestApiSection({
           }}
         />
       </div>
-
-      {fetched && (
-        <button
-          type="button"
-          className="mt-2 cursor-pointer rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
-          onClick={() => {
-            onSample(null);
-            setApi(emptyApi);
-            setChecked(false);
-          }}
-        >
-          Forget these records
-        </button>
-      )}
     </details>
   );
 }

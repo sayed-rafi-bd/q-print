@@ -434,17 +434,18 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
           </select>
         </Field>
 
-        {needsApi && (
-          <DataSourceCard
-            api={api}
-            onChange={setApi}
-            remembered={apiValues}
-            copies={pages}
-            checked={checked}
-            onChecked={setChecked}
-            disabled={busy}
-          />
-        )}
+        {/* Always shown, so it is clear where an address goes; switched off for a label that reads
+            nothing from an API. */}
+        <DataSourceCard
+          api={api}
+          onChange={setApi}
+          remembered={apiValues}
+          copies={pages}
+          checked={checked}
+          onChecked={setChecked}
+          disabled={busy}
+          notUsed={!needsApi}
+        />
 
         {caps.directPrinters && (
           <details className="text-sm md:col-span-2" open={addOpen} onToggle={(e) => setAddOpen(e.currentTarget.open)}>

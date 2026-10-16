@@ -10,6 +10,7 @@ import DataEditor from './designer/DataEditor';
 import { fitZoom, MAX_ZOOM_PERCENT, pxPerMm, worthChanging } from './designer/fitToScreen';
 import LabelToolbar from './designer/LabelToolbar';
 import PreviewDialog from './designer/PreviewDialog';
+import { tabListKeyDown } from './designer/tabKeys';
 import { validateSpec } from './generator/engine';
 import type { PreviewValues } from './generator/previewInputs';
 import { scaffoldSpec } from './generator/scaffold';
@@ -43,18 +44,18 @@ function readSize(t: Template): { w: number; h: number } | null {
 }
 
 // The recurring shapes live in index.css under @layer components, so a button looks the same
-// everywhere. These two are here only to keep the JSX short.
+// everywhere. This one is here only to keep the JSX short.
 const btnCls = 'btn btn-secondary';
-const fieldCls = 'field';
 
-/** The two tabs, each with the one-line description shown beside them. */
 /** The zoom until one has been measured, and for a template with no page size. */
 const DEFAULT_ZOOM = 1;
 
+/** The two tabs, each with the one-line description shown beside them. */
 const TABS = [
   ['layout', 'Layout', 'Where things sit on the page.'],
   ['data', 'Data', 'What each field prints on every page.'],
 ] as const;
+const TAB_IDS = TABS.map((t) => t[0]);
 
 export default function DesignerPage() {
   const { user } = useAuth();
@@ -495,11 +496,14 @@ export default function DesignerPage() {
   const generatorProblems = validateSpec(generator);
 
   return (
-    <div className="relative flex h-full flex-col bg-white/90">
-      {/* The label identity and the save state, then the page size. Split in two so the actions a
-          person reaches for (Save, switch label) are on one line on a phone, where the old single
-          row wrapped into four and pushed every control below the fold. */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-slate-200 px-3 py-2 sm:px-4">
+    // `min-h-full`, not `h-full`: on a short screen the page grows past the window and the Designer
+    // section scrolls, instead of the canvas being squeezed until it is unusable. The canvas keeps a
+    // floor of its own below.
+    <div className="relative flex min-h-full flex-col bg-white/90">
+      {/* One row for the label picker and the actions on the page as a whole. It wraps, so on a phone
+          the actions drop under the picker, still right-aligned, rather than overflowing. The New and
+          Rename forms are part of the toolbar but sit on a line of their own across the whole row. */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-slate-200 px-4 py-2">
         <LabelToolbar
           labels={labels}
           value={labelId}
@@ -509,41 +513,7 @@ export default function DesignerPage() {
           onError={setError}
         />
 
-        {size && (
-          <div className="order-last flex w-full items-center gap-2 sm:order-none sm:w-auto">
-            <span className="text-label font-semibold text-slate-500">Page size</span>
-            <input
-              aria-label="Width in mm"
-              type="number"
-              min={10}
-              className={`${fieldCls} field-num`}
-              value={size.w}
-              disabled={!ready}
-              onChange={(e) => setSize({ ...size, w: +e.target.value })}
-            />
-            <span className="text-slate-400">×</span>
-            <input
-              aria-label="Height in mm"
-              type="number"
-              min={10}
-              className={`${fieldCls} field-num`}
-              value={size.h}
-              disabled={!ready}
-              onChange={(e) => setSize({ ...size, h: +e.target.value })}
-            />
-            <span className="text-label text-slate-500">mm</span>
-            <button
-              type="button"
-              onClick={applySize}
-              disabled={!ready || size.w < 10 || size.h < 10}
-              className="btn btn-secondary btn-sm"
-            >
-              Apply
-            </button>
-          </div>
-        )}
-
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
           {/* One state, not two. "data not saved" and "unsaved changes" said almost the same thing
               and could not both be needed, so the generator-only case is named inside one badge. */}
           {dirty && (
@@ -554,8 +524,8 @@ export default function DesignerPage() {
           )}
           {confirmReset ? (
             <>
-              <span className="text-sm text-slate-700">Discard your template?</span>
-              <button type="button" onClick={onReset} className={`${btnCls} bg-red-600 text-white hover:bg-red-500`}>
+              <span className="text-body text-slate-700">Discard your template?</span>
+              <button type="button" onClick={onReset} className="btn btn-danger-solid">
                 Yes, reset
               </button>
               <button type="button" onClick={() => setConfirmReset(false)} className={btnCls}>
@@ -585,72 +555,105 @@ export default function DesignerPage() {
         </div>
       </div>
 
-      {/* A real tab list, so a screen reader says which is selected and arrow keys work. The pills
-          only looked like tabs before. The hint sits outside the map because it describes the
-          current tab, not each one. */}
-      <div role="tablist" aria-label="Designer sections" className="flex items-center gap-1.5 px-3 pt-2 sm:px-4">
-        {TABS.map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            role="tab"
-            id={`tab-${id}`}
-            aria-selected={tab === id}
-            aria-controls={`panel-${id}`}
-            className="tab"
-            onClick={() => setTab(id)}
-          >
-            {label}
-            {id === 'data' && generatorDirty && (
-              <span className="ml-1.5 inline-block size-1.5 rounded-full bg-current align-middle" aria-hidden="true" />
-            )}
-          </button>
-        ))}
-        <span className="ml-2 hidden truncate text-body text-slate-500 sm:inline">
+      {/* The tabs, what the current one is for, and the page size. The tab list holds only tabs: the
+          hint describes whichever panel is showing, so it sits beside the list (and is the panels'
+          description), not inside it, where a screen reader would count it as a tab. */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-slate-200 px-4 py-2">
+        <div
+          role="tablist"
+          aria-label="Designer sections"
+          className="flex items-center gap-1.5"
+          onKeyDown={(e) => tabListKeyDown(e, TAB_IDS, tab === 'data' ? 'data' : 'layout', setTab)}
+        >
+          {TABS.map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              id={`tab-${id}`}
+              aria-selected={tab === id}
+              aria-controls={`panel-${id}`}
+              tabIndex={tab === id ? 0 : -1}
+              className="tab"
+              onClick={() => setTab(id)}
+            >
+              {label}
+              {id === 'data' && generatorDirty && (
+                <span
+                  className="ml-1.5 inline-block size-1.5 rounded-full bg-current align-middle"
+                  aria-hidden="true"
+                />
+              )}
+            </button>
+          ))}
+        </div>
+        <span id="designer-tab-hint" className="hidden min-w-0 flex-1 truncate text-body text-slate-500 lg:block">
           {TABS.find((t) => t[0] === tab)?.[2]}
         </span>
+
+        {size && (
+          <div className="ml-auto flex items-center gap-2">
+            <span className="text-label font-semibold text-slate-500">Page size</span>
+            <input
+              aria-label="Width in mm"
+              type="number"
+              min={10}
+              className="field field-num"
+              value={size.w}
+              disabled={!ready}
+              onChange={(e) => setSize({ ...size, w: +e.target.value })}
+            />
+            <span aria-hidden="true" className="text-slate-400">
+              ×
+            </span>
+            <input
+              aria-label="Height in mm"
+              type="number"
+              min={10}
+              className="field field-num"
+              value={size.h}
+              disabled={!ready}
+              onChange={(e) => setSize({ ...size, h: +e.target.value })}
+            />
+            <span className="text-label text-slate-500">mm</span>
+            <button
+              type="button"
+              onClick={applySize}
+              disabled={!ready || size.w < 10 || size.h < 10}
+              className="btn btn-secondary btn-sm"
+            >
+              Apply
+            </button>
+          </div>
+        )}
       </div>
 
       {pendingLabel && (
-        <div className="tab-enter flex flex-wrap items-center gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">
-          <span>
+        <div className="tab-enter flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-body text-amber-900">
+          <span className="min-w-0 break-words">
             Discard unsaved changes to “{meta?.name}” and open “{labels.find((l) => l.id === pendingLabel)?.name}”?
           </span>
-          <button
-            type="button"
-            onClick={() => switchLabel(pendingLabel)}
-            className={`${btnCls} bg-red-600 text-white hover:bg-red-500`}
-          >
+          <button type="button" onClick={() => switchLabel(pendingLabel)} className="btn btn-danger-solid">
             Discard and switch
           </button>
-          <button
-            type="button"
-            onClick={() => setPendingLabel(null)}
-            className={`${btnCls} border border-slate-300 bg-white text-slate-700 hover:bg-slate-50`}
-          >
+          <button type="button" onClick={() => setPendingLabel(null)} className={btnCls}>
             Cancel
           </button>
         </div>
       )}
 
       {offerImport && (
-        <div className="tab-enter flex flex-wrap items-center gap-3 border-b border-indigo-200 bg-indigo-50 px-4 py-2 text-sm text-indigo-900">
-          <span>This device has labels saved from an earlier version. Copy them onto “{user?.username}”?</span>
-          <button
-            type="button"
-            onClick={runImport}
-            className={`${btnCls} bg-indigo-600 text-white hover:bg-indigo-500`}
-          >
+        <div className="tab-enter flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-indigo-200 bg-indigo-50 px-4 py-2 text-body text-indigo-900">
+          <span className="min-w-0 break-words">
+            This device has labels saved from an earlier version. Copy them onto “{user?.username}”?
+          </span>
+          <button type="button" onClick={runImport} className="btn btn-primary">
             Copy them
           </button>
-          <button
-            type="button"
-            onClick={() => setOfferImport(false)}
-            className={`${btnCls} border border-slate-300 bg-white text-slate-700 hover:bg-slate-50`}
-          >
+          <button type="button" onClick={() => setOfferImport(false)} className={btnCls}>
             Not now
           </button>
-          <span className="text-xs text-indigo-700">The files stay on this device either way.</span>
+          <span className="text-label text-indigo-700">The files stay on this device either way.</span>
         </div>
       )}
 
@@ -667,14 +670,10 @@ export default function DesignerPage() {
         </div>
       )}
 
-      <details className="border-b border-slate-200 px-4 py-2 text-sm">
-        <summary className="cursor-pointer text-slate-700">Export / import label (move it between devices)</summary>
-        <div className="mt-2">
-          <TemplateTransfer key={labelId} label={labelId} onImported={onImported} />
-        </div>
-      </details>
-
-      <div className="relative min-h-0 flex-1">
+      {/* The workspace. It takes whatever height is left and never less than 28rem, so a short window
+          scrolls the page rather than shrinking the canvas. The Data tab is in the flow here (and so
+          sets the height when it is longer); the canvas is absolutely positioned inside it. */}
+      <div className="relative flex min-h-[28rem] flex-1 flex-col">
         {/* pdfme keeps drawing into this exact element for as long as the page lives, so it must stay
             mounted while the Data tab is showing. Unmounting it left pdfme painting into a detached
             node, and the Layout tab came back blank. It is hidden, not removed. */}
@@ -684,6 +683,7 @@ export default function DesignerPage() {
           role="tabpanel"
           id="panel-layout"
           aria-labelledby="tab-layout"
+          aria-describedby="designer-tab-hint"
           className={`absolute inset-0${tab === 'layout' ? '' : ' tab-hidden'}`}
         />
         {tab === 'layout' && !ready && !error && (
@@ -698,8 +698,16 @@ export default function DesignerPage() {
             Loading designer…
           </div>
         )}
-        {tab === 'data' && (
-          <div className="absolute inset-0" role="tabpanel" id="panel-data" aria-labelledby="tab-data">
+        {/* Always present so the Data tab's aria-controls points at something; empty until selected. */}
+        <div
+          role="tabpanel"
+          id="panel-data"
+          aria-labelledby="tab-data"
+          aria-describedby="designer-tab-hint"
+          hidden={tab !== 'data'}
+          className="relative flex min-w-0 flex-1 flex-col"
+        >
+          {tab === 'data' && (
             <DataEditor
               template={currentTemplate}
               spec={generator}
@@ -711,9 +719,20 @@ export default function DesignerPage() {
               onPreviewValues={setPreviewValues}
               onSample={setSample}
             />
-          </div>
-        )}
+          )}
+        </div>
       </div>
+
+      {/* Below the canvas, folded away: it is something done now and then, not part of designing. When
+          open it is capped and scrolls inside itself, so it cannot push the canvas off the screen. */}
+      <details className="border-t border-slate-200 bg-white/70 px-4 py-2 text-body">
+        <summary className="cursor-pointer font-medium text-slate-700">
+          Export / import label (move it between devices)
+        </summary>
+        <div className="mt-2 max-h-[min(20rem,45dvh)] overflow-y-auto pb-1 pr-1">
+          <TemplateTransfer key={labelId} label={labelId} onImported={onImported} />
+        </div>
+      </details>
 
       {previewing && (
         <PreviewDialog

@@ -1,5 +1,6 @@
+import { useId } from 'react';
 import type { FieldRule, GeneratorSpec, IntFormat, Transform } from '../generator/spec';
-import { asFieldRule, RULE_KINDS } from '../generator/spec';
+import { asFieldRule, type RULE_KINDS } from '../generator/spec';
 
 /** One sentence per rule kind, so the picker explains itself. */
 export const KIND_LABELS: Record<(typeof RULE_KINDS)[number], string> = {
@@ -15,10 +16,34 @@ export const KIND_LABELS: Record<(typeof RULE_KINDS)[number], string> = {
   api: 'A value from the API response',
 };
 
+/**
+ * How the picker groups the kinds, in the order shown. Real data comes first because it is what a
+ * label that prints from a system wants; the rest are ways of making values up. Every kind belongs
+ * to exactly one group (a test checks that), so adding a kind to RULE_KINDS cannot leave it unlisted.
+ */
+export const RULE_GROUPS: { label: string; kinds: (typeof RULE_KINDS)[number][] }[] = [
+  { label: 'Real data', kinds: ['api'] },
+  { label: 'Random data', kinds: ['digits', 'int', 'pick', 'table', 'date', 'pattern'] },
+  { label: 'Fixed or numbered', kinds: ['fixed', 'sequence'] },
+  { label: 'From another field', kinds: ['copy'] },
+];
+
 // Every control in the Designer is 36px tall with a 8px radius, so a row of them lines up. The
 // shape itself lives in index.css; these two aliases just keep the JSX short.
 const inputCls = 'field';
 const narrowCls = 'field w-20 text-center';
+// The shared row for a rule's parameters: labels sit above their controls, so the controls are
+// bottom-aligned and line up whatever the label wraps to; a hint goes on a line of its own below.
+const rowCls = 'flex flex-wrap items-end gap-x-3 gap-y-2';
+
+function Params({ children, hint }: { children: React.ReactNode; hint?: React.ReactNode }) {
+  return (
+    <div>
+      <div className={rowCls}>{children}</div>
+      {hint && <p className="field-hint">{hint}</p>}
+    </div>
+  );
+}
 
 export function defaultRule(kind: FieldRule['kind'], tables: GeneratorSpec['tables']): FieldRule {
   const firstTable = Object.keys(tables ?? {})[0];
@@ -97,6 +122,9 @@ export default function RuleEditor({
   samplePaths?: string[];
   onChange: (next: FieldRule) => void;
 }) {
+  // Several fields can be open at once, so nothing here may use a fixed id: each rule editor gets its
+  // own, and a label always points at the input beside it rather than at the first one on the page.
+  const uid = useId();
   const tables = spec.tables ?? {};
   const tableNames = Object.keys(tables);
   // Changing the prefix/suffix/transforms must not lose the kind-specific part of the rule.
@@ -108,30 +136,32 @@ export default function RuleEditor({
   const common = (
     <fieldset className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
       <legend className="px-1 text-label font-semibold text-slate-500">Around the value</legend>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div>
-          <label className="field-label" htmlFor="rule-prefix">
-            Before
-          </label>
-          <input
-            id="rule-prefix"
-            aria-label="Text before the value"
-            className={inputCls}
-            value={rule.prefix ?? ''}
-            onChange={(e) => set({ prefix: e.target.value })}
-          />
-        </div>
-        <div>
-          <label className="field-label" htmlFor="rule-suffix">
-            After
-          </label>
-          <input
-            id="rule-suffix"
-            aria-label="Text after the value"
-            className={inputCls}
-            value={rule.suffix ?? ''}
-            onChange={(e) => set({ suffix: e.target.value })}
-          />
+      <div className="@container">
+        <div className="grid gap-3 @sm:grid-cols-2">
+          <div className="min-w-0">
+            <label className="field-label" htmlFor={`${uid}-prefix`}>
+              Before
+            </label>
+            <input
+              id={`${uid}-prefix`}
+              aria-label="Text before the value"
+              className={inputCls}
+              value={rule.prefix ?? ''}
+              onChange={(e) => set({ prefix: e.target.value })}
+            />
+          </div>
+          <div className="min-w-0">
+            <label className="field-label" htmlFor={`${uid}-suffix`}>
+              After
+            </label>
+            <input
+              id={`${uid}-suffix`}
+              aria-label="Text after the value"
+              className={inputCls}
+              value={rule.suffix ?? ''}
+              onChange={(e) => set({ suffix: e.target.value })}
+            />
+          </div>
         </div>
       </div>
 
@@ -191,12 +221,12 @@ export default function RuleEditor({
 
     case 'int':
       params = (
-        <div className="flex flex-wrap items-center gap-2">
+        <Params>
           <Num label="From" value={rule.min} onChange={(min) => set({ min })} />
           <Num label="To" value={rule.max} onChange={(max) => set({ max })} />
           <Num label="Step" value={rule.step ?? 1} min={1} onChange={(step) => set({ step })} />
           <label className="block">
-            <span>As</span>
+            <span className="field-label">As</span>
             <select
               aria-label="Number format"
               className={`${inputCls} w-auto`}
@@ -208,7 +238,7 @@ export default function RuleEditor({
               <option value="yen">¥1,234</option>
             </select>
           </label>
-        </div>
+        </Params>
       );
       break;
 
@@ -232,9 +262,9 @@ export default function RuleEditor({
         tableNames.length === 0 ? (
           <p className="field-hint text-amber-700">Add a table below first, then pick a column here.</p>
         ) : (
-          <div className="flex flex-wrap items-center gap-2">
+          <Params hint="Fields reading the same table get the same row on a page.">
             <label className="block">
-              <span>Table</span>
+              <span className="field-label">Table</span>
               <select
                 aria-label="Table"
                 className={`${inputCls} w-auto`}
@@ -252,7 +282,7 @@ export default function RuleEditor({
               </select>
             </label>
             <label className="block">
-              <span>Column</span>
+              <span className="field-label">Column</span>
               <select
                 aria-label="Column"
                 className={`${inputCls} w-auto`}
@@ -266,14 +296,13 @@ export default function RuleEditor({
                 ))}
               </select>
             </label>
-            <span className="field-hint">Fields reading the same table get the same row on a page.</span>
-          </div>
+          </Params>
         );
       break;
 
     case 'date':
       params = (
-        <div className="flex flex-wrap items-center gap-2">
+        <Params hint="YYYY MM DD, for example.">
           <Num
             label="Days from today"
             value={rule.offsetDays?.[0] ?? 0}
@@ -285,7 +314,7 @@ export default function RuleEditor({
             onChange={(to) => set({ offsetDays: [rule.offsetDays[0], to] })}
           />
           <label className="block">
-            <span>Format</span>
+            <span className="field-label">Format</span>
             <input
               aria-label="Date format"
               className={`${inputCls} w-32 font-mono`}
@@ -293,8 +322,7 @@ export default function RuleEditor({
               onChange={(e) => set({ format: e.target.value })}
             />
           </label>
-          <span className="field-hint">YYYY MM DD, for example.</span>
-        </div>
+        </Params>
       );
       break;
 
@@ -314,20 +342,19 @@ export default function RuleEditor({
 
     case 'sequence':
       params = (
-        <div className="flex flex-wrap items-center gap-2">
+        <Params hint="Counts up per page, starting again on every print job.">
           <Num label="Start" value={rule.start} min={0} onChange={(start) => set({ start })} />
           <Num label="Step" value={rule.step ?? 1} min={1} onChange={(step) => set({ step })} />
           <Num label="Pad to" value={rule.pad ?? 0} min={0} max={20} onChange={(pad) => set({ pad })} />
-          <span className="field-hint">Counts up per page, starting again on every print job.</span>
-        </div>
+        </Params>
       );
       break;
 
     case 'copy':
       params = (
-        <div className="flex flex-wrap items-center gap-2">
+        <Params hint={`{from} is the copied value.`}>
           <label className="block">
-            <span>From</span>
+            <span className="field-label">From</span>
             <select
               aria-label="Field to copy"
               className={`${inputCls} w-auto`}
@@ -345,7 +372,7 @@ export default function RuleEditor({
             </select>
           </label>
           <label className="block">
-            <span>Rebuild as</span>
+            <span className="field-label">Rebuild as</span>
             <input
               aria-label="Pattern to rebuild the copied value"
               className={`${inputCls} w-40 font-mono`}
@@ -354,8 +381,7 @@ export default function RuleEditor({
               onChange={(e) => set({ pattern: e.target.value || undefined })}
             />
           </label>
-          <span className="field-hint">{`{from} is the copied value.`}</span>
-        </div>
+        </Params>
       );
       break;
 
@@ -368,12 +394,12 @@ export default function RuleEditor({
           </span>
           <input
             aria-label="Path in the API record"
-            list="api-sample-paths"
+            list={`${uid}-paths`}
             className={`${inputCls} font-mono`}
             value={rule.path}
             onChange={(e) => set({ path: e.target.value })}
           />
-          <datalist id="api-sample-paths">
+          <datalist id={`${uid}-paths`}>
             {samplePaths.map((p) => (
               <option key={p} value={p} />
             ))}
@@ -417,16 +443,17 @@ export function RuleRow({
    */
   hasApi?: boolean;
 }) {
+  const kindId = `${useId()}-kind`;
   return (
     <div className="space-y-3">
       {/* The label sits above its control rather than beside it. Sharing one flex row is what
           made "Fill with" wrap onto three lines on a phone. */}
       <div>
-        <label className="field-label" htmlFor="rule-kind">
+        <label className="field-label" htmlFor={kindId}>
           Fill this field with
         </label>
         <select
-          id="rule-kind"
+          id={kindId}
           aria-label="Rule"
           disabled={locked}
           className={inputCls}
@@ -436,12 +463,21 @@ export function RuleRow({
           }
         >
           <option value="">— nothing, print the text as designed —</option>
-          {/* `api` needs a data source to read from, so it is offered once the label has one (or already uses it). */}
-          {RULE_KINDS.filter((k) => k !== 'api' || hasApi || rule?.kind === 'api').map((k) => (
-            <option key={k} value={k}>
-              {KIND_LABELS[k]}
-            </option>
-          ))}
+          {/* The API kind is offered whether or not anything has been fetched, unless the caller turns it
+              off; a group with nothing left in it is not drawn. */}
+          {RULE_GROUPS.map((group) => {
+            const kinds = group.kinds.filter((k) => k !== 'api' || hasApi || rule?.kind === 'api');
+            if (kinds.length === 0) return null;
+            return (
+              <optgroup key={group.label} label={group.label}>
+                {kinds.map((k) => (
+                  <option key={k} value={k}>
+                    {KIND_LABELS[k]}
+                  </option>
+                ))}
+              </optgroup>
+            );
+          })}
         </select>
       </div>
       {rule && asFieldRule(rule) && (
