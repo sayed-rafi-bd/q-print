@@ -221,6 +221,15 @@ adb logcat -d -s RustStdoutStderr AndroidRuntime chromium
 - **Before publishing a draft, on each platform you ship (Windows, Android):** print a label that reads a real https API with and without a bearer token, try a wrong token (expect "HTTP 401 ... Check the access token."), an unreachable host (expect a clear message within about 15 seconds), a one-record (object) response, and 100 records × 3 copies.
 - **The token** is never stored or exported. If a report or log ever shows one, treat it as a bug.
 
+## Print history
+
+The History tab lists the last 200 print attempts from the device. Read-only, and deliberately not in the database.
+
+- **Device-local, like the session and the last-used label:** one `localStorage` key per account, `q-print.history.<user id>`. Clearing app data or site data clears it; it is not restored from a backup or shared between accounts. This is the right trade for an aid to "did that run go out, and to what" — a shared record would have needed a table, a sync story, and a migration, for information only the person at the printer wants.
+- **Successes and failures are both kept.** A failure stores the message and how long it took to fail; it has no page count or transport, because nothing left the app. A form validation error (a blank API address) is *not* recorded — nothing was attempted.
+- **Nothing sensitive is stored.** The label name, the printer name, counts, timings and the transport. Not the API address and not the access token — those are never written anywhere, as described under "Labels that read a web API".
+- **Before publishing:** print once from each platform and confirm an entry appears on the History tab, including after a restart. Printing on the web build is not possible, so the tab is always empty there.
+
 ## Keeping the app reachable in the background
 
 Put the app away and it stays reachable: a tray icon on desktop, a notification on Android. Both offer

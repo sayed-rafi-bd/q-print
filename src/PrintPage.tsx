@@ -28,6 +28,7 @@ import {
   type Rotation,
   type Timings,
 } from './printApi';
+import { recordAttempt } from './printHistory';
 import { type ApiInput, missingInput, usesApi } from './printRows';
 import TemplateTransfer from './TemplateTransfer';
 
@@ -325,6 +326,9 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
       }
       rememberApiValues(user, label.id, api.values);
     }
+    // Timed around the call so a failure is recorded with how long it took to fail, which is half
+    // of what makes a slow printer diagnosable.
+    const startedAt = performance.now();
     try {
       const { timings, report, templateSource, pageCount, records } = await printLabels({
         user,
@@ -349,9 +353,37 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
         source: templateSource,
         silent,
       });
+      recordAttempt(user, {
+        at: Date.now(),
+        labelId: label.id,
+        labelName: label.name,
+        printer,
+        outcome: 'ok',
+        pages: pageCount,
+        records,
+        transport: report.transport,
+        error: null,
+        ms: timings.total,
+      });
       setCelebrate((n) => n + 1);
     } catch (e) {
-      setError(errMsg(e));
+      const message = errMsg(e);
+      setError(message);
+      // A failed attempt is recorded too: somebody whose labels stopped printing needs the history
+      // to show it, and the entries are marked as failed rather than hidden.
+      recordAttempt(user, {
+        at: Date.now(),
+        labelId: label.id,
+        labelName: label.name,
+        printer,
+        outcome: 'error',
+        // Nothing went out, so there is no page count, no record count and no transport to report.
+        pages: null,
+        records: null,
+        transport: null,
+        error: message,
+        ms: performance.now() - startedAt,
+      });
     } finally {
       setBusy(false);
     }
