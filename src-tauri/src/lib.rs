@@ -1,16 +1,11 @@
 use serde::{Deserialize, Serialize};
 use tauri::Manager;
 
-// The print API. `api_server` is desktop-only; these names come from the settings module on every
-// platform, and the server's own types are aliased here so a command's signature reads the same
-// either way.
-use api_settings::ApiSettings;
+// The print API. `api_server` is desktop-only, so only `ApiState` comes from it; the settings and
+// the status types the commands return live in `api_settings` and exist on every platform.
+use api_settings::{ApiSettings, ApiStatus, RecentCall};
 #[cfg(desktop)]
 use api_server::ApiState;
-#[cfg(desktop)]
-use api_server::ApiStatus;
-#[cfg(not(desktop))]
-use api_settings::ApiSettings as ApiStatus;
 
 // Reading label files from before labels moved into the database, for the one-time import.
 mod legacy;
@@ -402,7 +397,7 @@ fn api_status(app: tauri::AppHandle) -> ApiStatus {
     #[cfg(not(desktop))]
     {
         let _ = &app;
-        ApiStatus::status_unavailable()
+        ApiStatus::unavailable()
     }
 }
 
@@ -419,7 +414,7 @@ fn api_set_settings(app: tauri::AppHandle, settings: ApiSettings) -> ApiStatus {
     #[cfg(not(desktop))]
     {
         let _ = (app, settings);
-        ApiStatus::status_unavailable()
+        ApiStatus::unavailable()
     }
 }
 
@@ -438,13 +433,13 @@ fn api_regenerate_token(app: tauri::AppHandle) -> Result<ApiStatus, String> {
     #[cfg(not(desktop))]
     {
         let _ = &app;
-        Ok(ApiStatus::status_unavailable())
+        Ok(ApiStatus::unavailable())
     }
 }
 
 /// The last few calls from outside the app, for the API tab's list.
 #[tauri::command]
-fn api_recent(app: tauri::AppHandle) -> Vec<api_server::RecentCall> {
+fn api_recent(app: tauri::AppHandle) -> Vec<RecentCall> {
     #[cfg(desktop)]
     {
         app.state::<ApiState>().recent()

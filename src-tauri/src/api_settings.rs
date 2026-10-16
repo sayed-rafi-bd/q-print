@@ -41,6 +41,53 @@ impl Default for ApiSettings {
     }
 }
 
+/// What the API tab shows about the server right now.
+///
+/// Lives here, not in `api_server.rs`, because the `api_status` command returns it on every
+/// platform and `api_server` is not compiled on Android.
+#[derive(Serialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiStatus {
+    /// False on Android, where there is no server at all.
+    pub available: bool,
+    pub running: bool,
+    pub port: u16,
+    /// The address a client should use, for the copy button.
+    pub base_url: String,
+    /// Why it is not running, when it is not. Empty while it is.
+    pub problem: String,
+    pub settings: ApiSettings,
+}
+
+impl ApiStatus {
+    /// What a platform with no server reports: the API tab is not offered there anyway.
+    #[cfg_attr(desktop, allow(dead_code))]
+    pub fn unavailable() -> Self {
+        Self {
+            available: false,
+            running: false,
+            port: DEFAULT_PORT,
+            base_url: String::new(),
+            problem: "The print API is only available in the desktop app.".into(),
+            settings: ApiSettings::default(),
+        }
+    }
+}
+
+/// One call from outside the app, for the API tab's recent-calls list.
+#[derive(Serialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct RecentCall {
+    /// A counter, not the timestamp: two calls can land in the same millisecond, and the UI needs
+    /// one id per row that does not change when a newer call arrives at the top of the list.
+    pub seq: u64,
+    pub at: i64,
+    pub method: String,
+    pub path: String,
+    pub status: u16,
+    pub ms: u64,
+}
+
 /// 32 random bytes as hex.
 pub fn new_token() -> String {
     let mut bytes = [0u8; TOKEN_BYTES];

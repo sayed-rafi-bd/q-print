@@ -30,7 +30,7 @@ use std::time::Duration;
 use serde::Serialize;
 use tauri::{Emitter, Manager};
 
-use crate::api_settings::{ApiSettings, new_token};
+use crate::api_settings::{ApiSettings, ApiStatus, RecentCall, new_token};
 
 /// Largest PDF accepted on `/print/pdf`. A 64 MB PDF is already an unusual label job; past this the
 /// process holding it in memory is a worse problem than the job that was refused.
@@ -512,34 +512,6 @@ pub fn bridge_error(value: &serde_json::Value) -> Option<ApiError> {
 // State and lifecycle
 // ---------------------------------------------------------------------------------------------
 
-/// What the API tab shows about the server right now.
-#[derive(Serialize, Clone, Debug, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct ApiStatus {
-    /// False on Android, where there is no server at all.
-    pub available: bool,
-    pub running: bool,
-    pub port: u16,
-    /// The address a client should use, for the copy button.
-    pub base_url: String,
-    /// Why it is not running, when it is not. Empty while it is.
-    pub problem: String,
-    pub settings: ApiSettings,
-}
-
-#[derive(Serialize, Clone, Debug, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct RecentCall {
-    /// A counter, not the timestamp: two calls can land in the same millisecond, and the UI needs
-    /// one id per row that does not change when a newer call arrives at the top of the list.
-    pub seq: u64,
-    pub at: i64,
-    pub method: String,
-    pub path: String,
-    pub status: u16,
-    pub ms: u64,
-}
-
 const RECENT_MAX: usize = 50;
 
 /// The API's whole mutable state, held by Tauri.
@@ -649,19 +621,6 @@ impl ApiState {
             base_url: base_url(settings.port),
             problem: if running || !settings.enabled { String::new() } else { problem },
             settings,
-        }
-    }
-
-    /// What Android sees: no server, and the API tab is not offered there anyway.
-    #[cfg_attr(desktop, allow(dead_code))]
-    pub fn status_unavailable() -> ApiStatus {
-        ApiStatus {
-            available: false,
-            running: false,
-            port: crate::api_settings::DEFAULT_PORT,
-            base_url: String::new(),
-            problem: "The print API is only available in the desktop app.".into(),
-            settings: ApiSettings::default(),
         }
     }
 

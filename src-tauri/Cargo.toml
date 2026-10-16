@@ -22,6 +22,9 @@ serde_json = "1"
 ureq = { version = "2", default-features = false, features = ["tls"] }
 url = "2"       # parsing the data source address, and checking where a redirect points
 base64 = "0.22"   # page bitmaps travel between the Kotlin plugin and Rust as Base64
+# The 32 random bytes the print API's bearer token is made from. NOT desktop-only: api_settings.rs
+# is compiled on every platform (Android reads the same settings file), and it makes the token.
+getrandom = "0.3"
 
 # On desktop, trust the operating system's certificate store as well, so a company proxy that
 # re-signs HTTPS traffic with its own root CA works. This REPLACES the bundled roots inside ureq,
@@ -29,12 +32,10 @@ base64 = "0.22"   # page bitmaps travel between the Kotlin plugin and Rust as Ba
 # bundled roots only. Cargo merges these features with the `tls` ones above on desktop builds.
 [target.'cfg(not(target_os = "android"))'.dependencies]
 ureq = { version = "2", default-features = false, features = ["native-certs"] }
-# The local print API (api_server.rs). Desktop only, so neither crate reaches the APK:
+# The local print API's server (api_server.rs). Desktop only, so it does not reach the APK:
 #   tiny_http  a small synchronous HTTP server. Synchronous is the right fit: the handlers block
 #              on a printer or on the webview either way, and it needs no async runtime of its own.
-#   getrandom  the 32 random bytes the API's bearer token is made from.
 tiny_http = "0.12"
-getrandom = "0.3"
 
 # The `printers` crate has no Android support, so only Windows uses it.
 [target.'cfg(windows)'.dependencies]
