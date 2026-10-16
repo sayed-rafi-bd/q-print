@@ -29,7 +29,9 @@ export default function TestApiSection({
     // One bordered panel. The Data source form inside it is the `compact` variant, which draws no
     // border or background of its own: a card inside a card read as noise.
     <details open={fetched} className="card-quiet mb-3 px-3 py-2.5">
-      <summary className="cursor-pointer text-body font-medium text-slate-700">
+      {/* Named by test id rather than left to find by its text: the Guide page explains this same
+          feature by name, and every tab stays mounted, so a page-wide text match finds two. */}
+      <summary data-testid="test-api-summary" className="cursor-pointer text-body font-medium text-slate-700">
         Test with a real API
         {fetched && (
           <span className="ml-2 text-label font-normal text-emerald-700">
@@ -39,7 +41,9 @@ export default function TestApiSection({
       </summary>
 
       <div className="mt-3 space-y-3">
-        <p className="field-hint mt-0">
+        {/* Its own test id because the Data source card nested below repeats "not saved with the
+            label", and a test that wants this sentence has to be able to say which one it means. */}
+        <p data-testid="test-api-note" className="field-hint mt-0">
           Give an address to fetch records from, so the preview shows real values instead of your placeholders. This is
           not saved with the label, which keeps only which path of a record each field needs.
         </p>
