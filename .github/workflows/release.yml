@@ -26,6 +26,7 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 24
+          package-manager-cache: false   # v5 auto-enables caching from "packageManager"; this job has no pnpm
       # The build would succeed either way; this is the only thing that notices.
       - name: Require the tag to match the app version
         run: node scripts/check-release-tag.mjs
