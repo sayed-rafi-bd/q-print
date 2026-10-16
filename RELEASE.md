@@ -242,6 +242,12 @@ adb logcat -d -s RustStdoutStderr AndroidRuntime chromium
 - **Before publishing a draft, on each platform you ship (Windows, Android):** print a label that reads a real https API with and without a bearer token, try a wrong token (expect "HTTP 401 ... Check the access token."), an unreachable host (expect a clear message within about 15 seconds), a one-record (object) response, and 100 records × 3 copies.
 - **The token** is never stored or exported. If a report or log ever shows one, treat it as a bug.
 
+## Printers
+
+- **The app finds printers through the system.** On Windows that is what the Windows print system has *installed*; the Bluetooth pairing and network scanning code (`list_devices`, mDNS `discover`) is Android-only. A Bluetooth printer has to be paired **and** added in Windows Settings first -- some label printers only speak to the vendor's own app over Bluetooth and never become a print queue, and no change here can make those appear.
+- **The printer list is read once at start-up.** There is a **Refresh** button beside the printer box, because a printer added to Windows while the app was open otherwise stays invisible until a restart. The empty state says this on screen, not only in the tooltip: "no printers found" in a hover tip just looks broken.
+- **Not verified here:** the Print tab is not in the web build, so the e2e suite cannot render it and the layout of the new button is unconfirmed. It needs a look on a real desktop build.
+
 ## Print API
 
 The local HTTP API (README, "Print API") is a release gate in its own right: it is a way for anything
@@ -276,6 +282,7 @@ Put the app away and it stays reachable: a tray icon on desktop, a notification 
 Open and Exit. Nothing in the frontend is involved — each platform's half looks after itself.
 
 - **Desktop** (Windows, Linux, macOS). Closing the window hides it; the app keeps running and stays in the tray. **Exit is only in the tray menu** — there is nowhere else to find it, so a Windows user has to look there to quit. `src-tauri/src/tray.rs`.
+- **One tray icon, ever.** Launching the app again while it is in the tray must bring the running copy forward, not start a second one. `tauri-plugin-single-instance` refuses the second process and hands the launch to the first, which shows and focuses its window. Without it every launch added another icon, and the second copy could not even bind the API's port. `tray::setup` also replaces any tray already registered under the same id, so there is one per process whatever else happens. The plugin is not used on Android, where the task switcher already reuses the running activity.
 - **Android.** A foreground service, `BackgroundService.kt`, started from `MainActivity.onUserLeaveHint` and stopped in `onStart`. A foreground service needs both `FOREGROUND_SERVICE` and, on Android 14+, a named type (`FOREGROUND_SERVICE_DATA_SYNC`), plus `POST_NOTIFICATIONS` as a runtime grant from Android 13. The user is asked on first launch; refusing it leaves the app working but unrecoverable once it is backgrounded.
 - **Why a service and not just a notification:** Android freezes an app it has put away and then kills it, so a notification on its own is a dead end. This has never been run on a device from this repository — see the open item below.
 - **`onUserLeaveHint`, not `onStop`:** `onStop` also fires when another activity is put on top, and the Android print dialog does exactly that. Using `onStop` would pop the background notification on every single print.

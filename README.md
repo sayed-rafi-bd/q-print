@@ -6,7 +6,7 @@ real data, and print many pages in one go, with no print dialog on Windows and o
 ## Features
 
 **Printing**
-- **Windows:** silent printing through the installed printers (SumatraPDF), no dialog.
+- **Windows:** silent printing through the installed printers (SumatraPDF), no dialog. Wi-Fi and Bluetooth printers both work, once Windows knows about them: add a Bluetooth one in Settings > Bluetooth & devices > Printers & scanners (pairing alone is not enough), and a network one as a network printer. The app lists what Windows has installed and does not pair or scan itself. Press **Refresh** next to the printer box after adding one -- the list is not re-read on its own.
 - **Android:** add Wi-Fi/LAN, Bluetooth or USB printers once, then print without any dialog. Sends PDF, or
   ZPL, TSPL, ESC/POS and CPCL for label and receipt printers. The system print dialog is also available.
 - Multi-page jobs, up to 10,000 pages, with rotation (0/90/180/270), margins and (on Windows) print resolution.

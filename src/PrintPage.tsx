@@ -28,7 +28,7 @@ import {
   type Rotation,
   type Timings,
 } from './printApi';
-import { recordAttempt } from './printHistory';
+import { plural, recordAttempt } from './printHistory';
 import { type ApiInput, missingInput, usesApi } from './printRows';
 import TemplateTransfer from './TemplateTransfer';
 
@@ -201,6 +201,7 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
   // Reloads the printer list; `select` picks a printer (e.g. the one just saved), otherwise the
   // current choice is kept if it still exists.
   const directPrinters = caps.directPrinters;
+  const [refreshingPrinters, setRefreshingPrinters] = useState(false);
   const reloadPrinters = useCallback(
     (select?: string) =>
       Promise.all([listPrinters(), directPrinters ? listSavedPrinters() : Promise.resolve([])])
@@ -213,9 +214,32 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
     [directPrinters],
   );
 
+  /**
+   * Asks the system for its printer list again, by hand.
+   *
+   * The list is otherwise read once at start-up, so a printer added to Windows — a Bluetooth one
+   * paired and added, a network one found on the wifi — stays invisible until the app is restarted.
+   * That is the whole reason this exists: there was no way to re-read it without a restart.
+   */
+  const refreshPrinters = useCallback(async () => {
+    setRefreshingPrinters(true);
+    try {
+      await reloadPrinters();
+    } finally {
+      setRefreshingPrinters(false);
+    }
+  }, [reloadPrinters]);
+
   useEffect(() => {
     reloadPrinters();
   }, [reloadPrinters]);
+
+  // What to do about there being no printers, which differs by platform: the app finds them through
+  // the system on desktop, but can add one itself on Android.
+  const noPrintersHelp =
+    caps.platform === 'windows'
+      ? 'Windows has no printer this app can use. Add it in Windows Settings → Bluetooth & devices → Printers & scanners — a Bluetooth printer has to be paired there first, and a wifi one added as a network printer — then press Refresh.'
+      : 'No printers found. Add one in your system’s printer settings, then press Refresh.';
 
   // Labels are added, renamed and deleted in the Designer, which stays mounted beside this page, so
   // the list is read again every time this tab is opened. Reading it only once left a deleted label
@@ -453,20 +477,40 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
         <Field
           label="Printer"
           htmlFor="printer"
-          hint={printers.length === 0 ? 'No printers found.' : `${printers.length} printer(s) detected`}
+          hint={printers.length === 0 ? undefined : `${plural(printers.length, 'printer')} found`}
         >
-          <select
-            id="printer"
-            className={`${inputCls} cursor-pointer disabled:cursor-not-allowed`}
-            value={printer}
-            disabled={busy}
-            onChange={(e) => setPrinter(e.target.value)}
-          >
-            {printers.map((p) => (
-              <option key={p}>{p}</option>
-            ))}
-          </select>
+          <div className="flex gap-2">
+            <select
+              id="printer"
+              className={`${inputCls} min-w-0 flex-1 cursor-pointer disabled:cursor-not-allowed`}
+              value={printer}
+              disabled={busy}
+              onChange={(e) => setPrinter(e.target.value)}
+            >
+              {printers.map((p) => (
+                <option key={p}>{p}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="btn btn-secondary shrink-0"
+              onClick={() => void refreshPrinters()}
+              disabled={busy || refreshingPrinters}
+              title="Ask the system for the printer list again"
+            >
+              {refreshingPrinters ? 'Looking…' : 'Refresh'}
+            </button>
+          </div>
         </Field>
+
+        {/* Said here rather than only in the tooltip above, because the one case that matters is the
+            one nobody has a reason to hover for: a printer added to the system while this app was
+            open does not appear on its own, and "no printers found" in a tooltip just looks broken. */}
+        {printers.length === 0 && (
+          <p className="rounded-2xl bg-amber-50 p-3 text-xs text-amber-900 ring-1 ring-amber-200 md:col-span-2">
+            {noPrintersHelp}
+          </p>
+        )}
 
         {/* Always shown, so it is clear where an address goes; switched off for a label that reads
             nothing from an API. */}
