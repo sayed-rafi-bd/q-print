@@ -148,9 +148,13 @@ pnpm install
 pnpm build:windows      # runs `tauri build`, then moves the installers into releases\
 ```
 Output:
-- `releases\*-setup.exe`: setup installer
-- `releases\*.msi`
+- `releases\*.msi`: the installer (MSI only — the old NSIS `.exe` installer was dropped)
 - `src-tauri\target\release\q-print.exe`: the bare app, with `SumatraPDF.exe` next to it
+
+> **Upgrading from a version installed with the NSIS installer:** the MSI is a different installer
+> technology, so it installs alongside rather than over the old one. Uninstall the old `*-setup.exe`
+> first (Settings > Apps > Q-Print > Uninstall), then run the MSI. Later MSI versions upgrade each
+> other normally.
 
 ### Linux
 Build on a Linux machine with the Tauri Linux packages installed (`libwebkit2gtk-4.1-dev build-essential libxdo-dev
@@ -229,7 +233,7 @@ a debug APK build.
 - `src-tauri/src/raster.rs`: 1-bit bitmap -> ZPL / TSPL / ESC-POS / CPCL / PWG raster encoders (no Tauri dependency).
 - `src-tauri/src/print_windows.rs`, `print_android.rs`, `print_other.rs`: one backend per platform; only one is compiled.
 - `src-tauri/tauri.conf.json`: shared config. `tauri.windows.conf.json` holds the Windows-only bundle settings
-  (`externalBin` for SumatraPDF, nsis/msi targets).
+  (`externalBin` for SumatraPDF, the msi target).
 - `src-tauri/plugins/android-print`: the Android print plugin (Rust + Kotlin).
 - `src/capabilities.tsx`: React context for the platform capabilities.
 
