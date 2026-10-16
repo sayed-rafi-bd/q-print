@@ -88,14 +88,7 @@ A `.pfx` file holds the code-signing certificate and its private key. Since mid-
 
 **1. You already have a certificate on your PC.** Press Win+R, run `certmgr.msc` and open Personal > Certificates. Right-click the code-signing certificate, then All Tasks > Export. Choose "Yes, export the private key", then "Personal Information Exchange (.pfx)", set a password and save the file (for example `codesign.pfx`). If "Export the private key" is greyed out, the key is non-exportable or on a token, and you cannot make a `.pfx`.
 
-**2. A self-signed certificate, for testing the workflow only.** Other PCs do not trust it, so it does not fix "Unknown publisher" for users, and the "Verify Windows signatures" step fails because the status is not `Valid` (relax that check for a test run).
-
-```powershell
-$cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=KEEX" `
-  -CertStoreLocation Cert:\CurrentUser\My -NotAfter (Get-Date).AddYears(2)
-$pw = Read-Host -AsSecureString "PFX password"
-Export-PfxCertificate -Cert $cert -FilePath "$HOME\codesign.pfx" -Password $pw
-```
+**2. A self-signed certificate, for a group of PCs you control.** Only PCs that trust the certificate see "KEEX" instead of "Unknown publisher". The public still sees the warning. See "Self-signed signing for a group of PCs" below. The workflow's "Verify Windows signatures" step compares the signer thumbprint instead of requiring status `Valid`, because the runner does not trust a self-signed certificate.
 
 **3. A trusted certificate for real distribution.** These all use a signing command or action instead of a `.pfx`, so replace the "Import Windows code-signing certificate" step in `release.yml` and set `bundle.windows.signCommand` in `tauri.windows.conf.json`:
 
@@ -103,6 +96,23 @@ Export-PfxCertificate -Cert $cert -FilePath "$HOME\codesign.pfx" -Password $pw
 - A commercial CA (DigiCert, Sectigo, SSL.com, Certum): identity validation is required, and the key ships on a USB token or in the CA's cloud service. SSL.com eSigner and DigiCert KeyLocker both have CI options.
 
 Keep the `.pfx` and its password somewhere safe, keep the file out of git, and delete the local copy when you no longer need it.
+
+### Self-signed signing for a group of PCs
+
+Do this once to sign with your own certificate and make your group's PCs trust it.
+
+1. **Create the certificate** on your PC: `powershell -ExecutionPolicy Bypass -File scripts\new-selfsigned-cert.ps1`. It writes `qprint-codesign.pfx` (private) and `qprint-codesign.cer` (public) to your home folder and copies the `.pfx` as base64 to the clipboard. The subject defaults to `CN=KEEX`; keep it equal to `bundle.publisher` in `tauri.windows.conf.json`.
+2. **Add the two secrets** `WINDOWS_CERTIFICATE_BASE64` (paste) and `WINDOWS_CERTIFICATE_PASSWORD`, as described in "Adding the Windows secrets on GitHub".
+3. **Tag a release.** The `windows` job signs `q-print.exe`, the NSIS installer and the MSI, then checks that each carries your certificate.
+4. **Trust the certificate on each PC** (once, as Administrator): copy `qprint-codesign.cer` and `scripts\install-cert.ps1` to the PC, then run `powershell -ExecutionPolicy Bypass -File install-cert.ps1 -CerPath .\qprint-codesign.cer`. It adds the certificate to Trusted Root Certification Authorities and Trusted Publishers. Or push the `.cer` to every PC with Group Policy or Intune.
+5. Install the new build. The UAC prompt now shows **Verified publisher: KEEX**.
+
+Notes:
+
+- The `.pfx` is the private key. Keep it out of git and store a backup in a password manager. If it leaks, anyone can sign software that your PCs trust: remove the `.cer` from the PCs and make a new certificate.
+- Test on one PC first. If SmartScreen still blocks a downloaded file, right-click the file > Properties > Unblock, or hand the installer over by USB or network share.
+- The certificate expires after 5 years by default. Installers stay valid after expiry because the build is timestamped (`tsp: true`), but you need a new certificate and a new `.cer` on the PCs for later builds.
+- This does not help people outside your group. For public downloads, use Azure Artifact Signing or a commercial certificate (case 3 above).
 
 ### Adding the Windows secrets on GitHub
 

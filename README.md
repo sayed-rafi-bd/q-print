@@ -1,142 +1,46 @@
-# Tauri label printing app (Windows + Android)
+# Q-Print
 
-Lists printers, generates random label data from a per-label rule set, builds a multi-page
-pdfme PDF in the frontend, and prints it.
+A label printing app for Windows and Android, built with Tauri. Design a label, fill it with random or
+real data, and print many pages in one go, with no print dialog on Windows and on printers you add on Android.
 
-- **Windows:** silent printing with SumatraPDF (`-print-to ... -silent`, scale-to-fit).
-- **Android:** two ways to print.
-  - **Printers you add in the app (Wi-Fi/LAN, Bluetooth, USB): no dialog.** The app sends the label to the
-    printer itself, as PDF or as a ZPL/TSPL/ESC-POS/CPCL bitmap. See "Direct printing on Android" below.
-  - **"System print dialog"** (`PrintManager`): Android never allows silent printing through the system
-    print service, so you pick the printer and tap Print there.
+## Features
 
-The UI asks the Rust side what the platform can do (`capabilities` command) and hides the options that
-don't apply, instead of showing controls that would silently do nothing.
+**Printing**
+- **Windows:** silent printing through the installed printers (SumatraPDF), no dialog.
+- **Android:** add Wi-Fi/LAN, Bluetooth or USB printers once, then print without any dialog. Sends PDF, or
+  ZPL, TSPL, ESC/POS and CPCL for label and receipt printers. The system print dialog is also available.
+- Multi-page jobs, up to 10,000 pages, with rotation (0/90/180/270), margins and (on Windows) print resolution.
+- The UI shows only the options the current platform supports.
 
-|                                                | Windows            | Android                                                                    |
-|------------------------------------------------|--------------------|----------------------------------------------------------------------------|
-| Print path                                     | SumatraPDF, silent | Added printer (LAN / Bluetooth / USB): silent. Otherwise the system dialog |
-| Printer list                                   | installed printers | printers you added, plus "System print dialog"                             |
-| Paper size, orientation, resolution            | set by the app     | chosen in the system dialog (controls hidden)                              |
-| Rotate label content, margins, number of pages | yes                | yes (done inside the PDF)                                                  |
-| Designer tab                                   | yes                | tablets only (width >= 768 px); use template export/import on phones       |
+**Label designer**
+- Drag-and-drop layout editor (pdfme): text, tables, barcodes and more, with any page size in mm.
+- Live preview of the real page before you print.
+- Create labels from a ready-made sample, a copy of an existing label, or a blank page. Duplicate, rename and delete them.
+- Japanese text supported (Noto Sans JP).
 
-## Web build (Designer only)
+**Data for every page**
+- Per-field rules, no scripting: fixed text, random digits, number ranges, pick from a list, table rows,
+  dates relative to today, patterns such as `A{d12}A`, per-page numbering, and copying another field.
+- Print real records from a web API: each field reads a path like `user.name`, and one page is printed per record
+  (times the number of copies). The address and access token are entered at print time and never saved with the label.
+- Mistakes (bad ranges, loops, barcode values that cannot be encoded) are flagged before you print.
 
-The same frontend also runs as a plain web page. After signing in, the user gets the **Designer** tab
-only: printing and printers need the Rust side, which a browser doesn't have, so the Print tab is hidden.
+**Accounts and sharing**
+- Sign in with a username and password. Each account sees its own labels, stored in a Turso database.
+- Export a label as a JSON file (layout and data rules) and import it on another device.
+- The Designer also runs as a plain web page (no printing).
 
-```bash
-pnpm build        # static site in dist/, host it anywhere (fonts are served from /fonts/)
-pnpm dev          # or try it locally at http://localhost:1420 in a normal browser
-```
+## Platforms
 
-- Detected at run time (`src/platform.ts`): inside Tauri nothing changes; in a browser the app skips every `invoke()` call.
-- Labels are stored in the Turso database per account, so they are the same on the web and on devices.
-- A built-in label's saved layout override is a file on desktop/Android; on the web it is kept in the browser's `localStorage`.
-- **Security:** `VITE_TURSO_URL` / `VITE_TURSO_TOKEN` are compiled into the bundle, so anyone who can open the
-  site can read the token and query the whole database, password hashes included, and the sign-in is only a gate
-  in the UI (see `AUTH_AND_DATABASE_PLAN.md` §7). Fine for a private test deployment. Before a public site, put a
-  small server in front of the database.
-
-## Setup (Windows)
-1. Install Rust, Node 20+, pnpm, and the Tauri v2 prerequisites for Windows (WebView2, MSVC build tools).
-2. `pnpm install`
-3. From the project folder (the one containing `package.json` and `src-tauri`):
-   `pnpm tauri icon app-icon.png` (generates `src-tauri/icons`, including `icons/android`; swap in your own icon any time)
-4. Font: save Noto Sans JP Regular as `public/fonts/NotoSansJP-Regular.ttf`.
-5. Save portable SumatraPDF as `src-tauri/binaries/SumatraPDF-x86_64-pc-windows-msvc.exe`.
-   The Windows build fails with `resource path binaries\SumatraPDF-... doesn't exist` without it.
-6. `pnpm tauri dev`
-
-## Setup (Android)
-1. Install Android Studio (SDK Platform, Build-Tools and the **NDK**) and a JDK 17.
-2. Set `JAVA_HOME`, `ANDROID_HOME` and `NDK_HOME`.
-3. Add the Rust targets:
-   ```powershell
-   rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
-   ```
-4. Do the Windows setup steps 2-4 above (dependencies, icons, font). SumatraPDF is Windows-only and is not used on Android.
-5. **Turn on Windows Developer Mode** (once per PC): Settings -> System -> For developers -> **Developer Mode: On**
-   (on older Windows 10: Settings -> Update & Security -> For developers). Then close and reopen your terminal.
-   Tauri links the built `libq_print_lib.so` into the Android project with a symbolic link, and Windows only lets
-   regular users create those when Developer Mode is on. Without it the build stops with
-   `Creation symbolic link is not allowed for this system`.
-6. Connect a device. For printing, use a real phone or tablet (emulators don't reach your network printers):
-   enable *Developer options* and *USB debugging* on the device, plug it in, accept the prompt on the device, and check
-   that it is listed:
-   ```powershell
-   & "$env:ANDROID_HOME\platform-tools\adb.exe" devices
-   ```
-   The message `No available Android Emulator detected` is harmless when a physical device is connected.
-7. Generate the Android project (once) and commit it:
-   ```powershell
-   pnpm tauri android init
-   ```
-8. Run on the device. The phone must reach your PC over the network, so keep both on the same Wi-Fi.
-   Vite binds to `TAURI_DEV_HOST`, which `tauri android dev` sets for you.
-   ```powershell
-   pnpm tauri android dev
-   ```
-9. Release build (APK/AAB): `pnpm tauri android build`
-
-`src-tauri/gen/android` is a normal Gradle project. Commit it, but not its build output (see `.gitignore`).
-
-### Direct printing on Android (no printer selection page)
-In the Print tab open **Add a printer (no dialog)**, pick or enter the printer, press **Test**, then **Save printer**
-and select it in the Printer list. Printing to it never shows the Android print screen.
-
-| Connection | How it is found | What is sent |
+| | Windows | Android |
 |---|---|---|
-| Wi-Fi / LAN, **IPP** (port 631) | **Find Wi-Fi printers** (mDNS) or type the IP | PDF as-is. If the printer lists no PDF support, a PWG raster bitmap (300 dpi) |
-| Wi-Fi / LAN, **raw socket** (port 9100) | mDNS or type the IP | PDF as-is, or a bitmap in **ZPL / TSPL / ESC-POS / CPCL** |
-| **Bluetooth** (classic SPP) | paired devices list | bitmap in ZPL / TSPL / ESC-POS / CPCL |
-| **USB** (OTG cable) | connected USB printers list | bitmap in ZPL / TSPL / ESC-POS / CPCL |
+| Print path | Silent, through SumatraPDF | Added printer (LAN / Bluetooth / USB): silent. Otherwise the system dialog |
+| Printer list | Installed printers | Printers you added, plus "System print dialog" |
+| Designer | Yes | Tablets only; on phones use label import/export |
 
-- **Test** (IPP) asks the printer for its model, state and supported formats, and says whether it takes PDF or PWG raster.
-- The label keeps the PDF's own page size. Bitmap languages render at the printer's resolution (default 203 dpi, set per
-  printer; IPP raster always uses 300 dpi). Paper, orientation and resolution app options do not apply to direct printing.
-- Which language? Zebra and compatibles: ZPL (or CPCL on mobile models). TSC, Xprinter and many Chinese label printers:
-  TSPL. Receipt printers and most small Bluetooth printers: ESC/POS. If unsure, check the printer's manual for its
-  "command set" / "emulation".
-- Printers are stored in `printers.json` in the app data folder.
+Linux builds open and the Designer works, but printing is not implemented there yet.
 
-Code: `src-tauri/src/direct.rs` (printer store, IPP, raw socket), `src-tauri/src/raster.rs` (bitmap encoders),
-`src-tauri/src/print_android.rs` (chooses the format), the Kotlin plugin (`PdfRenderer` page rendering, mDNS, Bluetooth,
-USB) and `src/PrintersPanel.tsx`. `direct.rs` and `raster.rs` have no Tauri dependency, so their unit tests run in any
-crate that includes both (`mod raster;` next to `direct.rs`): IPP and raw sockets are tested against a local mock
-printer, the encoders against known byte layouts and a PWG round trip.
-
-**Not tested on real hardware yet.** The Kotlin code (rendering, discovery, Bluetooth, USB) has not been compiled or
-run on a device, and no real printer was available. Verify first with a printer you can print a test label on:
-- TSPL's `GAP`/`SIZE` assume gapped label stock, and TSPL bitmap polarity (0 = black) follows the TSPL manual. If labels
-  feed wrongly or print inverted, that is where to look (`raster.rs`).
-- ESC/POS sends a partial-cut command after each page; printers without a cutter ignore it. Paper width is not scaled: a
-  110 mm label on a 58 mm receipt printer is cut off.
-- Bluetooth: classic (SPP) only. BLE-only printers (some very small label printers) do not show up as pairable
-  serial devices and are not supported.
-- Printers that only take a vendor SDK / proprietary protocol (some Brother, Epson, Star models) need that protocol.
-- `ipps://` (TLS) is not supported.
-- Targeting Android 17 (target SDK 37) or higher needs the runtime `ACCESS_LOCAL_NETWORK` permission for LAN printing and
-  discovery ([docs](https://developer.android.com/privacy-and-security/local-network-permission)). Up to SDK 36 the
-  `INTERNET` permission is enough.
-
-### How the system print dialog works on Android
-`print_pdf` writes the PDF to the app cache directory and calls the in-repo Kotlin plugin
-`src-tauri/plugins/android-print`:
-
-- `PrintPlugin.kt` reads the PDF's page count and first-page size and opens the system print dialog
-  with that size as the requested paper.
-- `PdfFileAdapter.kt` streams the cached file to the print service and deletes it when the job ends.
-
-Things to know:
-- The paper size is only a request. The print service or driver may offer its own sizes; choose the
-  right one in the dialog.
-- The page range chosen in the dialog is not applied; every generated label is sent.
-- "Open dialog" in the result panel ends when the preview is requested, not when paper comes out.
-- If Gradle sync fails, check the plugin's `build.gradle.kts`, `settings.gradle` and
-  `register_android_plugin` against the current Tauri v2 mobile-plugin docs. They follow the plugin template.
-- Silent printing needs a direct transport: see "Direct printing on Android" above. Vendor SDKs are not implemented.
+## Quick start
 
 ## Build
 Builds bundle the frontend into the app, so they don't need the Vite dev server (or the network setup `android dev` needs).
@@ -161,17 +65,8 @@ Build on a Linux machine with the Tauri Linux packages installed (`libwebkit2gtk
 libssl-dev libayatana-appindicator3-dev librsvg2-dev` on Debian/Ubuntu):
 ```bash
 pnpm install
-pnpm build:linux      # runs `tauri build`, then moves the .deb, .rpm and AppImage into releases/
-```
-**Printing is not implemented on Linux yet.** The app opens and the Designer works, but the printer list is empty and
-printing returns an error.
-
-### Android
-Debug APK (signed with the debug key, installs straight away). `--target aarch64` builds only 64-bit phones, which is
-faster; leave it out to build all four architectures:
-```powershell
-pnpm build:android:debug
-& "$env:ANDROID_HOME\platform-tools\adb.exe" install -r releases\q-print_0.1.0_android-universal-debug.apk
+cp .env.example .env     # add your Turso URL and token
+pnpm tauri dev           # Windows (needs SumatraPDF and the font, see SETUP.md)
 ```
 The build moves the APK into `releases\` and adds the app name and version to its file name, so use the current version
 in the path.
@@ -486,9 +381,7 @@ Phones cannot use the Designer, but they can print anything imported this way.
 - **Android:** the PDF's own page size is requested in the print dialog. If the print service ignores it,
   rotate the content to match the stock and set the paper in the dialog or in the printer's own settings.
 
-## Large jobs
-Jobs of more than 50 pages (counted after records × copies, for a label with an API source) are sent from the frontend to Rust as a raw binary payload (`print_pdf_raw`) instead
-of a JSON number array, which is much faster on a phone.
+Android, builds, releases and troubleshooting are in [SETUP.md](SETUP.md).
 
 ## Print API
 
@@ -595,10 +488,8 @@ are held to the token instead. More origins can be added on the API tab.
 **Web API labels:** on each platform, a label with a real https API with and without a bearer token, a wrong
 token (401), a slow or unreachable host (timeout), one record (an object response), and 100 records × 3 copies.
 
-**Windows:** virtual printer (Microsoft Print to PDF), 1 page -> check PDF -> 5 pages (different data) ->
-real printer -> `pnpm tauri build` and repeat.
+- [SETUP.md](SETUP.md): setup, builds, printer options, the designer and data rules, troubleshooting
+- [RELEASE.md](RELEASE.md): publishing a release on GitHub, signing
 
-**Android:** `pnpm tauri android dev` -> print 3 pages to "Save as PDF" in the system dialog and check the page
-count, the 110 x 86 mm size, Japanese text and barcodes -> real printer through an Android print service
-(Mopria or the vendor's plugin) -> 100 pages (time and memory) -> `pnpm tauri android build`, install the
-release build on a clean device and repeat the real-printer test.
+> **This is a test build.** The database token is compiled into the app, so the sign-in screen is not a
+> security boundary. Put a small server in front of the database before using it in production (see SETUP.md).

@@ -1,6 +1,6 @@
 name: Release
 
-# Push a tag such as v0.2.0 to build the signed Windows installers and a signed Android APK and attach them to a draft release.
+# Push a tag such as v0.2.0 to build the Windows installers (signed with our self-signed certificate) and a signed Android APK and attach them to a draft release.
 # Releases are only built from commits that are on main: a tag pointing anywhere else fails the `verify-main` job.
 on:
   push:
@@ -70,7 +70,8 @@ jobs:
           $password = ConvertTo-SecureString $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
           $cert = Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password $password
           Remove-Item $pfx -Force
-          Write-Host "Imported certificate: $($cert.Subject)"
+          Write-Host "Imported certificate: $($cert.Subject) ($($cert.Thumbprint))"
+          "WINDOWS_CERT_THUMBPRINT=$($cert.Thumbprint)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           $path = 'src-tauri/tauri.windows.conf.json'
           $conf = Get-Content $path -Raw | ConvertFrom-Json
           $conf.bundle.windows.certificateThumbprint = $cert.Thumbprint
@@ -83,6 +84,8 @@ jobs:
           releaseName: "Q-Print ${{ github.ref_name }}"
           releaseDraft: true
       # The release is still a draft here, so a failure leaves nothing public.
+      # The certificate is self-signed, so the runner reports "NotTrusted"/"UnknownError" instead of "Valid".
+      # What matters is that the files we ship carry OUR signature, so compare the signer thumbprint instead.
       - name: Verify Windows signatures
         shell: pwsh
         run: |
@@ -96,14 +99,29 @@ jobs:
             exit 1
           }
           $bad = $false
-          foreach ($f in $files) {
+          foreach ($f in $installers) {
             $sig = Get-AuthenticodeSignature $f.FullName
-            Write-Host "$($f.Name): $($sig.Status) | $($sig.SignerCertificate.Subject)"
-            if ($sig.Status -ne 'Valid') { $bad = $true }
+            Write-Host "$($f.Name): $($sig.Status) | $($sig.SignerCertificate.Subject) | $($sig.SignerCertificate.Thumbprint)"
+            if ($sig.SignerCertificate.Thumbprint -ne $env:WINDOWS_CERT_THUMBPRINT) { $bad = $true }
           }
           if ($bad) {
-            Write-Host "::error::At least one Windows binary is not validly signed."
+            Write-Host "::error::At least one Windows installer is not signed with the Q-Print certificate."
             exit 1
+          }
+          # 2. The q-print.exe that ends up installed: unpack the MSI and report (warning only).
+          #    (target/release/q-print.exe is only a build intermediate, so it is not checked.)
+          $msi = $installers | Where-Object Extension -eq '.msi' | Select-Object -First 1
+          if ($msi) {
+            $dir = Join-Path $env:RUNNER_TEMP 'msi-extract'
+            Start-Process msiexec.exe -ArgumentList "/a `"$($msi.FullName)`" /qn TARGETDIR=`"$dir`"" -Wait
+            $inner = Get-ChildItem -Path $dir -Recurse -Filter q-print.exe -File | Select-Object -First 1
+            if ($inner) {
+              $sig = Get-AuthenticodeSignature $inner.FullName
+              Write-Host "installed q-print.exe: $($sig.Status) | $($sig.SignerCertificate.Subject) | $($sig.SignerCertificate.Thumbprint)"
+              if ($sig.SignerCertificate.Thumbprint -ne $env:WINDOWS_CERT_THUMBPRINT) {
+                Write-Host "::warning::The q-print.exe inside the MSI is not signed with the Q-Print certificate."
+              }
+            }
           }
 
   android:
@@ -132,7 +150,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android
-#          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+      #          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
