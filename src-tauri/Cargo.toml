@@ -36,6 +36,10 @@ ureq = { version = "2", default-features = false, features = ["native-certs"] }
 #   tiny_http  a small synchronous HTTP server. Synchronous is the right fit: the handlers block
 #              on a printer or on the webview either way, and it needs no async runtime of its own.
 tiny_http = "0.12"
+# Refuses to start a second copy of the app while one is already running, and hands the launch to
+# the one that is. Without it, launching the app again after closing the window to the tray starts a
+# whole new process with its own tray icon, and they stack up one per launch.
+tauri-plugin-single-instance = "2"
 
 # The `printers` crate has no Android support, so only Windows uses it.
 [target.'cfg(windows)'.dependencies]

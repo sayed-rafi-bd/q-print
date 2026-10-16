@@ -17,6 +17,10 @@ use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, Runtime, WindowEvent};
 
+/// The tray's id. One per process, and `on_window_event` uses it to decide whether a hidden window
+/// would have a tray to come back through, so it is defined once.
+const TRAY_ID: &str = "main";
+
 /// Menu item ids. Kept as constants so the labels and the handler cannot drift apart.
 const OPEN: &str = "open";
 const EXIT: &str = "exit";
@@ -51,6 +55,14 @@ pub fn show_main_window<R: Runtime>(app: &AppHandle<R>) {
 
 /// Puts the tray in place. Returns false when it could not be built, which is not fatal.
 pub fn setup<R: Runtime>(app: &AppHandle<R>) -> bool {
+    // One tray per process, by id. A second copy would be a second icon in the notification area
+    // that outlives nothing, and `on_window_event` keys off this same id, so there has to be exactly
+    // one. The single-instance plugin is what stops a second *process*; this covers everything else.
+    if let Some(existing) = app.remove_tray_by_id(TRAY_ID) {
+        let _ = existing;
+        eprintln!("[tray] replaced a tray that was already there");
+    }
+
     let open = match MenuItem::with_id(app, OPEN, "Open Q-Print", true, None::<&str>) {
         Ok(item) => item,
         Err(e) => {
@@ -73,7 +85,7 @@ pub fn setup<R: Runtime>(app: &AppHandle<R>) -> bool {
         }
     };
 
-    let mut builder = TrayIconBuilder::with_id("main")
+    let mut builder = TrayIconBuilder::with_id(TRAY_ID)
         .menu(&menu)
         .tooltip("Q-Print")
         // Only a real secondary click opens the menu, so a left click can show the window instead.
@@ -128,7 +140,7 @@ pub fn setup<R: Runtime>(app: &AppHandle<R>) -> bool {
 /// to show it again, so the close is allowed through in that case.
 pub fn on_window_event<R: Runtime>(app: &AppHandle<R>, window: &tauri::Window<R>, event: &WindowEvent) {
     let WindowEvent::CloseRequested { api, .. } = event else { return };
-    if app.tray_by_id("main").is_none() {
+    if app.tray_by_id(TRAY_ID).is_none() {
         // No tray, so a hidden window would be lost for good. Let it close as usual.
         return;
     }

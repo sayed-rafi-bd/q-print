@@ -475,6 +475,20 @@ pub fn run() {
     #[cfg(target_os = "android")]
     let builder = builder.plugin(tauri_plugin_android_print::init());
 
+    // Desktop only, and registered first so it is in place before anything else starts.
+    //
+    // Closing the window hides it to the tray, which means the process keeps running. Without this,
+    // launching the app again starts a *second* process with a second tray icon, and every launch
+    // after that adds another: the running copy is not found, it is duplicated. The second launch
+    // is refused and handed to the one already running, which shows and focuses its window instead.
+    //
+    // Not on Android: its task switcher already brings the existing activity forward instead of
+    // starting a second one, and the plugin has no part to play there.
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+        tray::show_main_window(app);
+    }));
+
     builder
         .setup(|_app| {
             // Desktop only. On Android the equivalent is `BackgroundService.kt`, started and stopped
