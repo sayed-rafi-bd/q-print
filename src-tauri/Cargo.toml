@@ -11,7 +11,9 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+# `tray-icon` is the desktop tray (Windows, Linux, macOS). `image-png` lets the app icon be used as
+# the tray icon, which is the one image format available on every desktop target without extra deps.
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # IPP printing (direct.rs) and a label's API data source (http.rs). `tls` adds HTTPS with rustls and

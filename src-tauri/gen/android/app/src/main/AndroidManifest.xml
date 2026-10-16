@@ -1,6 +1,15 @@
-<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Keeping the app reachable once it has been put away.
+         FOREGROUND_SERVICE is what lets the service below run at all; on Android 14+ (API 34) the
+         specific type has to be named as well. POST_NOTIFICATIONS is a runtime permission from
+         Android 13 (API 33): without it the notification is not shown, though the service still runs.
+         FOREGROUND_SERVICE_DATA_SYNC is the type that fits, being the only one that needs no further
+         justification from us. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- AndroidTV support -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
@@ -23,6 +32,16 @@
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Keeps the app process alive while it is in the background, so a print that has been set up
+             is still there when the notification is pressed. Without this Android freezes the app a
+             few minutes after it is put away and the notification becomes a dead end.
+             `stopWithTask=false` so dismissing the app from the launcher does not take it down. -->
+        <service
+            android:name=".BackgroundService"
+            android:exported="false"
+            android:stopWithTask="false"
+            android:foregroundServiceType="dataSync" />
 
         <provider
           android:name="androidx.core.content.FileProvider"
