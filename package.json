@@ -23,7 +23,7 @@
     "icons": "tauri icon app-icon.png",
     "dev:android": "tauri android dev",
     "android:init": "tauri android init",
-    "build:windows": "tauri build && node scripts/collect-releases.mjs windows",
+    "build:windows": "tauri build --bundles msi && node scripts/collect-releases.mjs windows",
     "build:linux": "tauri build && node scripts/collect-releases.mjs linux",
     "build:android": "tauri android build --apk --split-per-abi && node scripts/collect-releases.mjs android",
     "build:android:debug": "tauri android build --debug --apk --target aarch64 && node scripts/collect-releases.mjs android",

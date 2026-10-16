@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default capability",
+  "description": "Default capability. `core:event:allow-listen` is for the print API's bridge (src/api/ApiBridge.tsx), which listens for `api-request` from the Rust server. It is named explicitly rather than relied on from `core:default`, because if it were missing the bridge would simply never hear anything and every test on this machine would still pass.",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "core:event:allow-listen"]
 }

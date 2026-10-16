@@ -48,6 +48,7 @@ export default function GuidePage() {
     ['guide-start', 'The basics'],
     ...(web ? [] : ([['guide-print', 'Printing a label']] as [string, string][])),
     ['guide-api', 'Reading data from an API'],
+    ...(web ? [] : ([['guide-api-server', 'Printing from another program']] as [string, string][])),
     ['guide-designer', 'Designing a label'],
     ['guide-trouble', 'If something goes wrong'],
   ];
@@ -199,6 +200,39 @@ export default function GuidePage() {
             this restriction.
           </Note>
         )}
+      </Section>
+
+      <Section id="guide-api-server" title="Printing from another program">
+        <p>
+          While the app is running, anything on this PC can print through it: a till, an accounts system, a script, or{' '}
+          <Code>curl</Code>. Open the <strong>API</strong> tab to turn the API on, see the address and the token, and
+          try every endpoint without writing any code.
+        </p>
+        <Steps>
+          <li>
+            Open the <strong>API</strong> tab and press <strong>Send</strong> on <Code>GET /health</Code>.
+          </li>
+          <li>
+            Copy the token, then paste the <strong>curl</strong> snippet into a terminal and add the token where the{' '}
+            <Code>&lt;your-token&gt;</Code> placeholder is.
+          </li>
+          <li>
+            To print a label the app already has, use <Code>POST /print</Code> with its label name and a printer. To
+            print a PDF you already have, use <Code>POST /print/pdf</Code>.
+          </li>
+          <li>
+            On <Code>POST /print</Code>, set <Code>"dryRun"</Code> to <Code>true</Code> to get the PDF back instead of
+            printing it. That is the safe way to check a layout before spending paper.
+          </li>
+        </Steps>
+        <p>
+          Closing the window does not stop any of this. The window goes to the tray and the API keeps working;{' '}
+          <strong>Exit</strong> in the tray menu is what shuts it down.
+        </p>
+        <Note>
+          The API listens on this PC only, and needs the token on every call but <Code>/health</Code>. It is off when
+          you turn it off on the API tab, and changing the port or the token there takes effect at once.
+        </Note>
       </Section>
 
       <Section id="guide-designer" title="Designing a label">

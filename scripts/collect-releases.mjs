@@ -9,7 +9,7 @@
  *   node scripts/collect-releases.mjs --dry-run       # show what would happen
  *
  * What it picks up (all under src-tauri/):
- *   windows  target/release/bundle/nsis/*.exe, bundle/msi/*.msi
+ *   windows  target/release/bundle/msi/*.msi   (MSI only: see tauri.windows.conf.json)
  *   linux    target/release/bundle/deb/*.deb, bundle/rpm/*.rpm, bundle/appimage/*.AppImage
  *   android  gen/android/app/build/outputs/**\/*.apk and *.aab
  *
@@ -73,7 +73,9 @@ const desktop = (sub, exts) =>
   versioned(bundleRoots.flatMap((r) => filesIn(join(r, sub), exts))).map((src) => ({ src, name: basename(src) }));
 
 const sources = {
-  windows: () => [...desktop('nsis', ['.exe']), ...desktop('msi', ['.msi'])],
+  // MSI only. The NSIS `.exe` was dropped deliberately, so collecting one would only ever pick up
+  // a leftover from an older build and ship it beside the real installer.
+  windows: () => desktop('msi', ['.msi']),
   linux: () => [...desktop('deb', ['.deb']), ...desktop('rpm', ['.rpm']), ...desktop('appimage', ['.AppImage'])],
   android: () =>
     walk(join(tauri, 'gen', 'android', 'app', 'build', 'outputs'), ['.apk', '.aab']).map((src) => ({

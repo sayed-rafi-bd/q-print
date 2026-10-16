@@ -19,16 +19,28 @@ const RECORDS = [
 const saveButton = (page: Page) => page.getByRole('button', { name: 'Save', exact: true });
 const dataTab = (page: Page) => tabButton(page, 'Data').click();
 
-/** The "Test with a real API" panel, in the Data tab. Opened if it is folded away. */
+/**
+ * The "Test with a real API" panel, in the Data tab. Opened if it is folded away.
+ *
+ * Found by role, not by text: a collapsed `<details>` hides its contents from the accessibility
+ * tree, so this is 0 while the panel is folded and 1 once it is open, which is what makes the open
+ * step below work at all.
+ */
 function testApi(page: Page) {
   return page.getByRole('region', { name: 'Data source' });
 }
 
-/** Opens the panel if needed, then returns it. */
+/**
+ * The panel's fold, by test id rather than by its text. The Guide page explains this same feature
+ * by name and every tab stays mounted, so a page-wide text match finds two and the click is
+ * ambiguous.
+ */
+const testApiSummary = (page: Page) => page.getByTestId('test-api-summary');
+
+/** Opens the panel if it is folded away, then returns the panel. */
 async function openTestApi(page: Page) {
-  const panel = testApi(page);
-  if ((await panel.count()) === 0) await page.getByText('Test with a real API').click();
-  return panel;
+  if ((await testApi(page).count()) === 0) await testApiSummary(page).click();
+  return testApi(page);
 }
 
 /** One field's row in the Data tab. */
@@ -78,8 +90,9 @@ test.describe('designer: testing against a real API', () => {
     const panel = await openTestApi(page);
     await expect(panel.getByLabel('Address')).toHaveValue(''); // typed per session, never saved
     await expect(panel.getByRole('status')).toHaveCount(0);
-    // The panel that holds it says so, since the card itself stays quiet when nested.
-    await expect(page.getByText(/not saved with the label/)).toBeVisible();
+    // The panel's own sentence, not the Data source card's: the card stays quiet when nested, and
+    // both sentences are on screen at once.
+    await expect(page.getByTestId('test-api-note')).toContainText('not saved with the label');
 
     expect(errors).toEqual([]);
   });
@@ -151,11 +164,11 @@ test.describe('designer: testing against a real API', () => {
     await expect(api.getByRole('status')).toContainText('2 records found');
 
     await page.getByRole('button', { name: 'Forget these records' }).click();
-    await expect(page.getByText('Test with a real API')).toBeVisible(); // the panel folds away
+    await expect(testApiSummary(page)).toBeVisible(); // the panel folds away
     await expect(testApi(page)).toHaveCount(0);
 
     // Re-opening starts from nothing, as it must: the address belongs to the session.
-    await page.getByText('Test with a real API').click();
+    await testApiSummary(page).click();
     await expect((await openTestApi(page)).getByLabel('Address')).toHaveValue('');
   });
 
