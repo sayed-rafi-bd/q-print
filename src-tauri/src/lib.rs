@@ -9,6 +9,11 @@ mod direct;
 mod http;
 // Bitmap -> ZPL / TSPL / ESC-POS / CPCL / PWG raster encoders, for printers that cannot take a PDF.
 mod raster;
+// Staying reachable when the app is not in front: a tray icon on desktop, a foreground service on
+// Android. Desktop only — on Android the whole of it is in `BackgroundService.kt`, because a
+// foreground service's notification has to be built and shown by the service itself.
+#[cfg(desktop)]
+mod tray;
 
 // Platform print backends. Each exposes the same functions; only one is compiled in.
 #[cfg(target_os = "windows")]
@@ -315,6 +320,27 @@ pub fn run() {
     let builder = builder.plugin(tauri_plugin_android_print::init());
 
     builder
+        .setup(|_app| {
+            // Desktop only. On Android the equivalent is `BackgroundService.kt`, started and stopped
+            // by the activity itself: a foreground service's notification has to be shown by the
+            // service, so it cannot be driven from here.
+            //
+            // Not fatal: a failed tray leaves the app windowed as it was before, and
+            // `tray::on_window_event` then lets Close quit rather than hiding a window with no way
+            // back to it.
+            //
+            // `_app` rather than `app`, so the binding does not read as unused where there is no tray.
+            #[cfg(desktop)]
+            let _ = tray::setup(_app.handle());
+            Ok(())
+        })
+        // Only desktop has a window to hide; on mobile the activity is backgrounded by the system.
+        .on_window_event(|window, event| {
+            #[cfg(desktop)]
+            tray::on_window_event(window.app_handle(), window, event);
+            #[cfg(mobile)]
+            let _ = (window, event);
+        })
         .invoke_handler(tauri::generate_handler![
             capabilities,
             fetch_json,

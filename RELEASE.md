@@ -221,6 +221,22 @@ adb logcat -d -s RustStdoutStderr AndroidRuntime chromium
 - **Before publishing a draft, on each platform you ship (Windows, Android):** print a label that reads a real https API with and without a bearer token, try a wrong token (expect "HTTP 401 ... Check the access token."), an unreachable host (expect a clear message within about 15 seconds), a one-record (object) response, and 100 records × 3 copies.
 - **The token** is never stored or exported. If a report or log ever shows one, treat it as a bug.
 
+## Keeping the app reachable in the background
+
+Put the app away and it stays reachable: a tray icon on desktop, a notification on Android. Both offer
+Open and Exit. Nothing in the frontend is involved — each platform's half looks after itself.
+
+- **Desktop** (Windows, Linux, macOS). Closing the window hides it; the app keeps running and stays in the tray. **Exit is only in the tray menu** — there is nowhere else to find it, so a Windows user has to look there to quit. `src-tauri/src/tray.rs`.
+- **Android.** A foreground service, `BackgroundService.kt`, started from `MainActivity.onUserLeaveHint` and stopped in `onStart`. A foreground service needs both `FOREGROUND_SERVICE` and, on Android 14+, a named type (`FOREGROUND_SERVICE_DATA_SYNC`), plus `POST_NOTIFICATIONS` as a runtime grant from Android 13. The user is asked on first launch; refusing it leaves the app working but unrecoverable once it is backgrounded.
+- **Why a service and not just a notification:** Android freezes an app it has put away and then kills it, so a notification on its own is a dead end. This has never been run on a device from this repository — see the open item below.
+- **`onUserLeaveHint`, not `onStop`:** `onStop` also fires when another activity is put on top, and the Android print dialog does exactly that. Using `onStop` would pop the background notification on every single print.
+- **The tray icon has not been visually verified** — the build machine has no display.
+
+**Before shipping, on each platform you ship (Windows, Android):** put the app away and check that
+Open brings it back, that Exit actually ends it, and that the way back in is not the only copy of an
+unfinished print. On Android, leave the app backgrounded for several minutes first, because the
+freeze that a plain notification would not survive takes that long to arrive.
+
 ## Known issues and troubleshooting
 
 One bug is open and blocks a trusted Android release: the debug APK shows an error page on a Pixel 4a.
@@ -232,6 +248,7 @@ One bug is open and blocks a trusted Android release: the debug APK shows an err
 | Every job in `ci.yml` has `if: false`, so no check runs on push or pull request                                                        | Open                                                                                                                                                                                        | Remove the `if: false` lines in `ci.yml`                                                            |
 | CI and `package.json` changes from this guide (new scripts, `gradlew` fix, release job order) are in `q-print-ci-and-scripts.patch`    | Not merged                                                                                                                                                                                  | Apply the patch, then commit and push                                                               |
 | The Linux build cannot print: `print_other.rs` returns "printing is not implemented on this platform yet"                              | Open. The app starts and the Designer works, but the printer list is empty                                                                                                                  | Add a CUPS backend (`lpstat` and `lp`) and turn on the printer list for Linux in `capabilities()`   |
+| The tray icon and the Android background notification have never been run on a real device or desktop session                                    | Open. No display on the build machine and no Android SDK, so neither has been observed working                                                                                             | Follow the checklist under "Keeping the app reachable in the background"                            |
 
 **Release workflow errors**
 
