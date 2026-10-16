@@ -43,6 +43,12 @@ function Attempt({ entry }: { entry: PrintAttempt }) {
           <span className="badge badge-accent">{plural(entry.pages ?? 0, 'page')}</span>
         )}
         {entry.records !== null && <span className="badge badge-neutral">{plural(entry.records, 'record')}</span>}
+        {/* An API print is worth marking: it came from somewhere the person did not click. */}
+        {entry.source === 'api' && (
+          <span className="badge badge-warn" title="Started by a caller of the local print API">
+            API
+          </span>
+        )}
         <span className="ml-auto text-xs tabular-nums text-slate-500">
           {timeOf(entry.at)}
           {duration ? ` · ${duration}` : ''}

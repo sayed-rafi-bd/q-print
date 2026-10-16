@@ -486,6 +486,107 @@ Phones cannot use the Designer, but they can print anything imported this way.
 Jobs of more than 50 pages (counted after records × copies, for a label with an API source) are sent from the frontend to Rust as a raw binary payload (`print_pdf_raw`) instead
 of a JSON number array, which is much faster on a phone.
 
+## Print API
+
+While the app is running, anything on the same PC can print through a local HTTP API instead of
+somebody clicking in the UI. A POS, an ERP, a script, `curl`.
+
+- **Desktop only.** Android has no local port for a POS to reach.
+- **On by default**, on `http://127.0.0.1:17631/api/v1`. Change the port or turn it off on the
+  **API** tab.
+- **Token required.** Generated on first run and shown on the API tab. Regenerating it stops the old
+  one working immediately.
+- **This PC only.** It listens on `127.0.0.1` and nothing else, so it is not reachable from the
+  network.
+- **One print at a time**, shared with the UI: a person pressing Print and a script printing at the
+  same moment queue rather than collide.
+
+Closing the window does not stop it. The window goes to the tray and the API keeps answering.
+
+### Endpoints
+
+| Method & path | What it does | Auth |
+|---|---|---|
+| `GET /health` | Is it up? Version, platform, whether anyone is signed in | No |
+| `GET /printers` | Installed printers | Yes |
+| `GET /labels` | The signed-in account's labels, with their size in mm | Yes |
+| `POST /print` | Render a saved label and print it | Yes |
+| `POST /print/pdf` | Print a PDF you already have | Yes |
+
+Errors always look like `{"error": {"code": "...", "message": "..."}}`.
+
+| Status | When |
+|---|---|
+| 400 | Bad JSON, missing `printer` or `label`, not a PDF, `pages` out of range |
+| 401 | Missing or wrong token |
+| 403 | A `Host` or `Origin` that is not ours — see below |
+| 404 | No such endpoint, or no such label |
+| 409 | Label mode while nobody is signed in |
+| 413 | Body too large (PDF 64 MB, JSON 5 MB) |
+| 422 | The label could not be rendered from what was sent |
+| 500 | The printer or SumatraPDF failed |
+| 504 | The app did not answer within 5 minutes |
+
+### Two ways to print
+
+**PDF mode** is pure Rust and needs nobody signed in — the caller supplies a finished PDF:
+
+```bash
+curl -X POST "http://127.0.0.1:17631/api/v1/print/pdf?printer=Zebra%20ZD421" \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/pdf" \
+  --data-binary "@label.pdf"
+```
+
+**Label mode** renders one of the app's own labels, so the output is the same as printing it from
+the UI. It prints as whoever is signed in, and says `409` if nobody is:
+
+```bash
+curl -X POST http://127.0.0.1:17631/api/v1/print \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "label": "product",
+    "printer": "Zebra ZD421",
+    "pages": 3,
+    "rows": [{ "name": "Tea 500g", "barcode": "4901234567894" }]
+  }'
+```
+
+`rows` keys are the label's field names; a name that is not a field is refused with `422` rather
+than printing a blank field. One row is used for every page; more than one is a page each.
+
+Other body fields: `api` (the label's own data source, same shape as the Print tab), `paper`,
+`orientation`, `rotate`, `margins`, `dpi`, and `dryRun` — which returns the PDF instead of printing
+it, which is how you check a layout without using paper.
+
+`printer` is always required. There is no default, so a job can never quietly go to the wrong
+printer.
+
+### From JavaScript
+
+```js
+const response = await fetch('http://127.0.0.1:17631/api/v1/print', {
+  method: 'POST',
+  headers: { Authorization: `Bearer ${process.env.QPRINT_TOKEN}`, 'Content-Type': 'application/json' },
+  body: JSON.stringify({ label: 'product', printer: 'Zebra ZD421', pages: 1, dryRun: true }),
+});
+if (!response.ok) throw new Error(await response.text());
+const { pages } = await response.json();
+```
+
+The **API** tab has a *Try it* button and generates these snippets for curl, PowerShell and
+JavaScript with the request you have set up. The token is a placeholder in the snippets until you
+tick *Include the real token*.
+
+### Why a web page cannot do this
+
+The server refuses a `Host` header that is not `127.0.0.1:<port>` or `localhost:<port>`, and refuses
+an `Origin` that is not the app's own or one you have added. That is what stops a web page you happen
+to have open from spending your paper, and stops a hostile name pointed at `127.0.0.1` from
+reaching the server through your browser. `curl` and other non-browser callers send no `Origin` and
+are held to the token instead. More origins can be added on the API tab.
+
 ## Test order
 **Web API labels:** on each platform, a label with a real https API with and without a bearer token, a wrong
 token (401), a slow or unreachable host (timeout), one record (an object response), and 100 records × 3 copies.

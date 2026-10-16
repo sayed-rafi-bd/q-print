@@ -221,6 +221,25 @@ adb logcat -d -s RustStdoutStderr AndroidRuntime chromium
 - **Before publishing a draft, on each platform you ship (Windows, Android):** print a label that reads a real https API with and without a bearer token, try a wrong token (expect "HTTP 401 ... Check the access token."), an unreachable host (expect a clear message within about 15 seconds), a one-record (object) response, and 100 records × 3 copies.
 - **The token** is never stored or exported. If a report or log ever shows one, treat it as a bug.
 
+## Print API
+
+The local HTTP API (README, "Print API") is a release gate in its own right: it is a way for anything
+on the machine to spend paper, and none of it can be checked from a test suite on this machine.
+
+- **No Rust test can prove the round trip.** Label mode needs a *hidden* webview, and Playwright
+  runs the app as a plain web page with no Rust at all. The server's own logic is covered by unit
+  tests and five tests over a real socket, but "Rust asks a hidden window to render and it answers"
+  has not been observed. Try it by hand.
+- **The webview staying alive while hidden is the main risk in this feature.** WebView2 normally
+  keeps running with the window hidden, but timers can be throttled and the behaviour has to be seen,
+  not assumed. If label mode times out with the window in the tray, say so: the fallback is to keep
+  the window shown but minimised, which is a one-line change.
+- **`api.json`** sits next to `printers.json` in the app data dir. It holds the bearer token, so it
+  is not in git and not in a log. Deleting it makes a new token on next start, which is the quickest
+  way to lock an integration out.
+- **The MSI needs WiX**, so the Windows build still only works on Windows. Linux and Android build
+  commands are unchanged; the API is desktop-only and is not compiled into the APK.
+
 ## Print history
 
 The History tab lists the last 200 print attempts from the device. Read-only, and deliberately not in the database.
