@@ -18,14 +18,14 @@ const NOW = new Date(2026, 9, 14); // 2026-10-14
  * believable content with nothing typed and nothing fetched: it carries no address to type.
  */
 const PRODUCT_SHAPES: Record<string, RegExp> = {
-  itemBarcode: /^4901234\d{13}$/,
-  itemCodeText: /^4901234\d{13}$/, // the same code as the barcode above
+  itemBarcode: /^4901234\d{8}$/,
+  itemCodeText: /^4901234\d{8}$/, // the same code as the barcode above
   issueDate: /^\d{2}\d{2}-\d{2}-\d{2} 再$/,
   brandName: /^Acme$/,
   productCode: /^SKU-\d{4}$/,
   productName: /^Sample product$/,
-  locZone: /^13$/,
-  locCode: /^0450$/,
+  locZone: /^13-$/,
+  locCode: /^04-50$/,
   trackingBarcode: /^\d{12}$/,
   trackingText: /^\d{12}$/, // the same tracking number
   warehouse: /^Chiba・ロジ$/,
