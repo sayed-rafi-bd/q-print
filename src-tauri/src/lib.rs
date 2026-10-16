@@ -1,6 +1,17 @@
 use serde::{Deserialize, Serialize};
 use tauri::Manager;
 
+// The print API. `api_server` is desktop-only; these names come from the settings module on every
+// platform, and the server's own types are aliased here so a command's signature reads the same
+// either way.
+use api_settings::ApiSettings;
+#[cfg(desktop)]
+use api_server::ApiState;
+#[cfg(desktop)]
+use api_server::ApiStatus;
+#[cfg(not(desktop))]
+use api_settings::ApiSettings as ApiStatus;
+
 // Reading label files from before labels moved into the database, for the one-time import.
 mod legacy;
 // Direct network printing (IPP / raw socket) and the saved-printer store. Used by the Android backend.
@@ -9,6 +20,12 @@ mod direct;
 mod http;
 // Bitmap -> ZPL / TSPL / ESC-POS / CPCL / PWG raster encoders, for printers that cannot take a PDF.
 mod raster;
+// The local print API's settings. Cross-platform so the file can be read and tested anywhere,
+// including Android, where no server is started.
+mod api_settings;
+// The local print API itself (api_server.rs). Desktop only.
+#[cfg(not(target_os = "android"))]
+mod api_server;
 // Staying reachable when the app is not in front: a tray icon on desktop, a foreground service on
 // Android. Desktop only — on Android the whole of it is in `BackgroundService.kt`, because a
 // foreground service's notification has to be built and shown by the service itself.
@@ -30,7 +47,7 @@ mod platform;
 mod platform;
 
 /// What was actually handed to the print transport, so the UI can show it.
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct PrintReport {
     /// "sumatra" | "cups" | "android-dialog" (later: "ipp" | "vendor")
@@ -47,7 +64,7 @@ pub struct PrintReport {
 }
 
 /// The options the UI sends with a print job.
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct PrintOptions {
     pub printer: String,
     pub paper: String,
@@ -195,9 +212,28 @@ async fn printer_resolutions(printer: String) -> Result<Vec<String>, String> {
         .map_err(|e| e.to_string())?
 }
 
-/// Runs the platform backend off the main thread (printing blocks on child processes / the Android UI thread).
-async fn run_print(app: tauri::AppHandle, opts: PrintOptions, bytes: Vec<u8>) -> Result<PrintReport, String> {
+/// One print job at a time, everywhere.
+///
+/// Windows changes the printer's DPI setting, hands the job over, and puts the old value back, by
+/// running PowerShell around the print. Two jobs doing that at once would read each other's
+/// settings and print at the wrong resolution or leave a printer changed. The UI and the local API
+/// both come through here, so a person clicking Print and a script printing at the same moment
+/// queue rather than collide.
+static PRINT_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Runs the platform backend off the main thread (printing blocks on child processes / the Android
+/// UI thread), holding [`PRINT_LOCK`] for the job.
+///
+/// The lock is taken inside the blocking task rather than around it, so the wait does not tie up an
+/// async runtime thread. A poisoned lock is taken anyway: a panic in one print must not stop the
+/// next one, and there is no shared state to corrupt.
+pub(crate) async fn run_print(
+    app: tauri::AppHandle,
+    opts: PrintOptions,
+    bytes: Vec<u8>,
+) -> Result<PrintReport, String> {
     tauri::async_runtime::spawn_blocking(move || {
+        let _guard = PRINT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         #[cfg(target_os = "windows")]
         {
             let _ = &app;
@@ -311,6 +347,128 @@ fn reset_template(app: tauri::AppHandle, label: Option<String>) -> Result<(), St
     Ok(())
 }
 
+// ---------------------------------------------------------------------------------------------
+// The local print API. See `api_server.rs` for what it is for and why the defaults are strict.
+//
+// The commands exist on every platform so the frontend never has to know which build it is in;
+// on Android there is no server and they report that.
+// ---------------------------------------------------------------------------------------------
+
+/// `api.json` beside `printers.json`.
+fn api_settings_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    let dir = app.path().app_data_dir().map_err(|e| format!("The app data folder could not be found: {e}"))?;
+    std::fs::create_dir_all(&dir).map_err(|e| format!("The app data folder could not be created: {e}"))?;
+    Ok(dir.join("api.json"))
+}
+
+/// Reads the settings, falling back to the defaults with the reason said out loud. A missing or
+/// broken file must not stop the app: the API is an extra, and the app is a printing app.
+fn api_settings_or_default(app: &tauri::AppHandle) -> api_settings::ApiSettings {
+    match api_settings_path(app) {
+        Ok(path) => match api_settings::load(&path) {
+            Ok(settings) => settings,
+            Err(e) => {
+                eprintln!("[api] {e} Falling back to the defaults, which means a new token.");
+                api_settings::ApiSettings::default()
+            }
+        },
+        Err(e) => {
+            eprintln!("[api] {e} Starting with the defaults, which means a new token.");
+            api_settings::ApiSettings::default()
+        }
+    }
+}
+
+/// Saves the settings, reporting rather than swallowing a failure. Losing the file means the next
+/// start makes a new token, which quietly locks out every integration that had the old one.
+fn save_api_settings(app: &tauri::AppHandle, settings: &api_settings::ApiSettings) {
+    match api_settings_path(app) {
+        Ok(path) => {
+            if let Err(e) = api_settings::save(&path, settings) {
+                eprintln!("[api] {e}");
+            }
+        }
+        Err(e) => eprintln!("[api] {e} The settings were not saved, so the next start will use a new token."),
+    }
+}
+
+/// Whether the server is running, what it is bound to, and the settings the API tab edits.
+#[tauri::command]
+fn api_status(app: tauri::AppHandle) -> ApiStatus {
+    #[cfg(desktop)]
+    {
+        app.state::<ApiState>().status()
+    }
+    #[cfg(not(desktop))]
+    {
+        let _ = &app;
+        ApiStatus::status_unavailable()
+    }
+}
+
+/// Saves new settings and restarts the listener if the port or the enabled flag changed.
+#[tauri::command]
+fn api_set_settings(app: tauri::AppHandle, settings: ApiSettings) -> ApiStatus {
+    #[cfg(desktop)]
+    {
+        // Written before the listener starts, so the file on disk always matches what was asked for
+        // even if the port turns out to be taken.
+        save_api_settings(&app, &settings);
+        app.state::<ApiState>().apply(&app, settings)
+    }
+    #[cfg(not(desktop))]
+    {
+        let _ = (app, settings);
+        ApiStatus::status_unavailable()
+    }
+}
+
+/// A new token. The old one stops working immediately, because the listener reads the token per
+/// request rather than capturing it when it started.
+#[tauri::command]
+fn api_regenerate_token(app: tauri::AppHandle) -> Result<ApiStatus, String> {
+    #[cfg(desktop)]
+    {
+        let status = app.state::<ApiState>().regenerate_token(&app)?;
+        // Saved before the new token is handed out: a token that exists only in memory would lock
+        // the caller out on the next start, and would do it silently.
+        save_api_settings(&app, &status.settings);
+        return Ok(status);
+    }
+    #[cfg(not(desktop))]
+    {
+        let _ = &app;
+        Ok(ApiStatus::status_unavailable())
+    }
+}
+
+/// The last few calls from outside the app, for the API tab's list.
+#[tauri::command]
+fn api_recent(app: tauri::AppHandle) -> Vec<api_server::RecentCall> {
+    #[cfg(desktop)]
+    {
+        app.state::<ApiState>().recent()
+    }
+    #[cfg(not(desktop))]
+    {
+        let _ = &app;
+        Vec::new()
+    }
+}
+
+/// The webview's answer to an `api-request`, handed to the waiting HTTP thread by id.
+#[tauri::command]
+fn api_bridge_reply(app: tauri::AppHandle, id: String, result: String) {
+    #[cfg(desktop)]
+    {
+        app.state::<ApiState>().bridge.reply(&id, result);
+    }
+    #[cfg(not(desktop))]
+    {
+        let _ = (app, id, result);
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default();
@@ -332,6 +490,17 @@ pub fn run() {
             // `_app` rather than `app`, so the binding does not read as unused where there is no tray.
             #[cfg(desktop)]
             let _ = tray::setup(_app.handle());
+
+            #[cfg(desktop)]
+            {
+                let state = ApiState::new(api_settings_or_default(_app.handle()));
+                _app.manage(state);
+                // Started after the window exists, so the first request cannot arrive before the
+                // webview is listening for it.
+                if let Some(state) = _app.try_state::<ApiState>() {
+                    state.restart(_app.handle());
+                }
+            }
             Ok(())
         })
         // Only desktop has a window to hide; on mobile the activity is backgrounded by the system.
@@ -351,6 +520,11 @@ pub fn run() {
             test_printer,
             discover_printers,
             list_devices,
+            api_status,
+            api_set_settings,
+            api_regenerate_token,
+            api_recent,
+            api_bridge_reply,
             legacy::read_legacy_labels,
             printer_resolutions,
             print_pdf,

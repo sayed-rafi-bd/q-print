@@ -43,6 +43,13 @@ export type PrintAttempt = {
   error: string | null;
   /** End to end, in whole milliseconds. Null when it failed before there was anything to time. */
   ms: number | null;
+  /**
+   * Who started it. `ui` is the Print tab; `api` is a caller of the local HTTP API.
+   *
+   * Optional because history written before this field existed is still worth showing: an entry
+   * with no `source` was a print from the UI, which is what everything was before.
+   */
+  source?: 'ui' | 'api';
 };
 
 /**

@@ -82,7 +82,12 @@ if (plain.test(what)) {
   const [maj, min, pat] = m.slice(1).map(Number);
   next = what === 'major' ? `${maj + 1}.0.0` : what === 'minor' ? `${maj}.${min + 1}.0` : `${maj}.${min}.${pat + 1}`;
 } else {
-  fail(`"${what}" is not major, minor, patch or a version like 1.2.3.`);
+  // The Windows bundle is an MSI and WiX refuses a version with a suffix, so 1.5.0-beta cannot be
+  // released even though it would be a perfectly good npm version.
+  fail(
+    `"${what}" is not major, minor, patch or a version like 1.2.3.\n` +
+      'Versions must be plain numbers: the Windows installer is an MSI, and WiX rejects a suffix like -beta.',
+  );
 }
 if (next === current && !mismatched.length) fail(`Already at ${current}.`);
 

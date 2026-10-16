@@ -364,6 +364,7 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
         transport: report.transport,
         error: null,
         ms: timings.total,
+        source: 'ui',
       });
       setCelebrate((n) => n + 1);
     } catch (e) {
@@ -383,6 +384,7 @@ export default function PrintPage({ active = true }: { active?: boolean }) {
         transport: null,
         error: message,
         ms: performance.now() - startedAt,
+        source: 'ui',
       });
     } finally {
       setBusy(false);

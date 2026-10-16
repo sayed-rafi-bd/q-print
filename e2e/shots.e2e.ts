@@ -20,7 +20,8 @@ test('capture the designer', async ({ page }) => {
   await note.locator('summary').click();
   await page.screenshot({ path: 'shots/04-rule-editor.png' });
 
-  await page.getByText('Test with a real API').click();
+  // By test id, not by text: the Guide page names this same feature and every tab stays mounted.
+  await page.getByTestId('test-api-summary').click();
   await page.screenshot({ path: 'shots/05-api-panel.png' });
 
   // A phone, which is what this app is printed from.

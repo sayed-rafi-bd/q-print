@@ -1,4 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
+import ApiBridge from './api/ApiBridge';
+import ApiPage from './api/ApiPage';
 import { AuthProvider, useAuth } from './auth/AuthProvider';
 import LoginPage from './auth/LoginPage';
 import { useCapabilities } from './capabilities';
@@ -11,7 +13,7 @@ import PrintPage from './PrintPage';
 // demand keeps it out of the initial download on every phone, and only on the tab that needs it.
 const DesignerPage = lazy(() => import('./DesignerPage'));
 
-type Tab = 'print' | 'designer' | 'history' | 'guide';
+type Tab = 'print' | 'designer' | 'history' | 'api' | 'guide';
 
 // pdfme's Designer needs a large, pointer-driven screen. On Android it is tablet-only.
 const DESIGNER_MIN_WIDTH = 768;
@@ -43,6 +45,8 @@ function Workspace() {
     print: printAvailable,
     designer: designerAvailable,
     history: true,
+    // The API is the one thing a web build cannot have: there is no local server behind it.
+    api: !web,
     guide: true,
   };
   const tab: Tab = offered[chosen] ? chosen : printAvailable ? 'print' : 'designer';
@@ -73,6 +77,10 @@ function Workspace() {
       className="relative flex h-dvh flex-col"
       style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
     >
+      {/* Answers the local print API. Mounted above everything, once, so it keeps working whatever
+          tab is open and while the window is hidden in the tray. It renders nothing. */}
+      <ApiBridge />
+
       {/* drifting pastel blobs behind everything */}
       <div className="blobs" aria-hidden="true">
         <div className="blob blob-a" />
@@ -97,6 +105,11 @@ function Workspace() {
         <button type="button" className={`${tabCls('history')} shrink-0`} onClick={() => setChosen('history')}>
           🕘 History
         </button>
+        {!web && (
+          <button type="button" className={`${tabCls('api')} shrink-0`} onClick={() => setChosen('api')}>
+            🔌 API
+          </button>
+        )}
         <button type="button" className={`${tabCls('guide')} shrink-0`} onClick={() => setChosen('guide')}>
           📖 Guide
         </button>
@@ -137,6 +150,11 @@ function Workspace() {
         <section className={`absolute inset-0 overflow-auto ${tab === 'history' ? 'tab-enter' : 'tab-hidden'}`}>
           <PrintHistoryPage active={tab === 'history'} />
         </section>
+        {!web && (
+          <section className={`absolute inset-0 overflow-auto ${tab === 'api' ? 'tab-enter' : 'tab-hidden'}`}>
+            <ApiPage />
+          </section>
+        )}
         <section className={`absolute inset-0 overflow-auto ${tab === 'guide' ? 'tab-enter' : 'tab-hidden'}`}>
           <GuidePage />
         </section>

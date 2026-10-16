@@ -6,7 +6,7 @@ Oct 15, 2026 · @Rafi
 
 Pushing a version tag such as `v0.2.0` builds the Windows installers and a signed Android APK on GitHub Actions and attaches both to one draft release. You review the draft, then publish it. **Only tags on commits that are on `main` produce a release:** a `verify-main` job runs first and fails the run for any other tag.
 
-- **Windows:** NSIS installer (`.exe`) and `.msi`. SumatraPDF is bundled with the app and does the silent printing.
+- **Windows:** an MSI installer (`.msi`). The NSIS `.exe` installer was dropped. SumatraPDF is bundled with the app and does the silent printing.
 - **Android:** one APK that opens the system print dialog (no silent printing on Android). The release workflow signs it with your keystore (see "GitHub secrets" below). A release built by hand is unsigned until you set up local signing.
 - **Linux:** the release workflow does not build it. You can build `.deb`, `.rpm` and AppImage packages by hand on a Linux machine (`pnpm build:linux`), but printing is not implemented on Linux yet: the app opens and the Designer works, but nothing prints.
 - **Trigger:** `.github/workflows/release.yml`, on any tag matching `v*` that points at a commit on `main`. Normal pushes and pull requests only run `ci.yml`, which checks the build and compiles a debug APK.
@@ -69,7 +69,7 @@ Paste the result into `ANDROID_KEYSTORE_BASE64`. Do not use `certutil -encode`: 
 
 ### Windows code signing ("Unknown publisher")
 
-An unsigned installer makes Windows show **Unknown publisher** in the UAC prompt and a SmartScreen warning. The `windows` job fixes this by importing the certificate, putting its thumbprint into `src-tauri/tauri.windows.conf.json` and letting `tauri build` sign `q-print.exe`, the NSIS installer and the MSI. A final step checks every signature and fails the run if one is not `Valid`.
+An unsigned installer makes Windows show **Unknown publisher** in the UAC prompt and a SmartScreen warning. The `windows` job fixes this by importing the certificate, putting its thumbprint into `src-tauri/tauri.windows.conf.json` and letting `tauri build` sign `q-print.exe` and the MSI. A final step checks every signature and fails the run if one is not `Valid`.
 
 ```powershell
 [Convert]::ToBase64String([IO.File]::ReadAllBytes("$HOME\codesign.pfx")) | Set-Clipboard
@@ -149,7 +149,7 @@ git push origin v0.2.0
 ```
 
 5. Watch the `Release` run. `verify-main` checks the tag is on `main`, then the Windows job runs, then the Android job starts (`needs: windows`) so both attach to the same draft release. The Android job signs the APK before it uploads it.
-6. Open the draft release "Q-Print v0.2.0" on GitHub and check that it holds the NSIS `.exe`, the `.msi` and the signed `.apk`.
+6. Open the draft release "Q-Print v0.2.0" on GitHub and check that it holds the `.msi` and the signed `.apk`.
 7. Install each build once on a clean machine or phone, print a test label, then publish the draft.
 
 ## Building by hand
@@ -158,7 +158,7 @@ Run these from the project folder, the one containing `package.json` and `src-ta
 
 | Command                    | Produces                                                                                                | Build output folder                                              |
 |----------------------------|---------------------------------------------------------------------------------------------------------|------------------------------------------------------------------|
-| `pnpm build:windows`       | NSIS installer and MSI                                                                                  | `src-tauri\target\release\bundle\`                               |
+| `pnpm build:windows`       | MSI                                                                                                     | `src-tauri\target\release\bundle\`                               |
 | `pnpm build:linux`         | `.deb`, `.rpm` and AppImage. Run it on a Linux machine; the app cannot print on Linux yet               | `src-tauri/target/release/bundle/`                               |
 | `pnpm build:android:debug` | Debug APK for 64-bit phones (aarch64), signed with the debug key, installs straight away                | `src-tauri\gen\android\app\build\outputs\apk\universal\debug\`   |
 | `pnpm build:android`       | Release APK for all four CPU types, unsigned until signing is set up                                    | `src-tauri\gen\android\app\build\outputs\apk\universal\release\` |
@@ -230,6 +230,25 @@ adb logcat -d -s RustStdoutStderr AndroidRuntime chromium
 - **HTTPS from Rust:** the app makes the request in Rust (`src-tauri/src/http.rs`) with `ureq` and its `tls` feature, which pulls in `rustls` and `ring` (C code in the Android NDK build). If an Android build breaks after a dependency update, look here first.
 - **Before publishing a draft, on each platform you ship (Windows, Android):** print a label that reads a real https API with and without a bearer token, try a wrong token (expect "HTTP 401 ... Check the access token."), an unreachable host (expect a clear message within about 15 seconds), a one-record (object) response, and 100 records × 3 copies.
 - **The token** is never stored or exported. If a report or log ever shows one, treat it as a bug.
+
+## Print API
+
+The local HTTP API (README, "Print API") is a release gate in its own right: it is a way for anything
+on the machine to spend paper, and none of it can be checked from a test suite on this machine.
+
+- **No Rust test can prove the round trip.** Label mode needs a *hidden* webview, and Playwright
+  runs the app as a plain web page with no Rust at all. The server's own logic is covered by unit
+  tests and five tests over a real socket, but "Rust asks a hidden window to render and it answers"
+  has not been observed. Try it by hand.
+- **The webview staying alive while hidden is the main risk in this feature.** WebView2 normally
+  keeps running with the window hidden, but timers can be throttled and the behaviour has to be seen,
+  not assumed. If label mode times out with the window in the tray, say so: the fallback is to keep
+  the window shown but minimised, which is a one-line change.
+- **`api.json`** sits next to `printers.json` in the app data dir. It holds the bearer token, so it
+  is not in git and not in a log. Deleting it makes a new token on next start, which is the quickest
+  way to lock an integration out.
+- **The MSI needs WiX**, so the Windows build still only works on Windows. Linux and Android build
+  commands are unchanged; the API is desktop-only and is not compiled into the APK.
 
 ## Print history
 

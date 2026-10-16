@@ -49,10 +49,10 @@ jobs:
             exit 1
           fi
           printf 'VITE_TURSO_URL=%s\nVITE_TURSO_TOKEN=%s\n' "$VITE_TURSO_URL" "$VITE_TURSO_TOKEN" > .env
-      # Windows code signing with a self-signed certificate (see RELEASE.md, "Self-signed signing for a group of PCs").
-      # This imports the certificate and writes its thumbprint into tauri.windows.conf.json, so `tauri build`
-      # signs q-print.exe, the NSIS installer and the MSI. The repo copy keeps `certificateThumbprint: null`,
-      # so local builds still work (unsigned). PCs that trust the .cer (scripts/install-cert.ps1) see "KEEX".
+      # Without a signature Windows shows "Unknown publisher" (UAC) and SmartScreen warnings.
+      # This imports the code-signing certificate and writes its thumbprint into tauri.windows.conf.json,
+      # so `tauri build` signs q-print.exe and the MSI. The repo copy keeps
+      # `certificateThumbprint: null`, so local builds still work (unsigned).
       - name: Import Windows code-signing certificate
         shell: pwsh
         env:
@@ -89,10 +89,13 @@ jobs:
       - name: Verify Windows signatures
         shell: pwsh
         run: |
-          # 1. The installers are what users download: these must be signed (hard failure).
-          $installers = @(Get-ChildItem -Path src-tauri/target/release/bundle -Recurse -Include *.exe, *.msi -File)
-          if ($installers.Count -eq 0) {
-            Write-Host "::error::No Windows installers found to verify."
+          # q-print.exe (the binary itself) and the MSI. Deliberately not a bare `*.exe` glob over the
+          # bundle folder: that used to pick up the NSIS installer, and would now pass on a stale
+          # leftover instead of proving this build produced an MSI.
+          $files = @(Get-ChildItem -Path src-tauri/target/release -Filter q-print.exe -File) +
+                   @(Get-ChildItem -Path src-tauri/target/release/bundle -Recurse -Include *.msi -File)
+          if ($files.Count -eq 0) {
+            Write-Host "::error::No Windows build output found to verify."
             exit 1
           }
           $bad = $false

@@ -18,7 +18,7 @@ import type { GeneratorSpec } from './spec';
 const PRODUCT: GeneratorSpec = {
   version: 1,
   fields: {
-    itemBarcode: { kind: 'digits', length: 13, prefix: '4901234' },
+    itemBarcode: { kind: 'digits', length: 8, prefix: '4901234' },
     itemCodeText: { kind: 'copy', from: 'itemBarcode' },
 
     issueDate: { kind: 'date', offsetDays: [0, 0], format: 'YYYY-MM-DD', suffix: ' 再' },
@@ -28,8 +28,8 @@ const PRODUCT: GeneratorSpec = {
     productCode: { kind: 'fixed', value: 'SKU-0000' },
 
     // The zone is one value shared by both fields; the copy rule rebuilds it with the dash.
-    locZone: { kind: 'fixed', value: '13' },
-    locCode: { kind: 'fixed', value: '0450' },
+    locZone: { kind: 'fixed', value: '13-' },
+    locCode: { kind: 'fixed', value: '04-50' },
 
     trackingBarcode: { kind: 'digits', length: 12 },
     trackingText: { kind: 'copy', from: 'trackingBarcode' },

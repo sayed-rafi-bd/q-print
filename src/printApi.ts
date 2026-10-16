@@ -119,6 +119,107 @@ export async function loadFont(): Promise<ArrayBuffer> {
   return buf;
 }
 
+/** What to render. Everything needed to turn a label plus data into a PDF, and nothing about how
+ * it is printed, so the same call can end in a printer or in a dry run that returns the PDF. */
+export type RenderOptions = {
+  user: User;
+  label: LabelId;
+  /** Copies of each record for a label with an API source; otherwise the number of pages. */
+  pages: number;
+  /** Required when the label has an API source. */
+  api?: ApiInput;
+  rotate: Rotation;
+  margins: Margins;
+  /**
+   * Explicit rows, one per page. When these are given the label's own generator does not run at
+   * all, so a caller's data reaches the label exactly as sent.
+   *
+   * This is how the local print API's `rows` field is honoured: without it the generator would
+   * overwrite every field and the caller would get a different label from the one they asked for.
+   */
+  rows?: Record<string, string>[];
+};
+
+/** A rendered PDF, ready to send to a printer or to hand back to a caller that only wanted to see it. */
+export type Rendered = {
+  pdf: Uint8Array;
+  /** The real number of pages. */
+  pageCount: number;
+  /** API records read, or null when the label has no API source. */
+  records: number | null;
+  templateSource: 'custom' | 'default' | 'custom label';
+  /** How long the rows took, and how long the PDF. */
+  dataMs: number;
+  fetchMs: number;
+  pdfMs: number;
+};
+
+/** Where a PDF is going, and how. */
+export type PrintTarget = {
+  printer: string;
+  paper: string;
+  orientation: Orientation;
+  dpi: string;
+};
+
+/**
+ * Turns a label and its data into a PDF, without printing it.
+ *
+ * Split out from `printLabels` so the print API can render and stop there: a `dryRun` hands the
+ * caller exactly this PDF. The UI still goes through `printLabels`, which calls this and then
+ * `sendToPrinter`, so there is one rendering path and the two can never produce different output.
+ */
+export async function renderLabelPdf(opts: RenderOptions): Promise<Rendered> {
+  const t0 = performance.now();
+
+  // 1. the label's template and generator. The rows are built here too, so nothing has to cross
+  //    the IPC boundary just to be randomised -- unless the caller supplied them, in which case
+  //    the generator would overwrite what they sent.
+  const { template, source, generator } = await loadLabel(opts.user, opts.label);
+  const built = opts.rows
+    ? { rows: opts.rows, records: null, fetchMs: 0 }
+    : await buildRows(generator, opts.pages, opts.api);
+  const { rows, records, fetchMs } = built;
+  const t1 = performance.now();
+
+  // 2. one multi-page PDF: pdfme makes one page per input row
+  const fontData = await loadFont();
+  const generated = await generate({
+    template,
+    inputs: rows,
+    plugins: { text, rectangle, ...barcodes },
+    options: { font: { NotoSansJP: { data: fontData, fallback: true } } },
+  });
+  const pdf = await postProcessPdf(generated, opts.rotate, opts.margins);
+  const t2 = performance.now();
+
+  return {
+    pdf,
+    pageCount: rows.length,
+    records,
+    templateSource: source,
+    dataMs: t1 - t0 - fetchMs,
+    fetchMs,
+    pdfMs: t2 - t1,
+  };
+}
+
+/**
+ * Hands a PDF to the platform's print backend. The `PRINT_LOCK` in Rust serialises this against
+ * every other job, including ones the local API started.
+ *
+ * The page count is passed in rather than measured from the PDF: the caller already knows it, and
+ * counting it out of the bytes would be a guess that could send the two forms differently.
+ */
+export async function sendToPrinter(target: PrintTarget, pdf: Uint8Array, pageCount: number): Promise<PrintReport> {
+  return pageCount > RAW_THRESHOLD_PAGES
+    ? await invoke<PrintReport>('print_pdf_raw', pdf, {
+        // header values must be ASCII; printer names may not be
+        headers: { 'x-print-options': encodeURIComponent(JSON.stringify(target)) },
+      })
+    : await invoke<PrintReport>('print_pdf', { ...target, bytes: Array.from(pdf) });
+}
+
 export async function printLabels(opts: {
   user: User;
   label: LabelId;
@@ -142,40 +243,27 @@ export async function printLabels(opts: {
   records: number | null;
 }> {
   const t0 = performance.now();
-
-  // 1. the label's template and generator. The rows are built here too, so nothing has to cross
-  //    the IPC boundary just to be randomised.
-  const { template, source, generator } = await loadLabel(opts.user, opts.label);
-  const { rows, records, fetchMs } = await buildRows(generator, opts.pages, opts.api);
+  const rendered = await renderLabelPdf(opts);
   const t1 = performance.now();
 
-  // 2. one multi-page PDF: pdfme makes one page per input row
-  const fontData = await loadFont();
-  const generated = await generate({
-    template,
-    inputs: rows,
-    plugins: { text, rectangle, ...barcodes },
-    options: { font: { NotoSansJP: { data: fontData, fallback: true } } },
-  });
-  const pdf = await postProcessPdf(generated, opts.rotate, opts.margins);
+  const report = await sendToPrinter(
+    { printer: opts.printer, paper: opts.paper, orientation: opts.orientation, dpi: opts.dpi },
+    rendered.pdf,
+    rendered.pageCount,
+  );
   const t2 = performance.now();
 
-  // 3. print (silent with scale-to-fit where the platform allows it, else the system dialog)
-  const printOpts = { printer: opts.printer, paper: opts.paper, orientation: opts.orientation, dpi: opts.dpi };
-  const report =
-    rows.length > RAW_THRESHOLD_PAGES
-      ? await invoke<PrintReport>('print_pdf_raw', pdf, {
-          // header values must be ASCII; printer names may not be
-          headers: { 'x-print-options': encodeURIComponent(JSON.stringify(printOpts)) },
-        })
-      : await invoke<PrintReport>('print_pdf', { ...printOpts, bytes: Array.from(pdf) });
-  const t3 = performance.now();
-
   return {
-    timings: { fetch: fetchMs, data: t1 - t0 - fetchMs, pdf: t2 - t1, print: t3 - t2, total: t3 - t0 },
+    timings: {
+      fetch: rendered.fetchMs,
+      data: rendered.dataMs,
+      pdf: rendered.pdfMs,
+      print: t2 - t1,
+      total: t2 - t0,
+    },
     report,
-    templateSource: source,
-    pageCount: rows.length,
-    records,
+    templateSource: rendered.templateSource,
+    pageCount: rendered.pageCount,
+    records: rendered.records,
   };
 }
