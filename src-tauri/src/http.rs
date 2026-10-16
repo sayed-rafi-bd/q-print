@@ -27,7 +27,7 @@ fn check_url(raw: &str, has_token: bool) -> Result<Url, String> {
         }
         other => return Err(format!("Only http and https addresses are allowed (got \"{other}:\").")),
     }
-    if url.host_str().map_or(true, str::is_empty) {
+    if url.host_str().is_none_or(str::is_empty) {
         return Err("The address has no host name.".into());
     }
     if !url.username().is_empty() || url.password().is_some() {

@@ -378,7 +378,7 @@ fn explain_ipp_error(code: u16) -> String {
               formats or their own command language; they need a different transport."
         }
         0x0406 => " The IPP path is probably wrong; try /ipp/print, /ipp, /ipp/printer or /printers/<name>.",
-        0x0402 | 0x0403 | 0x0401 => " The printer requires authentication or has IPP printing disabled.",
+        0x0401..=0x0403 => " The printer requires authentication or has IPP printing disabled.",
         0x0506 | 0x0507 | 0x0502 => " The printer is busy or not accepting jobs; check it and try again.",
         _ => "",
     };
@@ -613,7 +613,7 @@ mod tests {
     fn job_name_is_clipped_on_char_boundary() {
         let long = "ラ".repeat(200); // 600 bytes
         let c = clip(&long);
-        assert!(c.len() <= 255 && c.len() % 3 == 0);
+        assert!(c.len() <= 255 && c.len().is_multiple_of(3));
     }
 
     #[test]

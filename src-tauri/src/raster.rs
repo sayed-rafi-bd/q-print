@@ -16,11 +16,6 @@ pub const LANG_ESCPOS: &str = "escpos";
 pub const LANG_CPCL: &str = "cpcl";
 pub const LANG_PWG: &str = "pwg";
 
-/// Languages that are a plain command stream for a label/receipt printer (not PDF, not IPP raster).
-// pub fn is_command_language(l: &str) -> bool {
-//     matches!(l, LANG_ZPL | LANG_TSPL | LANG_ESCPOS | LANG_CPCL)
-// }
-
 /// One page as a 1-bit image: rows are packed MSB first, a set bit is a black dot.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Bitmap {
@@ -47,9 +42,9 @@ impl Bitmap {
         Ok(b)
     }
 
-    /// Bytes per row.
+    /// Bytes per row: one bit per pixel, packed MSB first, so a row is padded up to a whole byte.
     pub fn stride(&self) -> usize {
-        (self.width as usize + 7) / 8
+        (self.width as usize).div_ceil(8)
     }
 
     fn mm(&self, dpi: u32) -> (f64, f64) {
@@ -307,7 +302,7 @@ mod tests {
                 let c = data[i];
                 i += 1;
                 if c < 128 {
-                    line.extend(std::iter::repeat(data[i]).take(c as usize + 1));
+                    line.extend(std::iter::repeat_n(data[i], c as usize + 1));
                     i += 1;
                 } else {
                     let n = 257 - c as usize;
@@ -333,8 +328,10 @@ mod tests {
         for (i, b) in data[..stride].iter_mut().enumerate() {
             *b = if i % 3 == 0 { 0b1010_1010 } else { 0xFF };
         }
+        // Cloned because the pixel check below reads the source bitmap's own bytes.
         let page = Bitmap::new(width, 601, data.clone()).unwrap();
-        let out = pwg_raster(&[page.clone()], 300).unwrap();
+        // Borrowed, not cloned: a one-element slice does not need its own copy of the page.
+        let out = pwg_raster(std::slice::from_ref(&page), 300).unwrap();
 
         assert_eq!(&out[..4], b"RaS2");
         let h = &out[4..4 + PWG_HEADER_LEN];

@@ -422,19 +422,22 @@ fn api_set_settings(app: tauri::AppHandle, settings: ApiSettings) -> ApiStatus {
 /// request rather than capturing it when it started.
 #[tauri::command]
 fn api_regenerate_token(app: tauri::AppHandle) -> Result<ApiStatus, String> {
+    // One binding per platform, one exit below, rather than a `return` inside the `cfg` block: two
+    // block expressions in a row do not both sit in tail position once one of them is compiled out.
     #[cfg(desktop)]
-    {
+    let status = {
         let status = app.state::<ApiState>().regenerate_token(&app)?;
-        // Saved before the new token is handed out: a token that exists only in memory would lock
+        // Saved before the new token is handed out: a token that existed only in memory would lock
         // the caller out on the next start, and would do it silently.
         save_api_settings(&app, &status.settings);
-        return Ok(status);
-    }
+        status
+    };
     #[cfg(not(desktop))]
-    {
+    let status = {
         let _ = &app;
-        Ok(ApiStatus::unavailable())
-    }
+        ApiStatus::unavailable()
+    };
+    Ok(status)
 }
 
 /// The last few calls from outside the app, for the API tab's list.
