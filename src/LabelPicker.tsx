@@ -58,15 +58,29 @@ export function ReloadLabelsButton({
   reloading: boolean;
   disabled?: boolean;
 }) {
+  // Represent the same action with an SVG rather than an emoji. Emoji render differently (or not at
+  // all) on some systems, and an arrow can actually turn while the re-read is running.
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={reloading || disabled}
       aria-label="Reload labels from the database"
-      className={`${smallBtn} whitespace-nowrap`}
+      className={`${smallBtn} inline-flex items-center justify-center whitespace-nowrap`}
     >
-      🔃
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className={`h-3.5 w-3.5 ${reloading ? 'animate-spin' : ''}`}
+      >
+        <path d="M21 12a9 9 0 1 1-2.64-6.36L21 8" />
+        <polyline points="21 3 21 8 16 8" />
+      </svg>
     </button>
   );
 }
